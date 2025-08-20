@@ -5,6 +5,7 @@ from typing import Sequence, Union, Optional, List, Tuple
 
 import torch
 import torch.nn.functional as F
+from matplotlib import pyplot as plt
 from torch import Tensor
 from torch.nn import Module, Linear, ModuleList, ReLU, MSELoss, Parameter, init
 from torch.utils.data import TensorDataset, DataLoader
@@ -228,8 +229,8 @@ def train_one_epoch(training_loader, optimizer, model, loss_fn, epoch_index, tb_
         # Every data instance is an input + label pair
         inputs, labels = data
 
-        inputs = inputs.reshape((-1 , 1))
-        labels = labels.reshape((-1 , 1))
+        inputs = inputs.reshape((-1, 1))
+        labels = labels.reshape((-1, 1))
 
         # Zero your gradients for every batch!
         optimizer.zero_grad(set_to_none=True)
@@ -246,6 +247,8 @@ def train_one_epoch(training_loader, optimizer, model, loss_fn, epoch_index, tb_
 
         # Gather data and report
         running_loss += loss.item()
+
+        print("Current loss:", loss.item())
         if i % 10 == 9:
             last_loss = running_loss / 10  # loss per batch
             print('  batch {} loss: {}'.format(i + 1, last_loss))
@@ -259,13 +262,15 @@ def train_one_epoch(training_loader, optimizer, model, loss_fn, epoch_index, tb_
 def train(x, y, model):
     # Initializing in a separate cell so we can easily add more epochs to the same run
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    writer = SummaryWriter('../runs/sin_trainer_{}'.format(timestamp))
+    save_folder = '../runs/sin_trainer_{}'.format(timestamp)
+
+    writer = SummaryWriter(save_folder)
 
     writer.add_graph(model, torch.randn((10, model.in_features), device=model.device))
 
     epoch_number = 0
 
-    EPOCHS = 5
+    EPOCHS = 100
 
     best_vloss = 1_000_000.
 
@@ -274,7 +279,7 @@ def train(x, y, model):
 
     dataset = TensorDataset(x, y)
 
-    training_loader = DataLoader(dataset, batch_size=64, shuffle=True)
+    training_loader = DataLoader(dataset, batch_size=1000, shuffle=True)
 
     for epoch in range(EPOCHS):
         print('EPOCH {}:'.format(epoch_number + 1))
@@ -292,6 +297,14 @@ def train(x, y, model):
                            epoch_number + 1)
         writer.flush()
 
+        plt.plot(x.cpu(), y.cpu(), label='gt')
+        with torch.no_grad():
+            y_pred = model(x.reshape(-1, model.in_features))
+
+            plt.plot(x.cpu(), y_pred.cpu(), label='truth')
+        plt.savefig(os.path.join(save_folder, f'truth{epoch}.png'))
+        plt.close()
+
         epoch_number += 1
 
 
@@ -303,7 +316,7 @@ def main():
     input_features = 1
     output_features = 1
 
-    model = DeepLipschitzResNet(input_features, output_features, (32, 128, 128, 32), device=device)
+    model = DeepLipschitzResNet(input_features, output_features, (32, 256, 1024), device=device)
 
     print(model)
 
@@ -311,7 +324,7 @@ def main():
 
     batch = 64
 
-    x = torch.linspace(-10, 10, 1000, device=device)
+    x = torch.linspace(-10, 10, 100000, device=device)
 
     y = torch.sin(x + 1) * 0.5
 
