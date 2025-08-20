@@ -13,7 +13,7 @@ torch.set_float32_matmul_precision('high')
 
 # @torch.compile
 def matrix_inv_square_root(A: Tensor) -> Tensor:
-    eigvals, eigvecs = torch.linalg.eigh(A)
+    eigvals, eigvecs = torch.linalg.eigh(A.detach())
     return (eigvecs * eigvals.rsqrt().unsqueeze(0)) @ eigvecs.T
 
 
