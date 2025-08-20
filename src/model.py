@@ -1,28 +1,32 @@
-from typing import Sequence, Union, Optional, List
+from typing import Sequence, Union, Optional, List, Tuple
 
 import torch
 import torch.nn.functional as F
 from torch import Tensor
 from torch.nn import Module, Linear, ModuleList, ReLU
 
+torch.set_float32_matmul_precision('high')
 
+
+@torch.compile
 def matrix_inv_square_root(A: Tensor) -> Tensor:
     eigvals, eigvecs = torch.linalg.eigh(A)
     return (eigvecs * eigvals.rsqrt().unsqueeze(0)) @ eigvecs.T
 
 
+@torch.compile
 def fast_symmetric_positive_definitive_matrix_inverse(A):
     L = torch.linalg.cholesky_ex(A).L
     return torch.cholesky_inverse(L)
 
 
 class LipschitzInnerLayer(Linear):
-    __constants__ = ['identity', 'identity_out', 'constant' , 'constant_sq']
+    __constants__ = ['identity', 'identity_out', 'constant', 'constant_sq']
 
     def __init__(self, in_features: int,
                  out_features: int,
                  bias: bool = True,
-                 constant: float = 0.0,
+                 constant: float = 1.0,
                  device=None,
                  dtype=None):
         super(LipschitzInnerLayer, self).__init__(in_features, out_features, bias=bias, device=device, dtype=dtype)
@@ -68,16 +72,22 @@ class LipschitzInnerLayer(Linear):
         return self.constant_sq * fast_symmetric_positive_definitive_matrix_inverse(
             self.identity + self.weight.T @ self.weight)
 
+    def compute_d1_inv(self):
+        return (self.identity + self.weight.T @ self.weight) / self.constant_sq
+
     def compute_d1_sqrt(self):
-        return self.constant_sq * matrix_inv_square_root(self.identity + self.weight.T @ self.weight)
+        return self.constant * matrix_inv_square_root(self.identity + self.weight.T @ self.weight)
 
     def compute_d_sqrt(self):
-        return self.constant_sq * matrix_inv_square_root(self.identity_out + self.weight @ self.weight.T)
+        return self.constant * matrix_inv_square_root(self.identity_out + self.weight @ self.weight.T)
 
-    def forward(self, input: Tensor, scaling: Optional[Tensor] = None) -> Tensor:
+    def compute_d_inv(self):
+        return matrix_inv_square_root(self.identity_out + self.weight @ self.weight.T) / self.constant_sq
+
+    def forward(self, input: Tensor, scaling: Optional[Tensor] = None) -> Tuple[Tensor, Tensor]:
         weight = self.compute_weight(scaling)
 
-        return F.linear(input, weight, self.bias)
+        return F.linear(input, weight, self.bias), weight
 
 
 class DeepLipschitzResNet(Module):
@@ -138,28 +148,50 @@ class DeepLipschitzResNet(Module):
 
         self.layers = ModuleList(layer)
 
+    def check_weights(self):
+        a_weight = self.A.compute_weight()
+        assert torch.linalg.matrix_norm(a_weight.T @ a_weight, ord=2) < self.lipschitz_constant
+
     def forward(self, input: Tensor) -> Tensor:
-        first = self.A(input)
+        first, a_weight = self.A(input)
+
+        second = input
 
         ds = [self.A.compute_d1_sqrt()]
 
-        second = input
+        total_sum = self.A.compute_d1_inv()
+
+        current_product = total_sum
 
         for i, layer in enumerate(self.layers):
             layer: LipschitzInnerLayer
 
-            second = layer(second, ds[-1])
+            second, cn = layer(second, ds[-1])
 
             ds.append(layer.compute_d_sqrt())
+
+            di_inv = layer.compute_d_inv()
+
+            current_product = current_product @ cn.T
+
+            total_sum += (current_product @ di_inv @ current_product.T)
+
+            current_product = current_product @ di_inv
 
             if isinstance(self.activation, Sequence):
                 second = self.activation[i](second)
             else:
                 second = self.activation(second)
 
-        second = self.B(second)
+        smallest_singular_value_cn = torch.linalg.matrix_norm(self.layers[-1].weight, ord=-2)
 
-        return first + second
+        B_factor = torch.sqrt(2.0 / (1 + (smallest_singular_value_cn * smallest_singular_value_cn)))
+
+        a_sigma_a_t = B_factor * matrix_inv_square_root(self.B.identity_out + a_weight @ total_sum @ a_weight.T)
+
+        second, b_weight = self.B(second)
+
+        return F.linear(second, a_sigma_a_t, first)
 
     def extra_repr(self) -> str:
         return f"in_features={self.in_features}, out_features={self.out_features}, inner_widths=({','.join(map(str, self.layer_widths))})"
