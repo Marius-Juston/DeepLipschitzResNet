@@ -17,6 +17,8 @@ def fast_symmetric_positive_definitive_matrix_inverse(A):
 
 
 class LipschitzInnerLayer(Linear):
+    __constants__ = ['identity', 'identity_out', 'constant' , 'constant_sq']
+
     def __init__(self, in_features: int,
                  out_features: int,
                  bias: bool = True,
@@ -39,8 +41,13 @@ class LipschitzInnerLayer(Linear):
             "constant", torch.tensor(constant, **factory_kwargs)
         )
 
+        self.register_buffer(
+            "constant_sq", torch.tensor(constant * constant, **factory_kwargs)
+        )
+
         self.identity: Optional[Tensor]
         self.constant: Optional[Tensor]
+        self.constant_sq: Optional[Tensor]
 
     def compute_weight(self, scaling: Optional[Tensor] = None) -> Tensor:
         inner = self.identity + self.weight.T @ self.weight
@@ -54,10 +61,18 @@ class LipschitzInnerLayer(Linear):
         return weight
 
     def compute_d(self):
-        return fast_symmetric_positive_definitive_matrix_inverse(self.identity_out + self.weight @ self.weight.T)
+        return self.constant_sq * fast_symmetric_positive_definitive_matrix_inverse(
+            self.identity_out + self.weight @ self.weight.T)
+
+    def compute_d1(self):
+        return self.constant_sq * fast_symmetric_positive_definitive_matrix_inverse(
+            self.identity + self.weight.T @ self.weight)
+
+    def compute_d1_sqrt(self):
+        return self.constant_sq * matrix_inv_square_root(self.identity + self.weight.T @ self.weight)
 
     def compute_d_sqrt(self):
-        return matrix_inv_square_root(self.identity_out + self.weight @ self.weight.T)
+        return self.constant_sq * matrix_inv_square_root(self.identity_out + self.weight @ self.weight.T)
 
     def forward(self, input: Tensor, scaling: Optional[Tensor] = None) -> Tensor:
         weight = self.compute_weight(scaling)
@@ -126,7 +141,7 @@ class DeepLipschitzResNet(Module):
     def forward(self, input: Tensor) -> Tensor:
         first = self.A(input)
 
-        ds = [self.A.compute_d_sqrt()]
+        ds = [self.A.compute_d1_sqrt()]
 
         second = input
 
