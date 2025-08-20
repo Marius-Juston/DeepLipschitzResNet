@@ -1,10 +1,12 @@
+import math
+import os
 from datetime import datetime
 from typing import Sequence, Union, Optional, List, Tuple
 
 import torch
 import torch.nn.functional as F
 from torch import Tensor
-from torch.nn import Module, Linear, ModuleList, ReLU, MSELoss
+from torch.nn import Module, Linear, ModuleList, ReLU, MSELoss, Parameter, init
 from torch.utils.data import TensorDataset, DataLoader
 from torch.utils.tensorboard import SummaryWriter
 
@@ -99,7 +101,7 @@ class DeepLipschitzResNet(Module):
     layers: ModuleList
 
     def __init__(self, in_features: int, out_features: int, layers_widths: Sequence[int],
-                 activation: Union[Module, List[Module]] = None, lipschitz_constant: float = 1.0,
+                 activation: Union[Module, List[Module]] = None, lipschitz_constant: float = 1.0, bias: bool = True,
                  device: Union[str, torch.device] = 'cuda', dtype=None) -> None:
         super().__init__()
 
@@ -124,9 +126,24 @@ class DeepLipschitzResNet(Module):
         else:
             self.activation = activation
 
+        if bias:
+            self.bias = Parameter(torch.empty(out_features, **self.factory_kwargs))
+        else:
+            self.register_parameter("bias", None)
+
         self.generate_layers()
 
+        self.reset_bias()
+
+    def reset_bias(self):
+        if self.bias is not None:
+            fan_in, _ = init._calculate_fan_in_and_fan_out(self.A.weight)
+            bound = 1 / math.sqrt(fan_in) if fan_in > 0 else 0
+            init.uniform_(self.bias, -bound, bound)
+
     def reset_parameters(self) -> None:
+        self.reset_bias()
+
         # Find a better initialization scheme for the current formulation of the system
         self.A.reset_parameters()
         self.B.reset_parameters()
@@ -177,7 +194,7 @@ class DeepLipschitzResNet(Module):
 
             current_product = current_product @ cn.T
 
-            total_sum =   total_sum + (current_product @ di_inv @ current_product.T)
+            total_sum = total_sum + (current_product @ di_inv @ current_product.T)
 
             current_product = current_product @ di_inv
 
@@ -194,7 +211,7 @@ class DeepLipschitzResNet(Module):
 
         second, b_weight = self.B(second)
 
-        return F.linear(second, a_sigma_a_t, first)
+        return F.linear(second, a_sigma_a_t, first + self.bias)
 
     def extra_repr(self) -> str:
         return f"in_features={self.in_features}, out_features={self.out_features}, inner_widths=({','.join(map(str, self.layer_widths))})"
