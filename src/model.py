@@ -174,7 +174,7 @@ class DeepLipschitzResNet(Module):
 
             current_product = current_product @ cn.T
 
-            total_sum += (current_product @ di_inv @ current_product.T)
+            total_sum =   total_sum + (current_product @ di_inv @ current_product.T)
 
             current_product = current_product @ di_inv
 
