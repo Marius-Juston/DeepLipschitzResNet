@@ -8,7 +8,7 @@ from torch.nn import Linear
 from utils import matrix_inv_square_root, fast_symmetric_positive_definitive_matrix_inverse
 
 
-class LipschitzInnerLayer(Linear):
+class LipschitzLinearLayer(Linear):
     __constants__ = ['identity', 'identity_out', 'constant', 'constant_sq']
 
     def __init__(self, in_features: int,
@@ -17,7 +17,7 @@ class LipschitzInnerLayer(Linear):
                  constant: float = 1.0,
                  device=None,
                  dtype=None):
-        super(LipschitzInnerLayer, self).__init__(in_features, out_features, bias=bias, device=device, dtype=dtype)
+        super(LipschitzLinearLayer, self).__init__(in_features, out_features, bias=bias, device=device, dtype=dtype)
 
         factory_kwargs = {"device": device, "dtype": dtype}
 

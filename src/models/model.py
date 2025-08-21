@@ -6,13 +6,13 @@ import torch.nn.functional as F
 from torch import Tensor, device
 from torch.nn import Module, ModuleList, ReLU, Parameter, init
 
-from models.layers import LipschitzInnerLayer
+from models.layers import LipschitzLinearLayer
 from utils import matrix_inv_square_root
 
 
-class DeepLipschitzResNet(Module):
-    A: LipschitzInnerLayer
-    B: LipschitzInnerLayer
+class DeepLipschitzLinearResNet(Module):
+    A: LipschitzLinearLayer
+    B: LipschitzLinearLayer
     layers: ModuleList
 
     def __init__(self, in_features: int, out_features: int, layers_widths: Sequence[int],
@@ -67,18 +67,18 @@ class DeepLipschitzResNet(Module):
             layer.reset_parameters()
 
     def generate_layers(self) -> None:
-        self.A = LipschitzInnerLayer(in_features=self.in_features, out_features=self.out_features,
-                                     constant=self.lipschitz_constant, **self.factory_kwargs)
+        self.A = LipschitzLinearLayer(in_features=self.in_features, out_features=self.out_features,
+                                      constant=self.lipschitz_constant, **self.factory_kwargs)
 
-        self.B = LipschitzInnerLayer(in_features=self.layer_widths[-1], out_features=self.out_features,
-                                     **self.factory_kwargs)
+        self.B = LipschitzLinearLayer(in_features=self.layer_widths[-1], out_features=self.out_features,
+                                      **self.factory_kwargs)
 
         layer = []
 
         prev = self.in_features
 
         for out_features in self.layer_widths:
-            layer.append(LipschitzInnerLayer(prev, out_features, constant=self.sqrt_2, **self.factory_kwargs))
+            layer.append(LipschitzLinearLayer(prev, out_features, constant=self.sqrt_2, **self.factory_kwargs))
             prev = out_features
 
         self.layers = ModuleList(layer)
@@ -99,7 +99,7 @@ class DeepLipschitzResNet(Module):
         current_product = total_sum
 
         for i, layer in enumerate(self.layers):
-            layer: LipschitzInnerLayer
+            layer: LipschitzLinearLayer
 
             second, cn = layer(second, ds[-1])
 

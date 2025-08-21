@@ -7,7 +7,7 @@ from torch.nn import MSELoss
 from torch.utils.data import TensorDataset, DataLoader
 from torch.utils.tensorboard import SummaryWriter
 
-from models.model import DeepLipschitzResNet
+from models.model import DeepLipschitzLinearResNet
 
 torch.set_float32_matmul_precision('high')
 
@@ -110,7 +110,7 @@ def main():
     input_features = 1
     output_features = 1
 
-    model = DeepLipschitzResNet(input_features, output_features, (32, 256, 1024), device=device)
+    model = DeepLipschitzLinearResNet(input_features, output_features, (32, 256, 1024), device=device)
 
     print(model)
 
