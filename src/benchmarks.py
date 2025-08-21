@@ -8,6 +8,7 @@ import torch
 def invsqrt_eigh(A):
     return torch.linalg.inv(A)
 
+
 def fast_symmetric_positive_definitive_matrix_inverse(A):
     L = torch.linalg.cholesky_ex(A).L
     return torch.cholesky_inverse(L)
@@ -29,9 +30,7 @@ def benchmark(fn, *args, repeat=5):
         end.record()
         torch.cuda.synchronize()
         times.append(start.elapsed_time(end))  # milliseconds
-    return result, sum(times) / len(times)
-
-
+    return result, times, sum(times) / len(times)
 
 
 if __name__ == '__main__':
@@ -51,16 +50,16 @@ if __name__ == '__main__':
         A = M @ M.T + torch.eye(n, device=device, dtype=dtype)
 
         # 1. Eigen decomposition
-        res_eigh, t_eigh = benchmark(invsqrt_eigh, A)
+        res_eigh, _, t_eigh = benchmark(invsqrt_eigh, A)
         print(f"Eigen-decomposition full A^(-1): {t_eigh:.2f} ms")
 
-        res_eigh_G,_ = torch.linalg.eigvalsh(res_eigh).sort()
+        res_eigh_G, _ = torch.linalg.eigvalsh(res_eigh).sort()
 
         # 2. Cholesky full
         res_chol, t_chol = benchmark(fast_symmetric_positive_definitive_matrix_inverse, A)
         print(f"Cholesky + triangular solve full A^(-1): {t_chol:.2f} ms")
 
-        res_chol_G,_ = torch.linalg.eigvalsh(res_chol).sort()
+        res_chol_G, _ = torch.linalg.eigvalsh(res_chol).sort()
 
         dist = torch.dist(res_eigh, res_chol)
 
