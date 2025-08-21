@@ -38,6 +38,7 @@ class LipschitzInnerLayer(Linear):
         )
 
         self.identity: Optional[Tensor]
+        self.identity_out: Optional[Tensor]
         self.constant: Optional[Tensor]
         self.constant_sq: Optional[Tensor]
 
@@ -52,28 +53,27 @@ class LipschitzInnerLayer(Linear):
 
         return weight
 
-    def compute_d(self):
+    def compute_d(self) -> Tensor:
         return self.constant_sq * fast_symmetric_positive_definitive_matrix_inverse(
             self.identity_out + self.weight @ self.weight.T)
 
-    def compute_d1(self):
+    def compute_d1(self) -> Tensor:
         return self.constant_sq * fast_symmetric_positive_definitive_matrix_inverse(
             self.identity + self.weight.T @ self.weight)
 
-    def compute_d1_inv(self):
+    def compute_d1_inv(self) -> Tensor:
         return (self.identity + self.weight.T @ self.weight) / self.constant_sq
 
-    def compute_d1_sqrt(self):
+    def compute_d1_sqrt(self) -> Tensor:
         return self.constant * matrix_inv_square_root(self.identity + self.weight.T @ self.weight)
 
-    def compute_d_sqrt(self):
+    def compute_d_sqrt(self) -> Tensor:
         return self.constant * matrix_inv_square_root(self.identity_out + self.weight @ self.weight.T)
 
-    def compute_d_inv(self):
+    def compute_d_inv(self) -> Tensor:
         return matrix_inv_square_root(self.identity_out + self.weight @ self.weight.T) / self.constant_sq
 
     def forward(self, input: Tensor, scaling: Optional[Tensor] = None) -> Tuple[Tensor, Tensor]:
         weight = self.compute_weight(scaling)
 
         return F.linear(input, weight, self.bias), weight
-

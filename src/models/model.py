@@ -50,7 +50,7 @@ class DeepLipschitzResNet(Module):
 
         self.reset_bias()
 
-    def reset_bias(self):
+    def reset_bias(self) -> None:
         if self.bias is not None:
             fan_in, _ = init._calculate_fan_in_and_fan_out(self.A.weight)
             bound = 1 / math.sqrt(fan_in) if fan_in > 0 else 0
@@ -83,7 +83,7 @@ class DeepLipschitzResNet(Module):
 
         self.layers = ModuleList(layer)
 
-    def check_weights(self):
+    def check_weights(self) -> None:
         a_weight = self.A.compute_weight()
         assert torch.linalg.matrix_norm(a_weight.T @ a_weight, ord=2) < self.lipschitz_constant
 
@@ -120,9 +120,9 @@ class DeepLipschitzResNet(Module):
 
         smallest_singular_value_cn = torch.linalg.matrix_norm(self.layers[-1].weight, ord=-2)
 
-        B_factor = torch.sqrt(2.0 / (1 + (smallest_singular_value_cn * smallest_singular_value_cn)))
+        b_factor = torch.sqrt(2.0 / (1 + (smallest_singular_value_cn * smallest_singular_value_cn)))
 
-        a_sigma_a_t = B_factor * matrix_inv_square_root(self.B.identity_out + a_weight @ total_sum @ a_weight.T)
+        a_sigma_a_t = b_factor * matrix_inv_square_root(self.B.identity_out + a_weight @ total_sum @ a_weight.T)
 
         second, b_weight = self.B(second)
 
