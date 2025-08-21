@@ -326,7 +326,7 @@ def main():
 
     x = torch.linspace(-10, 10, 100000, device=device)
 
-    y = torch.sin(x + 1) * 0.5
+    y = torch.sin(x + 1) * 0.5 - 0.5 * x + 2
 
     train(x, y, model)
 
