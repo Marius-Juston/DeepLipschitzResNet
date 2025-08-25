@@ -92,7 +92,7 @@ class DeepLipschitzLinearResNet(Module):
 
         second = input
 
-        ds = [self.A.compute_d1_sqrt()]
+        prev_d = self.A.compute_d1_sqrt()
 
         total_sum = self.A.compute_d1_inv()
 
@@ -101,9 +101,10 @@ class DeepLipschitzLinearResNet(Module):
         for i, layer in enumerate(self.layers):
             layer: LipschitzLinearLayer
 
-            second, cn = layer(second, ds[-1])
+            second, cn = layer(second, prev_d)
 
-            ds.append(layer.compute_d_sqrt())
+            if i < len(self.layers) - 1:
+                prev_d = layer.compute_d_sqrt()
 
             di_inv = layer.compute_d_inv()
 
