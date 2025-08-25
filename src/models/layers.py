@@ -71,7 +71,7 @@ class LipschitzLinearLayer(Linear):
         return self.constant * matrix_inv_square_root(self.identity_out + self.weight @ self.weight.T)
 
     def compute_d_inv(self) -> Tensor:
-        return matrix_inv_square_root(self.identity_out + self.weight @ self.weight.T) / self.constant_sq
+        return (self.identity_out + self.weight @ self.weight.T) / self.constant_sq
 
     def forward(self, input: Tensor, scaling: Optional[Tensor] = None) -> Tuple[Tensor, Tensor]:
         weight = self.compute_weight(scaling)
