@@ -5,7 +5,7 @@ import torch.nn.functional as F
 from torch import Tensor
 from torch.nn import Linear
 
-from utils import matrix_inv_square_root, fast_symmetric_positive_definitive_matrix_inverse
+from utils import fast_symmetric_positive_definitive_matrix_inverse
 
 
 class LipschitzLinearLayer(Linear):
@@ -42,16 +42,62 @@ class LipschitzLinearLayer(Linear):
         self.constant: Optional[Tensor]
         self.constant_sq: Optional[Tensor]
 
-    def compute_weight(self, scaling: Optional[Tensor] = None) -> Tensor:
-        inner = self.identity + self.weight.T @ self.weight
-        inner_inv_sqrt = matrix_inv_square_root(inner)
+        self.current_weight_version = None
+        self.current_weight_svd_decomposition = None
+        self._identity_plus_weight_weight_transpose_sqrt = None
+        self._identity_plus_weight_transpose_weight_sqrt = None
 
-        weight = self.constant * self.weight @ inner_inv_sqrt
+    @property
+    def identity_plus_weight_weight_transpose_sqrt(self):
+        self.get_cache()
+        return self._identity_plus_weight_weight_transpose_sqrt
+
+    @property
+    def identity_plus_weight_transpose_weight_sqrt(self):
+        self.get_cache()
+        return self._identity_plus_weight_transpose_weight_sqrt
+
+    def get_cache(self):
+        if self.weight._version != self.current_weight_version:
+            self.current_weight_svd_decomposition = torch.linalg.svd(self.weight, full_matrices=False)
+
+            self.current_weight_version = self.weight._version
+
+            U, S, Vh = self.current_weight_svd_decomposition
+
+            inverse_sqrt = torch.diag((1 + S).sqrt())
+
+            self._identity_plus_weight_transpose_weight_sqrt = Vh.T @ inverse_sqrt @ Vh
+            self._identity_plus_weight_weight_transpose_sqrt = U @ inverse_sqrt @ U.T
+
+    @property
+    def svd(self):
+        self.get_cache()
+        return self.current_weight_svd_decomposition
+
+    def compute_weight(self, scaling: Optional[Tensor] = None) -> Tensor:
+        U, S, Vh = self.svd
+
+        weight = U @ torch.diag(S * (1 + S).rsqrt()) @ Vh
 
         if scaling is not None:
             weight = weight @ scaling
 
         return weight
+
+    @property
+    def norm_2(self):
+        self.get_cache()
+        _, S, _ = self.svd
+
+        return S.max()
+
+    @property
+    def norm_neg_2(self):
+        self.get_cache()
+        _, S, _ = self.svd
+
+        return S.min()
 
     def compute_d(self) -> Tensor:
         return self.constant_sq * fast_symmetric_positive_definitive_matrix_inverse(
@@ -65,13 +111,13 @@ class LipschitzLinearLayer(Linear):
         return (self.identity + self.weight.T @ self.weight) / self.constant_sq
 
     def compute_d1_sqrt(self) -> Tensor:
-        return self.constant * matrix_inv_square_root(self.identity + self.weight.T @ self.weight)
+        return self.constant * self.identity_plus_weight_transpose_weight_sqrt
 
     def compute_d_sqrt(self) -> Tensor:
-        return self.constant * matrix_inv_square_root(self.identity_out + self.weight @ self.weight.T)
+        return self.constant * self.identity_plus_weight_weight_transpose_sqrt
 
     def compute_d_inv(self) -> Tensor:
-        return matrix_inv_square_root(self.identity_out + self.weight @ self.weight.T) / self.constant_sq
+        return (self.identity_out + self.weight @ self.weight.T) / self.constant_sq
 
     def forward(self, input: Tensor, scaling: Optional[Tensor] = None) -> Tuple[Tensor, Tensor]:
         weight = self.compute_weight(scaling)

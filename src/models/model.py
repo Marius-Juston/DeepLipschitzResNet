@@ -118,7 +118,7 @@ class DeepLipschitzLinearResNet(Module):
             else:
                 second = self.activation(second)
 
-        smallest_singular_value_cn = torch.linalg.matrix_norm(self.layers[-1].weight, ord=-2)
+        smallest_singular_value_cn = self.layers[-1].norm_neg_2
 
         b_factor = torch.sqrt(2.0 / (1 + (smallest_singular_value_cn * smallest_singular_value_cn)))
 
