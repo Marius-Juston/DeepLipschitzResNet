@@ -8,8 +8,10 @@ from models.layers import LipschitzLinearLayer
 from models.model import DeepLipschitzLinearResNet
 from utils import matrix_inv_square_root
 
+
 def block(tensors: Sequence[Sequence[torch.Tensor]]) -> torch.Tensor:
     return torch.cat([torch.cat(b, dim=1) for b in tensors], dim=0)
+
 
 def E_real(dimensions: Sequence[int], i: Optional[int], device=None):
     Dn = sum(dimensions)
@@ -27,14 +29,14 @@ def E_real(dimensions: Sequence[int], i: Optional[int], device=None):
         E[:d1, :d1] = id_1
         E[-d2:, -d2:] = id_2
     else:
-        result = torch.cat((torch.tensor([0],device=device), torch.cumsum(torch.tensor(dimensions, device=device), dim=0)))
+        result = torch.cat(
+            (torch.tensor([0], device=device), torch.cumsum(torch.tensor(dimensions, device=device), dim=0)))
 
         E[result[i]: result[i + 1], :d1] = id_1
         E[result[i + 1]: result[i + 2], -d2:] = id_2
 
-
-
     return E.T
+
 
 def main_real(A, B, Cs, Ls, Lms, dimensions, device=None):
     L = len(Ls)
@@ -55,7 +57,7 @@ def main_real(A, B, Cs, Ls, Lms, dimensions, device=None):
         lambda_i = Ls[i]
         Ci = Cs[i]
 
-        CC = torch.zeros((Ci.shape[0] * 2, Ci.shape[1]  + Ci.shape[0]), device=device)
+        CC = torch.zeros((Ci.shape[0] * 2, Ci.shape[1] + Ci.shape[0]), device=device)
         CC[:Ci.shape[0], :Ci.shape[1]] = Ci
         CC[-Ci.shape[0]:, -Ci.shape[0]:] = torch.eye(Ci.shape[0], device=device)
 
@@ -86,7 +88,8 @@ def main_real(A, B, Cs, Ls, Lms, dimensions, device=None):
 
     return M
 
-def extract_lmi_constants(model : DeepLipschitzLinearResNet):
+
+def extract_lmi_constants(model: DeepLipschitzLinearResNet):
     a_weight = model.A.compute_weight()
 
     prev_d = model.A.compute_d1_sqrt()
@@ -132,7 +135,8 @@ def extract_lmi_constants(model : DeepLipschitzLinearResNet):
 
     return a_weight, b_weight, Cs, Ls, Lms, dimensions
 
-def plot_matrix(M: torch.Tensor, fig_name:str, dpi=300):
+
+def plot_matrix(M: torch.Tensor, fig_name: str, dpi=300):
     min, max = M.min(), M.max()
 
     normalized = (M - min) / (max - min) * 255
@@ -141,23 +145,25 @@ def plot_matrix(M: torch.Tensor, fig_name:str, dpi=300):
     normalized = normalized.cpu().numpy()
 
     fig, ax = plt.subplots(figsize=(8, 8))
-    ax.matshow(normalized, cmap='gray')
+    ax.matshow(normalized, cmap='gray', vmin=0, vmax=255)
     fig.tight_layout()
     fig.savefig(f"{fig_name}.png", dpi=dpi)
+
 
 def freedman_diaconis_bins(x: torch.Tensor):
     x = x.flatten()
     n = x.numel()
     q25, q75 = torch.quantile(x, 0.25), torch.quantile(x, 0.75)
     iqr = q75 - q25
-    h = 2 * iqr / (n ** (1/3))
+    h = 2 * iqr / (n ** (1 / 3))
     h = h.item()
     if h == 0:
         return int(np.sqrt(n))  # fallback: sqrt rule
     bins = int(torch.ceil((x.max() - x.min()) / h).item())
     return max(1, bins)
 
-def plot_histogram(x: torch.Tensor, fig_name:str, dpi=300):
+
+def plot_histogram(x: torch.Tensor, fig_name: str, dpi=300):
     fig, ax = plt.subplots()
     counts, edges = torch.histogram(x.cpu(), bins=50, density=True)
 
@@ -168,6 +174,42 @@ def plot_histogram(x: torch.Tensor, fig_name:str, dpi=300):
     ax.set_title("Histogram of Torch Vector")
     fig.tight_layout()
     fig.savefig(f"{fig_name}.png", dpi=dpi)
+
+
+def singular_extremes(M: torch.Tensor):
+    """Return (sigma_min, sigma_max) for matrix M."""
+    s = torch.linalg.svdvals(M)
+    return s.min().item(), s.max().item()
+
+
+def plot_singular_extremes(a_weight, b_weight, Cs, fig_name: str, dpi=300):
+    matrices = [a_weight] + Cs + [b_weight]
+    labels = ["A"] + [f"C{i + 1}" for i in range(len(Cs))] + ["B"]
+
+    sigmas_min, sigmas_max = [], []
+
+    for M in matrices:
+        smin, smax = singular_extremes(M)
+        sigmas_min.append(smin)
+        sigmas_max.append(smax)
+    sigma_diff = [a - b for a, b in zip(sigmas_max, sigmas_min)]
+
+    # Plot
+    x = range(len(matrices))
+
+    fig, ax = plt.subplots()
+    ax.plot(x, sigmas_min, "o-", label="σ_min", markersize=8)
+    ax.plot(x, sigmas_max, "s-", label="σ_max", markersize=8)
+    ax.plot(x, sigma_diff, "^-", label="σ_diff", markersize=8)
+    ax.set_xticks(x, labels)
+    ax.set_xlabel("Matrix")
+    ax.set_ylabel("Singular value")
+    ax.set_title("Extremal Singular Values of Matrices")
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+    fig.tight_layout()
+    fig.savefig(f"{fig_name}.png", dpi=dpi)
+
 
 if __name__ == '__main__':
     torch.manual_seed(0)
@@ -207,4 +249,4 @@ if __name__ == '__main__':
 
     plot_histogram(eigenvalues, "eigenvalues_lmi")
 
-
+    plot_singular_extremes(a_weight, b_weight, Cs, "singular_weights")
