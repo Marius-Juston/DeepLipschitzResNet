@@ -13,6 +13,9 @@ from models.model import DeepLipschitzLinearResNet
 torch.set_float32_matmul_precision('high')
 
 
+# torch.autograd.set_detect_anomaly(True)
+
+
 def train_one_epoch(training_loader, optimizer, model, loss_fn, epoch_index, tb_writer):
     running_loss = 0.
     last_loss = 0.
@@ -38,13 +41,14 @@ def train_one_epoch(training_loader, optimizer, model, loss_fn, epoch_index, tb_
         loss.backward()
 
         # Adjust learning weights
+        torch.nn.utils.clip_grad_norm_(model.parameters(), 1)
         optimizer.step()
 
         # Gather data and report
         running_loss += loss.item()
 
-        print("Current loss:", loss.item())
-        if i % 10 == 9:
+        # print("Current loss:", loss.item())
+        if i % 100 == 99:
             last_loss = running_loss / 10  # loss per batch
             print('  batch {} loss: {}'.format(i + 1, last_loss))
             tb_x = epoch_index * len(training_loader) + i + 1
@@ -54,14 +58,14 @@ def train_one_epoch(training_loader, optimizer, model, loss_fn, epoch_index, tb_
     return last_loss
 
 
-def train(x, y, model):
+def train(x, y, model, batch_size=64 ,lr =1e-3, termination_error=5e-3):
     # Initializing in a separate cell so we can easily add more epochs to the same run
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     save_folder = '../runs/sin_trainer_{}'.format(timestamp)
 
     writer = SummaryWriter(save_folder)
 
-    writer.add_graph(model, torch.randn((10, model.in_features), device=model.device))
+    # writer.add_graph(model, torch.randn((10, model.in_features), device=model.device))
 
     epoch_number = 0
 
@@ -70,11 +74,11 @@ def train(x, y, model):
     best_vloss = 1_000_000.
 
     loss_fn = MSELoss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+    optimizer = torch.optim.Adam(model.parameters(), lr=lr, fused=True)
 
     dataset = TensorDataset(x, y)
 
-    training_loader = DataLoader(dataset, batch_size=1000, shuffle=True)
+    training_loader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
 
     for epoch in range(EPOCHS):
         print('EPOCH {}:'.format(epoch_number + 1))
@@ -99,6 +103,9 @@ def train(x, y, model):
             plt.plot(x.cpu(), y_pred.cpu(), label='truth')
         plt.savefig(os.path.join(save_folder, f'truth{epoch}.png'))
         plt.close()
+
+        if avg_loss < termination_error:
+            break
 
         epoch_number += 1
 
@@ -150,7 +157,9 @@ def main():
     input_features = 1
     output_features = 1
 
-    model = DeepLipschitzLinearResNet(input_features, output_features, (32, 256, 1024), device=device)
+    model = DeepLipschitzLinearResNet(input_features, output_features, (32, 256, 1024, 1024), device=device)
+
+    model = torch.compile(model)
 
     print(model)
 
@@ -162,7 +171,7 @@ def main():
 
     y = torch.sin(x + 1) * 0.5 - 0.5 * x + 2
 
-    train(x, y, model)
+    train(x, y, model, batch_size=batch)
 
 
 if __name__ == '__main__':
