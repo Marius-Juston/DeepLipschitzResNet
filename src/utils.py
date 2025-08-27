@@ -1,3 +1,4 @@
+import torch
 from torch import Tensor, cholesky_inverse
 from torch.linalg import eigh, cholesky_ex
 
@@ -22,3 +23,24 @@ def fast_symmetric_positive_definitive_matrix_inverse(x: Tensor) -> Tensor:
     """
     L = cholesky_ex(x).L
     return cholesky_inverse(L)
+
+
+def get_largest_singular_value_power_iteration(matrix: Tensor, num_iterations: int = 25) -> Tensor:
+    """
+    Computes the largest singular value of a matrix using the Power Iteration method.
+    This is a classic and reliable iterative method.
+
+    Args:
+        matrix (torch.Tensor): The input matrix.
+        num_iterations (int): The number of iterations to run.
+
+    Returns:
+        float: The largest singular value.
+    """
+    v = torch.randn(matrix.shape[1], 1, device=matrix.device)
+    ata = matrix.T @ matrix
+    for _ in range(num_iterations):
+        v_new = ata @ v
+        v = v_new / torch.norm(v_new)
+    largest_eigenvalue = (v.T @ ata @ v) / (v.T @ v)
+    return torch.sqrt(largest_eigenvalue)

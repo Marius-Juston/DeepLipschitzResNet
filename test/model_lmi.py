@@ -5,6 +5,7 @@ import numpy as np
 import torch
 from matplotlib import pyplot as plt
 
+import utils
 from models.layers import LipschitzLinearLayer
 from models.model import DeepLipschitzLinearResNet
 from utils import matrix_inv_square_root
@@ -95,7 +96,9 @@ def extract_lmi_constants(model: DeepLipschitzLinearResNet):
 
     prev_d = model.A.compute_d1_sqrt()
 
-    total_sum = model.A.compute_d1_inv()
+    prev_d = model.A.compute_d_sqrt(transpose=True)
+
+    total_sum = model.A.compute_d_inv(transpose=True)
 
     current_product = total_sum
 
@@ -126,11 +129,7 @@ def extract_lmi_constants(model: DeepLipschitzLinearResNet):
 
         current_product = current_product @ di_inv
 
-    smallest_singular_value_cn = torch.linalg.matrix_norm(model.layers[-1].weight, ord=-2)
-
-    b_factor = torch.sqrt(2.0 / (1 + (smallest_singular_value_cn * smallest_singular_value_cn)))
-
-    a_sigma_a_t = b_factor * matrix_inv_square_root(model.B.identity_out + a_weight @ total_sum @ a_weight.T)
+    a_sigma_a_t = model.compute_b_factor(a_weight, total_sum)
 
     b_weight = a_sigma_a_t @ model.B.compute_weight()
 

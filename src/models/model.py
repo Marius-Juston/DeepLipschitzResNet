@@ -6,6 +6,7 @@ import torch.nn.functional as F
 from torch import Tensor, device
 from torch.nn import Module, ModuleList, ReLU, Parameter, init
 
+import utils
 from models.layers import LipschitzLinearLayer
 from utils import matrix_inv_square_root
 
@@ -119,15 +120,28 @@ class DeepLipschitzLinearResNet(Module):
             else:
                 second = self.activation(second)
 
-        smallest_singular_value_cn = torch.linalg.matrix_norm(self.layers[-1].weight, ord=-2)
-
-        b_factor = torch.sqrt(2.0 / (1 + (smallest_singular_value_cn * smallest_singular_value_cn)))
-
-        a_sigma_a_t = b_factor * matrix_inv_square_root(self.B.identity_out + a_weight @ total_sum @ a_weight.T)
-
+        a_sigma_a_t = self.compute_b_factor(a_weight, total_sum)
         second, b_weight = self.B(second)
 
         return F.linear(second, a_sigma_a_t, first + self.bias)
+
+    def compute_b_factor(self, a_weight: Tensor, total_sum: Tensor) -> Tensor:
+        Cn = self.layers[-1].weight
+
+        # smallest_singular_value_cn = torch.linalg.matrix_norm(Cn, ord=-2)
+
+        smallest_singular_value_cn = utils.get_largest_singular_value_power_iteration(utils.fast_symmetric_positive_definitive_matrix_inverse(self.layers[-1].identity_out + Cn @ Cn.T))
+
+        # value = torch.linalg.matrix_norm(utils.fast_symmetric_positive_definitive_matrix_inverse(self.layers[-1].identity_out + Cn @ Cn.T), ord=2)
+
+        # b_factor = torch.sqrt(2.0 / (1 + (smallest_singular_value_cn * smallest_singular_value_cn)))
+        # b_factor = torch.sqrt(2.0 / (smallest_singular_value_cn * smallest_singular_value_cn))
+        b_factor = torch.sqrt(2.0 * smallest_singular_value_cn)
+
+        a_sigma_a_t = b_factor * matrix_inv_square_root(self.B.identity_out + a_weight @ total_sum @ a_weight.T) * 0.0001
+
+        return a_sigma_a_t
+
 
     def extra_repr(self) -> str:
         return f"in_features={self.in_features}, out_features={self.out_features}, inner_widths=({','.join(map(str, self.layer_widths))})"
