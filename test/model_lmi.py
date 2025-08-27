@@ -214,13 +214,21 @@ def plot_singular_extremes(a_weight, b_weight, Cs, fig_name: str, dpi=300):
 if __name__ == '__main__':
     torch.manual_seed(0)
 
-    input_features = 40
-    output_features = 4
+    input_features = 1
+    output_features = 1
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     torch.no_grad()
 
     model = DeepLipschitzLinearResNet(input_features, output_features, (32, 256, 1024, 1024), device=device)
+
+    save_folder = '/home/mjuston2/Documents/DeepLipschitzResNet/runs/sin_trainer_20250827_132300'
+
+    if save_folder is not None:
+        data = torch.load(f"{save_folder}/best.pt", map_location=device)
+        new_state_dict = {key.replace('_orig_mod.', ''):val for key, val in data.items()}
+
+        model.load_state_dict(new_state_dict)
 
     with torch.no_grad():
         a_weight, b_weight, Cs, Ls, Lms, dimensions = extract_lmi_constants(model)
