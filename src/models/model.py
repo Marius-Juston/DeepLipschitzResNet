@@ -92,9 +92,9 @@ class DeepLipschitzLinearResNet(Module):
 
         second = input
 
-        prev_d = self.A.compute_d1_sqrt()
+        prev_d = self.A.compute_d_sqrt(transpose=True)
 
-        total_sum = self.A.compute_d1_inv()
+        total_sum = self.A.compute_d_inv(transpose=True)
 
         current_product = total_sum
 

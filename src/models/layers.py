@@ -53,25 +53,20 @@ class LipschitzLinearLayer(Linear):
 
         return weight
 
+    def sum_weight(self, transpose=False):
+        if transpose:
+            return self.identity + self.weight.T @ self.weight
+        else:
+            return self.identity_out + self.weight @ self.weight.T
+
     def compute_d(self) -> Tensor:
-        return self.constant_sq * fast_symmetric_positive_definitive_matrix_inverse(
-            self.identity_out + self.weight @ self.weight.T)
+        return self.constant_sq * fast_symmetric_positive_definitive_matrix_inverse(self.sum_weight())
 
-    def compute_d1(self) -> Tensor:
-        return self.constant_sq * fast_symmetric_positive_definitive_matrix_inverse(
-            self.identity + self.weight.T @ self.weight)
+    def compute_d_sqrt(self, transpose=False) -> Tensor:
+        return self.constant * matrix_inv_square_root(self.sum_weight(transpose))
 
-    def compute_d1_inv(self) -> Tensor:
-        return (self.identity + self.weight.T @ self.weight) / self.constant_sq
-
-    def compute_d1_sqrt(self) -> Tensor:
-        return self.constant * matrix_inv_square_root(self.identity + self.weight.T @ self.weight)
-
-    def compute_d_sqrt(self) -> Tensor:
-        return self.constant * matrix_inv_square_root(self.identity_out + self.weight @ self.weight.T)
-
-    def compute_d_inv(self) -> Tensor:
-        return (self.identity_out + self.weight @ self.weight.T) / self.constant_sq
+    def compute_d_inv(self, transpose=False) -> Tensor:
+        return self.sum_weight(transpose) / self.constant_sq
 
     def forward(self, input: Tensor, scaling: Optional[Tensor] = None) -> Tuple[Tensor, Tensor]:
         weight = self.compute_weight(scaling)
