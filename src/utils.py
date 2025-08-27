@@ -1,6 +1,6 @@
 import torch
 from torch import Tensor, cholesky_inverse
-from torch.linalg import eigh, cholesky_ex
+from torch.linalg import cholesky_ex, eigh
 
 
 # @torch.compile
@@ -12,6 +12,24 @@ def matrix_inv_square_root(x: Tensor) -> Tensor:
     """
     eigvals, eigvecs = eigh(x.detach())
     return (eigvecs * eigvals.rsqrt().unsqueeze(0)) @ eigvecs.T
+
+
+def matrix_inv_square_root_triangle(x: Tensor, B: Tensor = None, upper: bool = False, left: bool = True) -> Tensor:
+    """
+    Returns the Matrix's square root inverse x**(-1/2), detaches matrix so that gradients do not cause problems close to 0.
+    THIS IS NOT THE "UNIQUE" SYMMETRIC MATRIX INV SQUARE ROOT!!!
+    :param B:
+    :param upper:
+    :param left:
+    :param x: Matrix to square root inverse
+    :return: The inverse square root of x
+    """
+    L = torch.linalg.cholesky_ex(x, upper=upper).L
+
+    if B is None:
+        B = torch.eye(L.shape[0], dtype=x.dtype, device=x.device)
+    L_inv = torch.linalg.solve_triangular(L, B, upper=upper, left=left)
+    return L_inv
 
 
 # @torch.compile
