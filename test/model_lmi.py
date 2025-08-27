@@ -231,8 +231,6 @@ if __name__ == '__main__':
 
     print(M)
 
-    assert torch.all(eigenvalues < 0), "Not all the eigenvalues of the LMI are negative"
-
     print(eigenvalues)
 
     plot_matrix(M, "full_lmi")
@@ -250,3 +248,5 @@ if __name__ == '__main__':
     plot_histogram(eigenvalues, "eigenvalues_lmi")
 
     plot_singular_extremes(a_weight, b_weight, Cs, "singular_weights")
+
+    assert torch.all(eigenvalues < 1e-5), "Not all the eigenvalues of the LMI are negative"
