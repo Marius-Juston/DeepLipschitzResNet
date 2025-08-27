@@ -4,6 +4,7 @@ from datetime import datetime
 import torch
 from matplotlib import pyplot as plt
 from torch.nn import MSELoss
+from torch.profiler import profile, ProfilerActivity
 from torch.utils.data import TensorDataset, DataLoader
 from torch.utils.tensorboard import SummaryWriter
 
@@ -101,6 +102,45 @@ def train(x, y, model):
 
         epoch_number += 1
 
+def profile_model():
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+    print("Running on device", device)
+
+    input_features = 20
+    output_features = 20
+
+    model = DeepLipschitzLinearResNet(input_features, output_features, (32, 256, 1024), device=device)
+
+    # model = torch.compile(model, mode='max-autotune')
+    # model = torch.compile(model, mode='reduce-overhead')
+    # model = torch.compile(model)
+
+    print(model)
+
+    torch.manual_seed(0)
+
+    batch = 64
+
+    x = torch.linspace(-10, 10, batch * input_features, device=device).reshape(batch, -1)
+
+    activities = [ProfilerActivity.CPU]
+    if torch.cuda.is_available():
+        activities += [ProfilerActivity.CUDA]
+
+    for i in range(10):
+        model(x)
+
+    with profile(activities=activities, record_shapes=True) as prof:
+        model(x)
+
+    print(
+        prof.key_averages(group_by_input_shape=True).table(
+            sort_by="cpu_time_total", row_limit=10
+        )
+    )
+    prof.export_chrome_trace("trace.json")
+
 
 def main():
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -126,4 +166,5 @@ def main():
 
 
 if __name__ == '__main__':
+    # profile_model()
     main()
