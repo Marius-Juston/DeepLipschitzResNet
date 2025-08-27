@@ -1,3 +1,4 @@
+import os.path
 from typing import Optional, Sequence
 
 import numpy as np
@@ -214,6 +215,9 @@ def plot_singular_extremes(a_weight, b_weight, Cs, fig_name: str, dpi=300):
 if __name__ == '__main__':
     torch.manual_seed(0)
 
+    figs_folder = 'figs'
+    os.makedirs(figs_folder, exist_ok=True)
+
     input_features = 1
     output_features = 1
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -241,20 +245,20 @@ if __name__ == '__main__':
 
     print(eigenvalues)
 
-    plot_matrix(M, "full_lmi")
+    plot_matrix(M, os.path.join(figs_folder, "full_lmi"))
 
     removed_diag = (M - torch.diag(torch.diag(M)))
 
-    plot_matrix(removed_diag, "lmi_without_diag")
+    plot_matrix(removed_diag, os.path.join(figs_folder, "lmi_without_diag"))
 
     binary = (torch.abs(M) > 0).to(torch.uint8)
 
-    plot_matrix(binary, "binary_lmi")
+    plot_matrix(binary, os.path.join(figs_folder, "binary_lmi"))
 
-    plot_matrix(eigenvectors, "eigenvectors_lmi")
+    plot_matrix(eigenvectors, os.path.join(figs_folder, "eigenvectors_lmi"))
 
-    plot_histogram(eigenvalues, "eigenvalues_lmi")
+    plot_histogram(eigenvalues, os.path.join(figs_folder, "eigenvalues_lmi"))
 
-    plot_singular_extremes(a_weight, b_weight, Cs, "singular_weights")
+    plot_singular_extremes(a_weight, b_weight, Cs, os.path.join(figs_folder, "singular_weights"))
 
     assert torch.all(eigenvalues < 1e-5), "Not all the eigenvalues of the LMI are negative"
