@@ -42,10 +42,17 @@ class LipschitzLinearLayer(Linear):
         self.constant: Optional[Tensor]
         self.constant_sq: Optional[Tensor]
 
-    def compute_weight(self, scaling: Optional[Tensor] = None) -> Tensor:
-        inner_inv_sqrt = matrix_inv_square_root(self.sum_weight(transpose=True))
+    def apply_inv_sqrt(self) -> torch.Tensor:
+        S = self.sum_weight(transpose=True)
 
-        weight = self.constant * self.weight @ inner_inv_sqrt
+        L = torch.linalg.cholesky(S, upper=False)
+
+        Y = torch.linalg.solve_triangular(L, self.weight.T, upper=False, left=True)
+
+        return Y.T
+
+    def compute_weight(self, scaling: Optional[Tensor] = None) -> Tensor:
+        weight = self.constant * self.apply_inv_sqrt()
 
         # assert torch.linalg.matrix_norm(weight, ord=2) <= self.constant
 
@@ -68,6 +75,7 @@ class LipschitzLinearLayer(Linear):
         return self.constant_sq * fast_symmetric_positive_definitive_matrix_inverse(self.sum_weight())
 
     def compute_d_sqrt(self, transpose=False) -> Tensor:
+        # FIXME the problem for the triangular square root arrises in this computation
         return self.constant * matrix_inv_square_root(self.sum_weight(transpose))
 
     def compute_d_inv(self, transpose=False) -> Tensor:

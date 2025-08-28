@@ -138,7 +138,7 @@ class DeepLipschitzLinearResNet(Module):
         # b_factor = torch.sqrt(2.0 / (smallest_singular_value_cn * smallest_singular_value_cn))
         b_factor = torch.sqrt(2.0 * smallest_singular_value_cn)
 
-        a_sigma_a_t = b_factor * matrix_inv_square_root(self.B.identity_out + a_weight @ total_sum @ a_weight.T)
+        a_sigma_a_t = b_factor * utils.matrix_inv_square_root_triangle(self.B.identity_out + a_weight @ total_sum @ a_weight.T)
 
         return a_sigma_a_t
 
