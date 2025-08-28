@@ -210,6 +210,30 @@ def plot_singular_extremes(a_weight, b_weight, Cs, fig_name: str, dpi=300):
     fig.tight_layout()
     fig.savefig(f"{fig_name}.png", dpi=dpi)
 
+def test_sqrt(device, tol=5e-3):
+    n = 1000
+
+    A = torch.randn(n, n, device=device)
+
+    W = torch.eye(n, device=device) + A @ A.T
+
+    w_gt = torch.linalg.inv(W)
+
+    w_inv_actual = utils.fast_symmetric_positive_definitive_matrix_inverse(W)
+    assert torch.dist(w_gt, w_inv_actual) < tol
+
+    # Symmetric version
+    L = utils.matrix_inv_square_root(W)
+    w_inv = L @ L.T
+    assert torch.dist(w_gt, w_inv) < tol
+    w_inv = L.T @ L
+    assert torch.dist(w_gt, w_inv) < tol
+
+    # Triangular non-symmetric version
+    L = utils.matrix_inv_square_root_triangle(W)
+    w_inv_triangle = L.T @ L
+    assert torch.dist(w_gt, w_inv_triangle) < tol
+
 
 if __name__ == '__main__':
     torch.manual_seed(0)
@@ -220,6 +244,8 @@ if __name__ == '__main__':
     input_features = 1
     output_features = 1
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+    test_sqrt(device)
 
     torch.no_grad()
 
