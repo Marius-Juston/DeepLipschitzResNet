@@ -43,13 +43,18 @@ class LipschitzLinearLayer(Linear):
         self.constant_sq: Optional[Tensor]
 
     def compute_weight(self, scaling: Optional[Tensor] = None) -> Tensor:
-        inner = self.identity + self.weight.T @ self.weight
-        inner_inv_sqrt = matrix_inv_square_root(inner)
+        inner_inv_sqrt = matrix_inv_square_root(self.sum_weight(transpose=True))
 
         weight = self.constant * self.weight @ inner_inv_sqrt
 
+        # assert torch.linalg.matrix_norm(weight, ord=2) <= self.constant
+
         if scaling is not None:
+            # assert torch.linalg.matrix_norm(scaling, ord=2) <= self.constant + 1e-3
+
             weight = weight @ scaling
+
+            # assert torch.linalg.matrix_norm(weight @ utils.fast_symmetric_positive_definitive_matrix_inverse(scaling).T, ord=2) <= self.constant_sq + 1e-3
 
         return weight
 
