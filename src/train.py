@@ -27,8 +27,8 @@ def train_one_epoch(training_loader, optimizer, model, loss_fn, epoch_index, tb_
         # Every data instance is an input + label pair
         inputs, labels = data
 
-        inputs = inputs.reshape((-1, 1))
-        labels = labels.reshape((-1, 1))
+        inputs = inputs.reshape((-1, model.in_features))
+        labels = labels.reshape((-1, model.out_features))
 
         # Zero your gradients for every batch!
         optimizer.zero_grad(set_to_none=True)
@@ -160,8 +160,8 @@ def main():
 
     print("Running on device", device)
 
-    input_features = 1
-    output_features = 1
+    input_features = 4
+    output_features = input_features
 
     model = DeepLipschitzLinearResNet(input_features, output_features, (32, 256, 1024, 1024), device=device)
 
@@ -173,9 +173,11 @@ def main():
 
     batch = 64
 
-    x = torch.linspace(-10, 10, 100000, device=device)
+    x = torch.linspace(-10, 10, 100000 * input_features, device=device).reshape((-1, input_features))
 
-    y = torch.sin(x + 1) * 0.5 - 0.5 * x + 2
+    variation = torch.arange(input_features, device=device)
+
+    y = torch.sin(x + variation) * 0.5 + 3*x + 2 + variation
 
     train(x, y, model, batch_size=batch)
 
