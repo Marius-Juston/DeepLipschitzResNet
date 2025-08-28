@@ -16,7 +16,7 @@ torch.set_float32_matmul_precision('high')
 # torch.autograd.set_detect_anomaly(True)
 
 
-def train_one_epoch(training_loader, optimizer, model, loss_fn, epoch_index, tb_writer):
+def train_one_epoch(training_loader, optimizer, model, loss_fn, epoch_index, tb_writer, logging_frequency=100):
     running_loss = 0.
     last_loss = 0.
 
@@ -48,8 +48,8 @@ def train_one_epoch(training_loader, optimizer, model, loss_fn, epoch_index, tb_
         running_loss += loss.item()
 
         # print("Current loss:", loss.item())
-        if i % 100 == 99:
-            last_loss = running_loss / 10  # loss per batch
+        if i % logging_frequency == logging_frequency - 1:
+            last_loss = running_loss / logging_frequency  # loss per batch
             print('  batch {} loss: {}'.format(i + 1, last_loss))
             tb_x = epoch_index * len(training_loader) + i + 1
             tb_writer.add_scalar('Loss/train', last_loss, tb_x)
