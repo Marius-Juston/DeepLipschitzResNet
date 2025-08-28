@@ -8,7 +8,6 @@ from matplotlib import pyplot as plt
 import utils
 from models.layers import LipschitzLinearLayer
 from models.model import DeepLipschitzLinearResNet
-from utils import matrix_inv_square_root
 
 
 def block(tensors: Sequence[Sequence[torch.Tensor]]) -> torch.Tensor:
@@ -94,7 +93,7 @@ def main_real(A, B, Cs, Ls, Lms, dimensions, device=None):
 def extract_lmi_constants(model: DeepLipschitzLinearResNet):
     a_weight = model.A.compute_weight()
 
-    prev_d = model.A.compute_d1_sqrt()
+    assert torch.linalg.matrix_norm(a_weight, ord=2) <= model.lipschitz_constant
 
     prev_d = model.A.compute_d_sqrt(transpose=True)
 
@@ -210,6 +209,7 @@ def plot_singular_extremes(a_weight, b_weight, Cs, fig_name: str, dpi=300):
     fig.tight_layout()
     fig.savefig(f"{fig_name}.png", dpi=dpi)
 
+
 def test_sqrt(device, tol=5e-3):
     n = 1000
 
@@ -255,7 +255,7 @@ if __name__ == '__main__':
 
     if save_folder is not None:
         data = torch.load(f"{save_folder}/best.pt", map_location=device)
-        new_state_dict = {key.replace('_orig_mod.', ''):val for key, val in data.items()}
+        new_state_dict = {key.replace('_orig_mod.', ''): val for key, val in data.items()}
 
         model.load_state_dict(new_state_dict)
 
