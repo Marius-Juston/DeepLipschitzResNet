@@ -1,14 +1,12 @@
 import math
-from typing import Sequence, Union, List
+from typing import Sequence, Union, List, Tuple
 
 import torch
-import torch.nn.functional as F
 from torch import Tensor, device
 from torch.nn import Module, ModuleList, ReLU, Parameter, init
 
 import utils
 from models.layers import LipschitzLinearLayer
-from utils import matrix_inv_square_root
 
 
 class DeepLipschitzLinearResNet(Module):
@@ -93,7 +91,7 @@ class DeepLipschitzLinearResNet(Module):
 
         second = input
 
-        prev_d = self.A.compute_d_sqrt(transpose=True)
+        prev_d = self.A.compute_d_extra(transpose=True)
 
         total_sum = self.A.compute_d_inv(transpose=True)
 
@@ -105,7 +103,7 @@ class DeepLipschitzLinearResNet(Module):
             second, cn = layer(second, prev_d)
 
             if i < len(self.layers) - 1:
-                prev_d = layer.compute_d_sqrt()
+                prev_d = layer.compute_d_extra()
 
             di_inv = layer.compute_d_inv()
 
@@ -120,17 +118,19 @@ class DeepLipschitzLinearResNet(Module):
             else:
                 second = self.activation(second)
 
-        a_sigma_a_t = self.compute_b_factor(a_weight, total_sum)
-        second, b_weight = self.B(second)
+        a_sigma_a_t, b_factor = self.compute_b_factor(a_weight, total_sum)
 
-        return F.linear(second, a_sigma_a_t, first + self.bias)
+        second, b_weight = self.B(second, a_sigma_a_t, left=True)
 
-    def compute_b_factor(self, a_weight: Tensor, total_sum: Tensor) -> Tensor:
+        return second + first + self.bias
+
+    def compute_b_factor(self, a_weight: Tensor, total_sum: Tensor) -> Tuple[Tensor, Tensor]:
         Cn = self.layers[-1].weight
 
         # smallest_singular_value_cn = torch.linalg.matrix_norm(Cn, ord=-2)
 
-        smallest_singular_value_cn = utils.get_largest_singular_value_power_iteration(utils.fast_symmetric_positive_definitive_matrix_inverse(self.layers[-1].identity_out + Cn @ Cn.T))
+        smallest_singular_value_cn = utils.get_largest_singular_value_power_iteration(
+            utils.fast_symmetric_positive_definitive_matrix_inverse(self.layers[-1].identity_out + Cn @ Cn.T))
 
         # value = torch.linalg.matrix_norm(utils.fast_symmetric_positive_definitive_matrix_inverse(self.layers[-1].identity_out + Cn @ Cn.T), ord=2)
 
@@ -138,10 +138,10 @@ class DeepLipschitzLinearResNet(Module):
         # b_factor = torch.sqrt(2.0 / (smallest_singular_value_cn * smallest_singular_value_cn))
         b_factor = torch.sqrt(2.0 * smallest_singular_value_cn)
 
-        a_sigma_a_t = b_factor * utils.matrix_inv_square_root_triangle(self.B.identity_out + a_weight @ total_sum @ a_weight.T)
+        # FIXME the problem for the triangular square root arrises in this computation
+        a_sigma_a_t = b_factor * (self.B.identity_out + a_weight @ total_sum @ a_weight.T)
 
-        return a_sigma_a_t
-
+        return a_sigma_a_t, b_factor
 
     def extra_repr(self) -> str:
         return f"in_features={self.in_features}, out_features={self.out_features}, inner_widths=({','.join(map(str, self.layer_widths))})"

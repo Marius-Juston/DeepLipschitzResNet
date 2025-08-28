@@ -156,6 +156,7 @@ def profile_model():
 
 
 def main():
+    torch.manual_seed(0)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     print("Running on device", device)
@@ -168,8 +169,6 @@ def main():
     model = torch.compile(model)
 
     print(model)
-
-    torch.manual_seed(0)
 
     batch = 64
 

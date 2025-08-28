@@ -95,7 +95,7 @@ def extract_lmi_constants(model: DeepLipschitzLinearResNet):
 
     assert torch.linalg.matrix_norm(a_weight, ord=2) <= model.lipschitz_constant
 
-    prev_d = model.A.compute_d_sqrt(transpose=True)
+    prev_d = model.A.compute_d_extra(transpose=True)
 
     total_sum = model.A.compute_d_inv(transpose=True)
 
@@ -118,7 +118,7 @@ def extract_lmi_constants(model: DeepLipschitzLinearResNet):
         dimensions.append(cn.shape[0])
 
         if i < len(model.layers) - 1:
-            prev_d = layer.compute_d_sqrt()
+            prev_d = layer.compute_d_extra()
 
         di_inv = layer.compute_d_inv()
 
@@ -128,9 +128,8 @@ def extract_lmi_constants(model: DeepLipschitzLinearResNet):
 
         current_product = current_product @ di_inv
 
-    a_sigma_a_t = model.compute_b_factor(a_weight, total_sum)
-
-    b_weight = a_sigma_a_t @ model.B.compute_weight()
+    a_sigma_a_t, b_factor = model.compute_b_factor(a_weight, total_sum)
+    b_weight = b_factor * model.B.compute_weight(a_sigma_a_t, left=True)
 
     return a_weight, b_weight, Cs, Ls, Lms, dimensions
 
@@ -242,7 +241,7 @@ if __name__ == '__main__':
     os.makedirs(figs_folder, exist_ok=True)
 
     input_features = 1
-    output_features = 1
+    output_features = input_features
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     test_sqrt(device)

@@ -5,7 +5,7 @@ import torch.nn.functional as F
 from torch import Tensor
 from torch.nn import Linear
 
-from utils import matrix_inv_square_root, fast_symmetric_positive_definitive_matrix_inverse
+from utils import fast_symmetric_positive_definitive_matrix_inverse
 
 
 class LipschitzLinearLayer(Linear):
@@ -42,26 +42,17 @@ class LipschitzLinearLayer(Linear):
         self.constant: Optional[Tensor]
         self.constant_sq: Optional[Tensor]
 
-    def apply_inv_sqrt(self) -> torch.Tensor:
-        S = self.sum_weight(transpose=True)
+    def apply_inv_sqrt(self, weight, sqrt_matrix, left=False) -> torch.Tensor:
+        L = torch.linalg.cholesky_ex(sqrt_matrix, upper=True).L
+        # L = torch.linalg.cholesky(sqrt_matrix, upper=True)
 
-        L = torch.linalg.cholesky(S, upper=False)
+        return torch.linalg.solve_triangular(L, weight, upper=True, left=left)
 
-        Y = torch.linalg.solve_triangular(L, self.weight.T, upper=False, left=True)
-
-        return Y.T
-
-    def compute_weight(self, scaling: Optional[Tensor] = None) -> Tensor:
-        weight = self.constant * self.apply_inv_sqrt()
-
-        # assert torch.linalg.matrix_norm(weight, ord=2) <= self.constant
+    def compute_weight(self, scaling: Optional[Tensor] = None, left: bool = False) -> Tensor:
+        weight = self.constant * self.apply_inv_sqrt(self.weight, self.sum_weight(transpose=True), left=False)
 
         if scaling is not None:
-            # assert torch.linalg.matrix_norm(scaling, ord=2) <= self.constant + 1e-3
-
-            weight = weight @ scaling
-
-            # assert torch.linalg.matrix_norm(weight @ utils.fast_symmetric_positive_definitive_matrix_inverse(scaling).T, ord=2) <= self.constant_sq + 1e-3
+            weight = self.apply_inv_sqrt(weight, scaling, left=left)
 
         return weight
 
@@ -74,14 +65,13 @@ class LipschitzLinearLayer(Linear):
     def compute_d(self) -> Tensor:
         return self.constant_sq * fast_symmetric_positive_definitive_matrix_inverse(self.sum_weight())
 
-    def compute_d_sqrt(self, transpose=False) -> Tensor:
-        # FIXME the problem for the triangular square root arrises in this computation
-        return self.constant * matrix_inv_square_root(self.sum_weight(transpose))
+    def compute_d_extra(self, transpose=False) -> Tensor:
+        return  self.sum_weight(transpose) * self.constant_sq
 
     def compute_d_inv(self, transpose=False) -> Tensor:
         return self.sum_weight(transpose) / self.constant_sq
 
-    def forward(self, input: Tensor, scaling: Optional[Tensor] = None) -> Tuple[Tensor, Tensor]:
-        weight = self.compute_weight(scaling)
+    def forward(self, input: Tensor, scaling: Optional[Tensor] = None, left: bool = False) -> Tuple[Tensor, Tensor]:
+        weight = self.compute_weight(scaling, left)
 
         return F.linear(input, weight, self.bias), weight
