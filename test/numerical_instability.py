@@ -17,7 +17,7 @@ def func(a: np.ndarray, b: np.ndarray, g, n: int):
 
 
 def main():
-    m = 100
+    m = 1000
 
     min_val = 10 ** (-11)
 
@@ -29,18 +29,20 @@ def main():
     y = np.linspace(min_val, max_val, m)
     xv, yv = np.meshgrid(x, y)
 
-    for n in range(4, 5 + 1):
+    for n in range(3, 5 + 1):
         zs = func(xv, yv, epsilon, n)
+        zs = np.log10(zs)
 
         plt.title(f'Log 10 $s_n$ error bound (n = {n})')
         plt.xlabel(r'$\alpha$')
         plt.ylabel(r'$\beta$')
-        plt.contourf(x, y, np.log10(zs), levels=50)
-        plt.axis('equal')
+        plt.contourf(x, y, zs, levels=50)
         plt.colorbar()
+        plt.contour(x, y, zs, levels=[0], colors='black', linewidths=1.2)
+        plt.axis('equal')
         plt.tight_layout()
 
-        plt.savefig('n_' + str(n) + '.png', dpi=600)
+        plt.savefig('numerical_stability_n_' + str(n) + '.png', dpi=600)
         plt.show()
 
 
