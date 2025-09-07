@@ -29,7 +29,7 @@ def main():
     y = np.linspace(min_val, max_val, m)
     xv, yv = np.meshgrid(x, y)
 
-    for n in range(1, 5 + 1):
+    for n in range(4, 5 + 1):
         zs = func(xv, yv, epsilon, n)
 
         plt.title(f'Log 10 $s_n$ error bound (n = {n})')
@@ -38,8 +38,9 @@ def main():
         plt.contourf(x, y, np.log10(zs), levels=50)
         plt.axis('equal')
         plt.colorbar()
+        plt.tight_layout()
 
-        plt.savefig('n_' + str(n) + '.png', dpi=300)
+        plt.savefig('n_' + str(n) + '.png', dpi=600)
         plt.show()
 
 
