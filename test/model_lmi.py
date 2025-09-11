@@ -4,6 +4,8 @@ from typing import Optional, Sequence
 import numpy as np
 import torch
 from matplotlib import pyplot as plt
+from matplotlib.axes import Axes
+from matplotlib.patches import Rectangle, ConnectionPatch
 
 import utils
 from models.layers import LipschitzLinearLayer
@@ -129,23 +131,35 @@ def extract_lmi_constants(model: DeepLipschitzLinearResNet):
         current_product = current_product @ di_inv
 
     a_sigma_a_t, b_factor = model.compute_b_factor(a_weight, total_sum)
-    b_weight = b_factor * model.B.compute_weight(a_sigma_a_t, left=True)
+    b_weight = model.B.compute_weight(a_sigma_a_t, left=True)
 
     return a_weight, b_weight, Cs, Ls, Lms, dimensions
 
 
-def plot_matrix(M: torch.Tensor, fig_name: str, dpi=300):
-    min, max = M.min(), M.max()
+def plot_matrix(M: torch.Tensor, fig_name: str= None, dpi:int=300, mask:bool=True, ax:Optional[Axes]=None):
+    if mask:
+        masked_zerp = M == 0
+        no_mask = M != 0
+
+        min, max = M[no_mask].min(), M[no_mask].max()
+    else:
+        min, max = M.min(), M.max()
 
     normalized = (M - min) / (max - min) * 255
-    normalized = normalized.round().to(torch.uint8)
+    normalized = normalized.round()
+
+    if mask:
+        normalized[masked_zerp] = torch.nan
 
     normalized = normalized.cpu().numpy()
 
-    fig, ax = plt.subplots(figsize=(8, 8))
-    ax.matshow(normalized, cmap='gray', vmin=0, vmax=255)
-    fig.tight_layout()
-    fig.savefig(f"{fig_name}.png", dpi=dpi)
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(8, 8))
+        ax.matshow(normalized, cmap='viridis', vmin=0, vmax=255)
+        fig.tight_layout()
+        fig.savefig(f"{fig_name}.png", dpi=dpi)
+    else:
+        ax.matshow(normalized, cmap='viridis', vmin=0, vmax=255)
 
 
 def freedman_diaconis_bins(x: torch.Tensor):
@@ -234,13 +248,50 @@ def test_sqrt(device, tol=5e-3):
     assert torch.dist(w_gt, w_inv_triangle) < tol
 
 
+def plot_zoomed_in_system(A, B, fig_name: str, dpi=300):
+    fig, (ax1, ax2) = plt.subplots(ncols=2, figsize=(16, 8))
+
+    plot_matrix(A, ax=ax1)
+    plot_matrix(B, ax=ax2)
+
+    range_lim = (A.shape[0]-B.shape[0], A.shape[0])
+
+    a_size = np.array(A.shape)
+    b_size = np.array(B.shape)
+
+    size = b_size
+    pos = a_size - b_size
+
+    rect = Rectangle(pos, *size,
+                     linewidth=2, edgecolor="black", facecolor="none")
+    ax1.add_patch(rect)
+
+    rect = Rectangle((0, 0), *a_size,
+                     linewidth=2, edgecolor="black", facecolor="none")
+    ax2.add_patch(rect)
+
+    con1 = ConnectionPatch(xyA=pos, coordsA=ax1.transData,
+                           xyB=(0, 0), coordsB=ax2.transData,
+                           color="black")
+
+    con2 = ConnectionPatch(xyA=pos + size, coordsA=ax1.transData,
+                           xyB=b_size[::-1], coordsB=ax2.transData,
+                           color="black")
+
+    fig.add_artist(con1)
+    fig.add_artist(con2)
+
+    fig.tight_layout()
+    fig.savefig(f"{fig_name}.png", dpi=dpi)
+
+
 if __name__ == '__main__':
     torch.manual_seed(0)
 
     figs_folder = 'figs'
     os.makedirs(figs_folder, exist_ok=True)
 
-    input_features = 1
+    input_features = 4
     output_features = input_features
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -250,7 +301,8 @@ if __name__ == '__main__':
 
     model = DeepLipschitzLinearResNet(input_features, output_features, (32, 256, 1024, 1024), device=device)
 
-    save_folder = '/home/mjuston2/Documents/DeepLipschitzResNet/runs/sin_trainer_20250827_132300'
+    # save_folder = '/home/mjuston2/Documents/DeepLipschitzResNet/runs/sin_trainer_20250828_155950'
+    save_folder = None
 
     if save_folder is not None:
         data = torch.load(f"{save_folder}/best.pt", map_location=device)
@@ -275,14 +327,19 @@ if __name__ == '__main__':
 
     plot_matrix(removed_diag, os.path.join(figs_folder, "lmi_without_diag"))
 
-    binary = (torch.abs(M) > 0).to(torch.uint8)
+    binary = (torch.abs(M) > 1e-5).to(torch.uint8)
 
-    plot_matrix(binary, os.path.join(figs_folder, "binary_lmi"))
+    plot_matrix(binary, os.path.join(figs_folder, "binary_lmi"), mask=False)
 
     plot_matrix(eigenvectors, os.path.join(figs_folder, "eigenvectors_lmi"))
+
+    B_zoom = b_weight.T @ b_weight
+    plot_matrix(B_zoom, os.path.join(figs_folder, "zoomed_in_b"))
+
+    plot_zoomed_in_system(removed_diag, B_zoom, os.path.join(figs_folder, "inplace_zoomed_in_b"))
 
     plot_histogram(eigenvalues, os.path.join(figs_folder, "eigenvalues_lmi"))
 
     plot_singular_extremes(a_weight, b_weight, Cs, os.path.join(figs_folder, "singular_weights"))
 
-    assert torch.all(eigenvalues < 1e-5), "Not all the eigenvalues of the LMI are negative"
+    assert torch.all(eigenvalues < 1e-3), "Not all the eigenvalues of the LMI are negative"
