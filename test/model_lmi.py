@@ -6,13 +6,14 @@ import torch
 from matplotlib import pyplot as plt
 from matplotlib.axes import Axes
 from matplotlib.patches import Rectangle, ConnectionPatch
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 import utils
 from models.layers import LipschitzLinearLayer
 from models.model import DeepLipschitzLinearResNet
 
-
 DEFAULT_DPI = 600
+
 
 def block(tensors: Sequence[Sequence[torch.Tensor]]) -> torch.Tensor:
     return torch.cat([torch.cat(b, dim=1) for b in tensors], dim=0)
@@ -138,7 +139,8 @@ def extract_lmi_constants(model: DeepLipschitzLinearResNet):
     return a_weight, b_weight, Cs, Ls, Lms, dimensions
 
 
-def plot_matrix(M: torch.Tensor, fig_name: str= None, dpi:int=DEFAULT_DPI, mask:bool=True, normalize:bool= True, ax:Optional[Axes]=None):
+def plot_matrix(M: torch.Tensor, fig_name: str = None, dpi: int = DEFAULT_DPI, mask: bool = True,
+                normalize: bool = True, ax: Optional[Axes] = None):
     if mask:
         masked_zerp = M == 0
         no_mask = M != 0
@@ -171,6 +173,7 @@ def plot_matrix(M: torch.Tensor, fig_name: str= None, dpi:int=DEFAULT_DPI, mask:
         im = ax.matshow(normalized, cmap='viridis', vmin=vmin, vmax=vmax)
 
     return im
+
 
 def freedman_diaconis_bins(x: torch.Tensor):
     x = x.flatten()
@@ -225,7 +228,7 @@ def plot_singular_extremes(a_weight, b_weight, Cs, fig_name: str, dpi=DEFAULT_DP
     ax.plot(x, sigma_diff, "^-", label="σ_diff", markersize=8)
     ax.set_xticks(x, labels)
     ax.set_xlabel("Matrix")
-    ax.set_ylabel("Singular value")
+    ax.set_ylabel("Maximum singular value")
     ax.set_title("Extremal Singular Values of Matrices")
     ax.legend()
     ax.grid(True, alpha=0.3)
@@ -257,7 +260,12 @@ def test_sqrt(device, tol=5e-3):
     w_inv_triangle = L.T @ L
     assert torch.dist(w_gt, w_inv_triangle) < tol
 
-from mpl_toolkits.axes_grid1 import make_axes_locatable, ImageGrid
+
+def disable_ticks(ax: Axes):
+    ax.set_xticklabels([])
+    ax.set_xticks([])
+    ax.set_yticklabels([])
+    ax.set_yticks([])
 
 
 def plot_zoomed_in_system(A, B, fig_name: str, dpi=DEFAULT_DPI):
@@ -302,10 +310,14 @@ def plot_zoomed_in_system(A, B, fig_name: str, dpi=DEFAULT_DPI):
     cax2 = divider2.append_axes("right", size="5%", pad=0.05)
     fig.colorbar(im2, cax=cax2)
 
+    disable_ticks(ax1)
+    disable_ticks(ax2)
+
     fig.tight_layout()
     fig.savefig(f"{fig_name}.png", dpi=dpi)
 
-def model_artifacting(vals=None, fig_name:str=None, dpi=DEFAULT_DPI,  device=None):
+
+def model_artifacting(vals=None, fig_name: str = None, dpi=DEFAULT_DPI, device=None):
     if vals is None:
         vals = [2, 4, 8, 16]
 
@@ -327,7 +339,7 @@ def model_artifacting(vals=None, fig_name:str=None, dpi=DEFAULT_DPI,  device=Non
     fig.savefig(f"{fig_name}.png", dpi=dpi)
 
 
-if __name__ == '__main__':
+def main():
     torch.manual_seed(0)
 
     figs_folder = 'figs'
@@ -388,3 +400,7 @@ if __name__ == '__main__':
     plot_singular_extremes(a_weight, b_weight, Cs, os.path.join(figs_folder, "singular_weights"))
 
     assert torch.all(eigenvalues < 1e-3), "Not all the eigenvalues of the LMI are negative"
+
+
+if __name__ == '__main__':
+    main()
