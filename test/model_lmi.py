@@ -5,7 +5,10 @@ import numpy as np
 import torch
 from matplotlib import pyplot as plt
 from matplotlib.axes import Axes
+from matplotlib.figure import Figure
+from matplotlib.image import AxesImage
 from matplotlib.patches import Rectangle, ConnectionPatch
+from matplotlib.ticker import MaxNLocator
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 import utils
@@ -268,6 +271,13 @@ def disable_ticks(ax: Axes):
     ax.set_yticks([])
 
 
+def add_colorbar(fig: Figure, ax: Axes, im: AxesImage, n_bins=10):
+    divider = make_axes_locatable(ax)
+    cax = divider.append_axes("right", size="5%", pad=0.05)
+    cb = fig.colorbar(im, cax=cax)
+    cb.locator = MaxNLocator(nbins=n_bins)
+
+
 def plot_zoomed_in_system(A, B, fig_name: str, dpi=DEFAULT_DPI):
     fig, (ax1, ax2) = plt.subplots(ncols=2, figsize=(16, 8))
 
@@ -301,14 +311,8 @@ def plot_zoomed_in_system(A, B, fig_name: str, dpi=DEFAULT_DPI):
     print(A.min(), A.max())
     print(B.min(), B.max())
 
-    divider1 = make_axes_locatable(ax1)
-    cax1 = divider1.append_axes("right", size="5%", pad=0.05)
-    fig.colorbar(im1, cax=cax1)
-
-    # For B
-    divider2 = make_axes_locatable(ax2)
-    cax2 = divider2.append_axes("right", size="5%", pad=0.05)
-    fig.colorbar(im2, cax=cax2)
+    add_colorbar(fig, ax1, im1)
+    add_colorbar(fig, ax2, im2)
 
     disable_ticks(ax1)
     disable_ticks(ax2)
@@ -384,9 +388,7 @@ def plot_ldlt_decomposition(M, dimensions, fig_name: str = None, dpi=DEFAULT_DPI
 
     im = plot_matrix(L, ax=ax, normalize=False)
 
-    divider = make_axes_locatable(ax)
-    cax = divider.append_axes("right", size="5%", pad=0.05)
-    fig.colorbar(im, cax=cax)
+    add_colorbar(fig, ax, im)
 
     disable_ticks(ax)
     ax.set_title("Unit lower triangular L Matrix")
@@ -400,9 +402,7 @@ def plot_ldlt_decomposition(M, dimensions, fig_name: str = None, dpi=DEFAULT_DPI
     diagonal_block = torch.block_diag(*D)
     im = plot_matrix(diagonal_block, ax=ax, normalize=False)
 
-    divider = make_axes_locatable(ax)
-    cax = divider.append_axes("right", size="5%", pad=0.05)
-    fig.colorbar(im, cax=cax)
+    add_colorbar(fig, ax, im)
 
     disable_ticks(ax)
     ax.set_title(r"Block diagonal matrix D")
@@ -445,7 +445,6 @@ def main():
     M = main_real(a_weight, b_weight, Cs, Ls, Lms, dimensions, device=device)
 
     plot_ldlt_decomposition(M, dimensions, os.path.join(figs_folder, "ldlt_decomposition"))
-    quit()
 
     eigenvalues, eigenvectors = torch.linalg.eigh(M)
 
