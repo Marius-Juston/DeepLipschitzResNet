@@ -1,5 +1,5 @@
 import os.path
-from typing import Optional, Sequence
+from typing import Optional, Sequence, List
 
 import numpy as np
 import torch
@@ -339,6 +339,78 @@ def model_artifacting(vals=None, fig_name: str = None, dpi=DEFAULT_DPI, device=N
     fig.savefig(f"{fig_name}.png", dpi=dpi)
 
 
+def ldlt_decomposition(M: torch.Tensor, matrix_block_sizes: List[int]):
+    # Partition indices
+    dimensions = [0, *np.cumsum(matrix_block_sizes)]
+    k = len(matrix_block_sizes)
+
+    n = M.shape[0]
+    L = torch.eye(n, dtype=M.dtype, device=M.device)
+    Ds = [None] * k
+
+    # Work with a mutable copy of M for Schur complement updates
+    S = M.clone()
+
+    for r in range(k):
+        i0, i1 = dimensions[r], dimensions[r + 1]
+        # Extract diagonal block
+        D_block = S[i0:i1, i0:i1]
+        Ds[r] = D_block.clone()
+
+        # If not the last block, compute L blocks and update Schur complement
+        if r < k - 1:
+            # Lower blocks wrt D_block
+            for s in range(r + 1, k):
+                j0, j1 = dimensions[s], dimensions[s + 1]
+                # L_{sj} = S_{sj} * D_block^{-1}
+                L[j0:j1, i0:i1] = torch.linalg.solve(D_block.T, S[j0:j1, i0:i1].T).T
+
+            # Update Schur complement
+            for s in range(r + 1, k):
+                for t in range(r + 1, k):
+                    j0, j1 = dimensions[s], dimensions[s + 1]
+                    k0, k1 = dimensions[t], dimensions[t + 1]
+
+                    S[j0:j1, k0:k1] -= L[j0:j1, i0:i1] @ D_block @ L[k0:k1, i0:i1].T
+
+    return L, Ds
+
+
+def plot_ldlt_decomposition(M, dimensions, fig_name: str = None, dpi=DEFAULT_DPI):
+    L, D = ldlt_decomposition(M, dimensions)
+
+    # Triangular matrix
+    fig, ax = plt.subplots(figsize=(8, 8))
+
+    im = plot_matrix(L, ax=ax, normalize=False)
+
+    divider = make_axes_locatable(ax)
+    cax = divider.append_axes("right", size="5%", pad=0.05)
+    fig.colorbar(im, cax=cax)
+
+    disable_ticks(ax)
+    ax.set_title("Unit lower triangular L Matrix")
+
+    fig.tight_layout()
+    fig.savefig(f"{fig_name}_l.png", dpi=dpi)
+
+    # Diagonal matrix D
+    fig, ax = plt.subplots(figsize=(8, 8))
+
+    diagonal_block = torch.block_diag(*D)
+    im = plot_matrix(diagonal_block, ax=ax, normalize=False)
+
+    divider = make_axes_locatable(ax)
+    cax = divider.append_axes("right", size="5%", pad=0.05)
+    fig.colorbar(im, cax=cax)
+
+    disable_ticks(ax)
+    ax.set_title(r"Block diagonal matrix D")
+
+    fig.tight_layout()
+    fig.savefig(f"{fig_name}_d.png", dpi=dpi)
+
+
 def main():
     torch.manual_seed(0)
 
@@ -371,6 +443,9 @@ def main():
         a_weight, b_weight, Cs, Ls, Lms, dimensions = extract_lmi_constants(model)
 
     M = main_real(a_weight, b_weight, Cs, Ls, Lms, dimensions, device=device)
+
+    plot_ldlt_decomposition(M, dimensions, os.path.join(figs_folder, "ldlt_decomposition"))
+    quit()
 
     eigenvalues, eigenvectors = torch.linalg.eigh(M)
 
