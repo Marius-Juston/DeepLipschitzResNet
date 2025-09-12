@@ -12,6 +12,8 @@ from models.layers import LipschitzLinearLayer
 from models.model import DeepLipschitzLinearResNet
 
 
+DEFAULT_DPI = 600
+
 def block(tensors: Sequence[Sequence[torch.Tensor]]) -> torch.Tensor:
     return torch.cat([torch.cat(b, dim=1) for b in tensors], dim=0)
 
@@ -136,7 +138,7 @@ def extract_lmi_constants(model: DeepLipschitzLinearResNet):
     return a_weight, b_weight, Cs, Ls, Lms, dimensions
 
 
-def plot_matrix(M: torch.Tensor, fig_name: str= None, dpi:int=300, mask:bool=True, ax:Optional[Axes]=None):
+def plot_matrix(M: torch.Tensor, fig_name: str= None, dpi:int=DEFAULT_DPI, mask:bool=True, normalize:bool= True, ax:Optional[Axes]=None):
     if mask:
         masked_zerp = M == 0
         no_mask = M != 0
@@ -145,8 +147,15 @@ def plot_matrix(M: torch.Tensor, fig_name: str= None, dpi:int=300, mask:bool=Tru
     else:
         min, max = M.min(), M.max()
 
-    normalized = (M - min) / (max - min) * 255
-    normalized = normalized.round()
+    vmin, vmax = min, max
+
+    if normalize:
+        normalized = (M - min) / (max - min) * 255
+        normalized = normalized.round()
+        vmin = 0
+        vmax = 255
+    else:
+        normalized = M
 
     if mask:
         normalized[masked_zerp] = torch.nan
@@ -155,12 +164,13 @@ def plot_matrix(M: torch.Tensor, fig_name: str= None, dpi:int=300, mask:bool=Tru
 
     if ax is None:
         fig, ax = plt.subplots(figsize=(8, 8))
-        ax.matshow(normalized, cmap='viridis', vmin=0, vmax=255)
+        im = ax.matshow(normalized, cmap='viridis', vmin=vmin, vmax=vmax)
         fig.tight_layout()
         fig.savefig(f"{fig_name}.png", dpi=dpi)
     else:
-        ax.matshow(normalized, cmap='viridis', vmin=0, vmax=255)
+        im = ax.matshow(normalized, cmap='viridis', vmin=vmin, vmax=vmax)
 
+    return im
 
 def freedman_diaconis_bins(x: torch.Tensor):
     x = x.flatten()
@@ -175,7 +185,7 @@ def freedman_diaconis_bins(x: torch.Tensor):
     return max(1, bins)
 
 
-def plot_histogram(x: torch.Tensor, fig_name: str, dpi=300):
+def plot_histogram(x: torch.Tensor, fig_name: str, dpi=DEFAULT_DPI):
     fig, ax = plt.subplots()
     counts, edges = torch.histogram(x.cpu(), bins=50, density=True)
 
@@ -194,7 +204,7 @@ def singular_extremes(M: torch.Tensor):
     return s.min().item(), s.max().item()
 
 
-def plot_singular_extremes(a_weight, b_weight, Cs, fig_name: str, dpi=300):
+def plot_singular_extremes(a_weight, b_weight, Cs, fig_name: str, dpi=DEFAULT_DPI):
     matrices = [a_weight] + Cs + [b_weight]
     labels = ["A"] + [f"C{i + 1}" for i in range(len(Cs))] + ["B"]
 
@@ -247,14 +257,17 @@ def test_sqrt(device, tol=5e-3):
     w_inv_triangle = L.T @ L
     assert torch.dist(w_gt, w_inv_triangle) < tol
 
+from mpl_toolkits.axes_grid1 import make_axes_locatable, ImageGrid
 
-def plot_zoomed_in_system(A, B, fig_name: str, dpi=300):
+
+def plot_zoomed_in_system(A, B, fig_name: str, dpi=DEFAULT_DPI):
     fig, (ax1, ax2) = plt.subplots(ncols=2, figsize=(16, 8))
 
-    plot_matrix(A, ax=ax1)
-    plot_matrix(B, ax=ax2)
+    ax1.set_title("Full LMI")
+    ax2.set_title(r"$B^\top B$")
 
-    range_lim = (A.shape[0]-B.shape[0], A.shape[0])
+    im1 = plot_matrix(A, ax=ax1, normalize=False)
+    im2 = plot_matrix(B, ax=ax2, normalize=False)
 
     a_size = np.array(A.shape)
     b_size = np.array(B.shape)
@@ -266,10 +279,6 @@ def plot_zoomed_in_system(A, B, fig_name: str, dpi=300):
                      linewidth=2, edgecolor="black", facecolor="none")
     ax1.add_patch(rect)
 
-    rect = Rectangle((0, 0), *a_size,
-                     linewidth=2, edgecolor="black", facecolor="none")
-    ax2.add_patch(rect)
-
     con1 = ConnectionPatch(xyA=pos, coordsA=ax1.transData,
                            xyB=(0, 0), coordsB=ax2.transData,
                            color="black")
@@ -280,6 +289,39 @@ def plot_zoomed_in_system(A, B, fig_name: str, dpi=300):
 
     fig.add_artist(con1)
     fig.add_artist(con2)
+
+    print(A.min(), A.max())
+    print(B.min(), B.max())
+
+    divider1 = make_axes_locatable(ax1)
+    cax1 = divider1.append_axes("right", size="5%", pad=0.05)
+    fig.colorbar(im1, cax=cax1)
+
+    # For B
+    divider2 = make_axes_locatable(ax2)
+    cax2 = divider2.append_axes("right", size="5%", pad=0.05)
+    fig.colorbar(im2, cax=cax2)
+
+    fig.tight_layout()
+    fig.savefig(f"{fig_name}.png", dpi=dpi)
+
+def model_artifacting(vals=None, fig_name:str=None, dpi=DEFAULT_DPI,  device=None):
+    if vals is None:
+        vals = [2, 4, 8, 16]
+
+    fig, axs = plt.subplots(ncols=2, nrows=2, figsize=(8, 8))
+
+    for ax, im in zip(axs.flatten(), vals):
+        model = DeepLipschitzLinearResNet(im, im, (32, 64, 128), device=device)
+
+        with torch.no_grad():
+            a_weight, b_weight, Cs, Ls, Lms, dimensions = extract_lmi_constants(model)
+
+        b_b = b_weight.T @ b_weight
+
+        plot_matrix(b_b, ax=ax, normalize=False)
+        ax.set_title(f"n = {im}", pad=0)
+        ax.axis("off")
 
     fig.tight_layout()
     fig.savefig(f"{fig_name}.png", dpi=dpi)
@@ -295,11 +337,14 @@ if __name__ == '__main__':
     output_features = input_features
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
+    model_artifacting(fig_name=os.path.join(figs_folder, "b_artifacting_grid"))
+
     test_sqrt(device)
 
     torch.no_grad()
 
-    model = DeepLipschitzLinearResNet(input_features, output_features, (32, 256, 1024, 1024), device=device)
+    model = DeepLipschitzLinearResNet(input_features, output_features, (32, 64, 256, 256), device=device)
+    # model = DeepLipschitzLinearResNet(input_features, 2, (32, 64, 128), device=device)
 
     # save_folder = '/home/mjuston2/Documents/DeepLipschitzResNet/runs/sin_trainer_20250828_155950'
     save_folder = None
