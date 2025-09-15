@@ -41,7 +41,7 @@ def train_one_epoch(training_loader, optimizer, model, loss_fn, epoch_index, tb_
         loss.backward()
 
         # Adjust learning weights
-        torch.nn.utils.clip_grad_norm_(model.parameters(), 1)
+        torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0, foreach=True)
         optimizer.step()
 
         # Gather data and report
@@ -58,7 +58,7 @@ def train_one_epoch(training_loader, optimizer, model, loss_fn, epoch_index, tb_
     return last_loss
 
 
-def train(x, y, model: DeepLipschitzLinearResNet, batch_size=64 ,lr =1e-3, termination_error=5e-3):
+def train(x, y, model: DeepLipschitzLinearResNet, batch_size=64, lr=1e-3, termination_error=5e-3):
     # Initializing in a separate cell so we can easily add more epochs to the same run
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     save_folder = '../runs/sin_trainer_{}'.format(timestamp)
@@ -81,6 +81,9 @@ def train(x, y, model: DeepLipschitzLinearResNet, batch_size=64 ,lr =1e-3, termi
     training_loader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
 
     best_loss = None
+
+    # theoretical_lower = 135.021966261
+    theoretical_lower = 0
 
     for epoch in range(EPOCHS):
         print('EPOCH {}:'.format(epoch_number + 1))
@@ -106,6 +109,8 @@ def train(x, y, model: DeepLipschitzLinearResNet, batch_size=64 ,lr =1e-3, termi
         plt.savefig(os.path.join(save_folder, f'truth{epoch}.png'))
         plt.close()
 
+        assert avg_loss >= theoretical_lower, "Problem with the lipschitz network since cannot be lower than theoretical lowest"
+
         if avg_loss < termination_error:
             break
 
@@ -114,6 +119,7 @@ def train(x, y, model: DeepLipschitzLinearResNet, batch_size=64 ,lr =1e-3, termi
             best_loss = avg_loss
 
         epoch_number += 1
+
 
 def profile_model():
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
