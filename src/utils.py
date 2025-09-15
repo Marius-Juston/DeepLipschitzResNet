@@ -1,6 +1,6 @@
 import torch
 from torch import Tensor, cholesky_inverse
-from torch.linalg import cholesky_ex, eigh
+from torch.linalg import eigh
 
 
 # @torch.compile
@@ -32,8 +32,9 @@ def matrix_inv_square_root_triangle(x: Tensor, B: Tensor = None, upper: bool = F
     return L_inv
 
 
-def symmetrize_(x: Tensor)-> Tensor:
-    return (x  + x.T) / 2.0
+def symmetrize_(x: Tensor) -> Tensor:
+    return (x + x.T) / 2.0
+
 
 # @torch.compile
 def fast_symmetric_positive_definitive_matrix_inverse(x: Tensor) -> Tensor:
@@ -65,4 +66,4 @@ def get_largest_singular_value_power_iteration(matrix: Tensor, num_iterations: i
         v_new = ata @ v
         v = v_new / torch.norm(v_new)
     largest_eigenvalue = (v.T @ ata @ v) / (v.T @ v)
-    return torch.sqrt(largest_eigenvalue)
+    return torch.sqrt(largest_eigenvalue.maximum(torch.tensor(0.0, device=matrix.device)))
