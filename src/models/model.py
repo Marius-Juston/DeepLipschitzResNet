@@ -109,7 +109,17 @@ class DeepLipschitzLinearResNet(Module):
 
             current_product = current_product @ cn.T
 
-            total_sum = total_sum + (current_product @ di_inv @ current_product.T)
+            # FIXME There are problems where the matrix input to the system is no longer PD or PSD due to numerical issues
+            final_step = current_product @ di_inv @ current_product.T
+
+            # eigvales = torch.linalg.eigvalsh(final_step)
+            # assert (eigvales.min() >= -5e2), f"Not all eigenvalues are zero!! {eigvales.min()}"
+
+            # FIXME There are problems where the matrix input to the system is no longer PD or PSD due to numerical issues
+            total_sum = total_sum + final_step
+
+            # eigvales = torch.linalg.eigvalsh(total_sum)
+            # assert (eigvales.min() >= -5e2), f"Not all eigenvalues are zero!! {eigvales.min()}"
 
             current_product = current_product @ di_inv
 
