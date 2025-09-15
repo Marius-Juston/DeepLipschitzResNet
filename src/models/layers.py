@@ -72,7 +72,7 @@ class LipschitzLinearLayer(Linear):
         return self.constant_sq * fast_symmetric_positive_definitive_matrix_inverse(self.sum_weight())
 
     def compute_d_extra(self, transpose=False) -> Tensor:
-        return  self.sum_weight(transpose) * self.constant_sq
+        return self.sum_weight(transpose) * self.constant_sq
 
     def compute_d_inv(self, transpose=False) -> Tensor:
         return self.sum_weight(transpose) / self.constant_sq

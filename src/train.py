@@ -131,7 +131,7 @@ def profile_model():
 
     model = DeepLipschitzLinearResNet(input_features, output_features, (32, 256, 1024), device=device)
 
-    # model = torch.compile(model, mode='max-autotune')
+    model = torch.compile(model, mode='max-autotune')
     # model = torch.compile(model, mode='reduce-overhead')
     # model = torch.compile(model)
 
@@ -172,7 +172,18 @@ def main():
 
     model = DeepLipschitzLinearResNet(input_features, output_features, (32, 256, 1024, 1024), device=device)
 
-    model = torch.compile(model)
+    check_gradients = False
+
+    if check_gradients:
+        for name, p in model.named_parameters():
+            def function(grad):
+                if grad.isnan().any():
+                    print("GRADIENT IS NAN IN {}".format(name))
+
+            p.register_post_accumulate_grad_hook(function)
+
+    # model = torch.compile(model)
+    # model = torch.compile(model, mode='max-autotune')
 
     print(model)
 
