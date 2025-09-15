@@ -2,6 +2,7 @@ from typing import Tuple, Optional
 
 import torch
 from torch import Tensor, cholesky_inverse
+from torch.autograd import Function
 from torch.linalg import eigh
 
 
@@ -50,7 +51,8 @@ def fast_symmetric_positive_definitive_matrix_inverse(x: Tensor) -> Tensor:
     return cholesky_inverse(L)
 
 
-def get_largest_singular_value_power_iteration(matrix: Tensor, num_iterations: int = 25, v: Optional[Tensor]=None) -> Tuple[Tensor, Tensor]:
+def get_largest_singular_value_power_iteration(matrix: Tensor, num_iterations: int = 25, v: Optional[Tensor] = None) -> \
+Tuple[Tensor, Tensor]:
     """
     Computes the largest singular value of a matrix using the Power Iteration method.
     This is a classic and reliable iterative method.
@@ -73,3 +75,84 @@ def get_largest_singular_value_power_iteration(matrix: Tensor, num_iterations: i
 
     largest_eigenvalue = (v.T @ ata @ v) / (v.T @ v)
     return torch.sqrt(largest_eigenvalue.maximum(torch.tensor(0.0, device=matrix.device))), v
+
+
+class CholeskyRankKFunction(Function):
+    """
+    Inputs:
+      L : (n,n) lower-triangular Cholesky factor (A = LL^T)
+      M : (n,k) update matrix; A' = A + MM^T
+    Output:
+      Lp : (n,n) lower-triangular Cholesky factor of A'
+    """
+
+    @staticmethod
+    def forward(ctx, L, M):
+        if L.ndim != 2 or L.shape[0] != L.shape[1]:
+            raise ValueError("L must be square matrix (n,n)")
+        if M.ndim != 2 or M.shape[0] != L.shape[0]:
+            raise ValueError("M must have shape (n,k)")
+        k = M.shape[1]
+        with torch.no_grad():
+            Lp = L.clone().detach()
+            M_c = M.contiguous()
+            for i in range(k):
+                col = M_c[:, i]
+                Lp = CholeskyRankKFunction._rank_1_update(Lp, col)
+            Lp = torch.tril(Lp)  # enforce lower triangular
+        ctx.save_for_backward(L.detach(), M.detach(), Lp.detach())
+        return Lp
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        L, M, Lp = ctx.saved_tensors
+        needs_L, needs_M = ctx.needs_input_grad
+        if not (needs_L or needs_M):
+            return None, None
+        G = grad_output
+        P = Lp.transpose(-1, -2).matmul(G)
+        diagP = torch.diagonal(P, dim1=-2, dim2=-1)
+        S = torch.tril(P) - 0.5 * torch.diag_embed(diagP)
+        n = Lp.shape[-1]
+        I = torch.eye(n, device=Lp.device, dtype=Lp.dtype)
+        Lp_inv = torch.linalg.solve_triangular(Lp, I, left=True, upper=False)
+        tmp = S.matmul(Lp_inv)
+        W = torch.linalg.solve_triangular(Lp.transpose(-1, -2), tmp, left=True, upper=True)
+        W = 0.5 * (W + W.transpose(-1, -2))
+        grad_L = None
+        grad_M = None
+        if needs_L:
+            grad_L = torch.tril(2.0 * W.matmul(L))
+        if needs_M:
+            grad_M = 2.0 * W.matmul(M)
+        return grad_L, grad_M
+
+    @staticmethod
+    def _rank_1_update(L: torch.Tensor, x: torch.Tensor):
+        n = x.shape[0]
+
+        L = L.contiguous()
+        x = x.contiguous()
+
+        for k in range(n):
+            r = torch.hypot(L[k, k], x[k])
+
+            c = r / L[k, k]
+            s = x[k] / L[k, k]
+            L[k, k] = r
+
+            if k + 1 < n:
+                lk = L[k + 1:n, k]
+                xk = x[k + 1:n]
+
+                L[k + 1:n, k] = (lk + s * xk) / c
+                x[k + 1:n] = c * xk - s * L[k + 1:n, k]
+
+        return L
+
+
+def cholesky_rank_k(L: torch.Tensor, M: torch.Tensor):
+    """
+    Wrapper to apply the custom Function; this is the user-facing call.
+    """
+    return CholeskyRankKFunction.apply(L, M)
