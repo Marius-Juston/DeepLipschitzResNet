@@ -14,7 +14,7 @@ class LipschitzLinearLayer(Linear):
 
     def __init__(self, in_features: int,
                  out_features: int,
-                 bias: bool = True,
+                 bias: bool = False,
                  constant: float = 1.0,
                  device=None,
                  dtype=None):
