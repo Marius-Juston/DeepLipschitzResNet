@@ -32,6 +32,9 @@ def matrix_inv_square_root_triangle(x: Tensor, B: Tensor = None, upper: bool = F
     return L_inv
 
 
+def symmetrize_(x: Tensor)-> Tensor:
+    return (x  + x.T) / 2.0
+
 # @torch.compile
 def fast_symmetric_positive_definitive_matrix_inverse(x: Tensor) -> Tensor:
     """
@@ -39,7 +42,8 @@ def fast_symmetric_positive_definitive_matrix_inverse(x: Tensor) -> Tensor:
     :param x: The matrix to invert
     :return: The inverse of the matrix
     """
-    L = cholesky_ex(x).L
+    L = torch.linalg.cholesky(x)
+
     return cholesky_inverse(L)
 
 

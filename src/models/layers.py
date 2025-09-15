@@ -5,6 +5,7 @@ import torch.nn.functional as F
 from torch import Tensor
 from torch.nn import Linear
 
+import utils
 from utils import fast_symmetric_positive_definitive_matrix_inverse
 
 
@@ -43,8 +44,13 @@ class LipschitzLinearLayer(Linear):
         self.constant_sq: Optional[Tensor]
 
     def apply_inv_sqrt(self, weight, sqrt_matrix, left=False) -> torch.Tensor:
-        L = torch.linalg.cholesky_ex(sqrt_matrix, upper=True).L
-        # L = torch.linalg.cholesky(sqrt_matrix, upper=True)
+        sqrt_matrix = utils.symmetrize_(sqrt_matrix)
+
+        # L, info = torch.linalg.cholesky_ex(sqrt_matrix, upper=True)
+        # L = torch.linalg.cholesky_ex(sqrt_matrix, upper=True)
+        # info = 0
+        # FIXME There are problems where the matrix input to the system is no longer PD or PSD due to numerical issues
+        L = torch.linalg.cholesky(sqrt_matrix, upper=True)
 
         return torch.linalg.solve_triangular(L, weight, upper=True, left=left)
 
