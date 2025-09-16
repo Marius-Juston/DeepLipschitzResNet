@@ -19,6 +19,8 @@ if __name__ == "__main__":
     M = M.clone().requires_grad_(True)
 
     # Forward using our op
+    # cholesky_rank_k = torch.compile(cholesky_rank_k, mode='max-autotune')
+
     Lp = cholesky_rank_k(L, M)
 
     # Compare with naive differentiable path (recompute full cholesky)

@@ -1,4 +1,4 @@
-from typing import Tuple, Optional
+from typing import Tuple, Optional, Any
 
 import torch
 from torch import Tensor, cholesky_inverse
@@ -52,7 +52,7 @@ def fast_symmetric_positive_definitive_matrix_inverse(x: Tensor) -> Tensor:
 
 
 def get_largest_singular_value_power_iteration(matrix: Tensor, num_iterations: int = 25, v: Optional[Tensor] = None) -> \
-Tuple[Tensor, Tensor]:
+        Tuple[Tensor, Tensor]:
     """
     Computes the largest singular value of a matrix using the Power Iteration method.
     This is a classic and reliable iterative method.
@@ -87,28 +87,43 @@ class CholeskyRankKFunction(Function):
     """
 
     @staticmethod
-    def forward(ctx, L, M):
+    def forward(L, M):
         if L.ndim != 2 or L.shape[0] != L.shape[1]:
             raise ValueError("L must be square matrix (n,n)")
         if M.ndim != 2 or M.shape[0] != L.shape[0]:
             raise ValueError("M must have shape (n,k)")
         k = M.shape[1]
         with torch.no_grad():
-            Lp = L.clone().detach()
+            Lp = L.clone().contiguous()
             M_c = M.contiguous()
             for i in range(k):
                 col = M_c[:, i]
                 Lp = CholeskyRankKFunction._rank_1_update(Lp, col)
             Lp = torch.tril(Lp)  # enforce lower triangular
-        ctx.save_for_backward(L.detach(), M.detach(), Lp.detach())
         return Lp
 
     @staticmethod
+    def setup_context(ctx: Any, inputs: tuple[Any, ...], output: Any) -> Any:
+        L, M = inputs
+        Lp = output
+
+        ctx.L = L
+        ctx.M = M
+        ctx.Lp = Lp
+
+    @staticmethod
     def backward(ctx, grad_output):
-        L, M, Lp = ctx.saved_tensors
+        if grad_output is None:
+            return None, None
+
+        L = ctx.L
+        M = ctx.M
+        Lp = ctx.Lp
+
         needs_L, needs_M = ctx.needs_input_grad
         if not (needs_L or needs_M):
             return None, None
+
         G = grad_output
         P = Lp.transpose(-1, -2).matmul(G)
         diagP = torch.diagonal(P, dim1=-2, dim2=-1)
@@ -151,6 +166,7 @@ class CholeskyRankKFunction(Function):
         return L
 
 
+@torch.compile(mode='max-autotune')
 def cholesky_rank_k(L: torch.Tensor, M: torch.Tensor):
     """
     Wrapper to apply the custom Function; this is the user-facing call.
