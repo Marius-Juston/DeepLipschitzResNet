@@ -1,0 +1,145 @@
+import math
+from typing import Union, List, Sequence
+
+import torch
+from torch import nn
+from torch.nn import ModuleList, Module, ReLU, Parameter, init
+
+import utils
+from models.layer_new import FirstLipschitzLinearLayer, LastLipschitzLinearLayer, InnerWeightLipschitzLinearLayer
+from utils import cholesky_rank_k
+
+
+class DeepLipschitzLinearResNet(nn.Module):
+    A: FirstLipschitzLinearLayer
+    B: LastLipschitzLinearLayer
+    layers: ModuleList
+
+    def __init__(self, in_features: int, out_features: int, layers_widths: Sequence[int],
+                 activation: Union[Module, List[Module]] = None, lipschitz_constant: float = 1.0, bias: bool = True,
+                 num_iterations:int = 10,
+                 device: Union[str, torch.device] = 'cuda', dtype=None) -> None:
+        super().__init__()
+
+        assert len(layers_widths) >= 1, "This deep network assumes that the number of layers is greater "
+        assert in_features > 0, "The input width needs to be larger than 0"
+        assert out_features > 0, "The output width needs to be larger than 0"
+
+        self.num_iterations = num_iterations
+        self.lipschitz_constant = lipschitz_constant
+        self.lipschitz_constant_sq = lipschitz_constant * lipschitz_constant
+
+        self.out_features = out_features
+        self.in_features = in_features
+        self.layer_widths = layers_widths
+
+        self.dtype = dtype
+        self.device = device
+
+        self.factory_kwargs = {"device": device, "dtype": dtype}
+
+        if activation is None:
+            self.activation = ReLU()
+        else:
+            self.activation = activation
+
+        if bias:
+            self.bias = Parameter(torch.empty(out_features, **self.factory_kwargs))
+        else:
+            self.register_parameter("bias", None)
+
+        self.generate_layers()
+
+        self.reset_bias()
+
+        self.v = None
+
+    def reset_bias(self) -> None:
+        if self.bias is not None:
+            fan_in, _ = init._calculate_fan_in_and_fan_out(self.A.weight)
+            bound = 1 / math.sqrt(fan_in) if fan_in > 0 else 0
+            init.uniform_(self.bias, -bound, bound)
+
+    def reset_parameters(self) -> None:
+        self.reset_bias()
+
+        # Find a better initialization scheme for the current formulation of the system
+        self.A.reset_parameters()
+        self.B.reset_parameters()
+
+        for layer in self.layers:
+            layer.reset_parameters()
+
+    def generate_layers(self) -> None:
+        self.A = FirstLipschitzLinearLayer(in_features=self.in_features, out_features=self.out_features,
+                                           constant_sq=self.lipschitz_constant_sq, **self.factory_kwargs)
+
+        self.B = LastLipschitzLinearLayer(in_features=self.layer_widths[-1], out_features=self.out_features,
+                                          **self.factory_kwargs)
+
+        layer = []
+
+        prev = self.in_features
+
+        for i, out_features in enumerate(self.layer_widths):
+            if i == 0:
+                constant = 2.0 * self.lipschitz_constant_sq
+            else:
+                constant = 4.0
+
+            layer.append(
+                InnerWeightLipschitzLinearLayer(prev, out_features, constant_sq=constant, **self.factory_kwargs))
+            prev = out_features
+
+        self.layers = ModuleList(layer)
+
+    def compute_b(self, x, sigma_lower, a_weight):
+        inner_inverse = torch.cholesky_inverse(self.layers[-1].omega_sqrt(), upper=False)
+
+        max_singular, self.v = utils.get_largest_singular_value_power_iteration(inner_inverse, num_iterations=self.num_iterations, v=self.v)
+
+        left = a_weight @ sigma_lower
+
+        scaling = self.B.identity_out + left @ left.T
+
+        R_sigma = torch.linalg.cholesky(scaling, upper=True)
+
+        second, b_weight = self.B(x, R_sigma)
+
+        second_s = second * max_singular
+        b_weight_s = b_weight * max_singular
+
+        return second_s, b_weight_s
+
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        first, a_weight = self.A(x)
+
+        gamma = self.A.identity
+        sigma_lower = None
+
+        prev_layer = self.A
+
+        current_input = x
+
+        for layer in self.layers:
+            current_input, c_weight = layer(current_input, prev_layer.omega_sqrt())
+
+            temp = prev_layer.omega_sqrt()
+
+            T = gamma @ temp
+
+            if sigma_lower is None:
+                sigma_lower = T
+            else:
+                # Instead of using custom CholeskyRankK update this is computationally much faster
+                sigma_lower = torch.linalg.cholesky(sigma_lower @ sigma_lower.T + T @ T.T, upper=False)
+                # sigma_lower = cholesky_rank_k(sigma_lower, T)
+
+            gamma = gamma @ prev_layer.omega_ @ c_weight.T
+
+            prev_layer = layer
+
+        second, b_weight = self.compute_b(current_input, sigma_lower, a_weight)
+
+        return first + second + self.bias
