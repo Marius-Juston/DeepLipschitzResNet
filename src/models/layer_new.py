@@ -13,7 +13,7 @@ class FirstLipschitzLinearLayer(nn.Linear):
 
     def __init__(self, in_features: int,
                  out_features: int,
-                 bias: bool = False,
+                 bias: bool = True,
                  constant_sq: float = 1.0,
                  device=None,
                  dtype=None):
@@ -49,8 +49,8 @@ class FirstLipschitzLinearLayer(nn.Linear):
 
         return temp
 
-    def normalize(self, W, R, left=False):
-        return torch.linalg.solve_triangular(R, W, upper=True, left=left)
+    def normalize(self, W, R, left=False, upper=True):
+        return torch.linalg.solve_triangular(R, W, upper=upper, left=left)
 
     def forward(self, input: Tensor) -> Tuple[Tensor, Tensor]:
         self.R = self.normalization_constant()
@@ -77,7 +77,7 @@ class InnerWeightLipschitzLinearLayer(FirstLipschitzLinearLayer):
         self.R = self.normalization_constant()
 
         W = self.normalize(self.weight, self.R, left=False)
-        W = self.constant * self.normalize(W, prev_r.T, left=False)
+        W = self.constant * self.normalize(W, prev_r, left=False, upper=False)
 
         self.omega()
 
