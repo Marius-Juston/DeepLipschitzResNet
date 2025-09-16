@@ -145,6 +145,8 @@ class DeepLipschitzLinearResNet(nn.Module):
 
             prev_layer = layer
 
+            current_input = self.activation(current_input)
+
         second, b_weight = self.compute_b(current_input, sigma_lower, a_weight)
 
         self.first = False
