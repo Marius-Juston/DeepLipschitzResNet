@@ -7,7 +7,7 @@ from torch.nn import ModuleList, Module, ReLU, Parameter, init
 
 import utils
 from models.layer_new import FirstLipschitzLinearLayer, LastLipschitzLinearLayer, InnerWeightLipschitzLinearLayer
-from utils import cholesky_rank_k
+from utils import SpectralNorm
 
 
 class DeepLipschitzLinearResNet(nn.Module):
@@ -52,7 +52,7 @@ class DeepLipschitzLinearResNet(nn.Module):
 
         self.reset_bias()
 
-        self.v = None
+        self.first = False
 
     def reset_bias(self) -> None:
         if self.bias is not None:
@@ -93,10 +93,15 @@ class DeepLipschitzLinearResNet(nn.Module):
 
         self.layers = ModuleList(layer)
 
+        self.spectral_norm = SpectralNorm(self.B.identity)
+
     def compute_b(self, x, sigma_lower, a_weight):
         inner_inverse = torch.cholesky_inverse(self.layers[-1].omega_sqrt(), upper=False)
 
-        max_singular, self.v = utils.get_largest_singular_value_power_iteration(inner_inverse, num_iterations=self.num_iterations, v=self.v)
+        if self.first:
+            self.spectral_norm.initialize(inner_inverse)
+
+        max_singular = self.spectral_norm(inner_inverse)
 
         left = a_weight @ sigma_lower
 
@@ -141,5 +146,7 @@ class DeepLipschitzLinearResNet(nn.Module):
             prev_layer = layer
 
         second, b_weight = self.compute_b(current_input, sigma_lower, a_weight)
+
+        self.first = False
 
         return first + second + self.bias
