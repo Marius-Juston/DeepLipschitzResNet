@@ -43,26 +43,11 @@ class DeepLipschitzLinearResNet(nn.Module):
         else:
             self.activation = activation
 
-        if bias:
-            self.bias = Parameter(torch.empty(out_features, **self.factory_kwargs))
-        else:
-            self.register_parameter("bias", None)
-
         self.generate_layers()
-
-        self.reset_bias()
 
         self.first = False
 
-    def reset_bias(self) -> None:
-        if self.bias is not None:
-            fan_in, _ = init._calculate_fan_in_and_fan_out(self.A.weight)
-            bound = 1 / math.sqrt(fan_in) if fan_in > 0 else 0
-            init.uniform_(self.bias, -bound, bound)
-
     def reset_parameters(self) -> None:
-        self.reset_bias()
-
         # Find a better initialization scheme for the current formulation of the system
         self.A.reset_parameters()
         self.B.reset_parameters()
@@ -75,6 +60,7 @@ class DeepLipschitzLinearResNet(nn.Module):
                                            constant_sq=self.lipschitz_constant_sq, **self.factory_kwargs)
 
         self.B = LastLipschitzLinearLayer(in_features=self.layer_widths[-1], out_features=self.out_features,
+                                          bias=False, # Don't need bias on both A and B since they would be doing the same thing
                                           **self.factory_kwargs)
 
         layer = []
@@ -144,7 +130,7 @@ class DeepLipschitzLinearResNet(nn.Module):
 
         self.first = False
 
-        return first + second + self.bias
+        return first + second
 
 
 class DeepLipschitzSequential(nn.Module):
