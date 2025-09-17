@@ -1,8 +1,7 @@
 import torch
 from torch.profiler import profile, ProfilerActivity
 
-from models.new_model import DeepLipschitzSequential
-
+from models.model import DeepLipschitzSequential
 
 def profile_model():
     torch.manual_seed(0)

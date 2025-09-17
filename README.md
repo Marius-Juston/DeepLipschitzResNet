@@ -12,7 +12,7 @@ this has multiple routines that you can enable for the specific outputs that you
 
 ## Profiling
 
-To profile the networks you can use [profile.py](./src/profile.py), which compiles with `torch.compile` and then finds CUDA profiles the system for performance issues. This is extremely useful for finding graph break issues with `torch.compile`
+To profile the networks you can use [profiling.py](./src/profiling.py), which compiles with `torch.compile` and then finds CUDA profiles the system for performance issues. This is extremely useful for finding graph break issues with `torch.compile`
 
 To vizualize the output `trace.json` open Chrome and load the trace file inside [chrome://tracing](chrome://tracing) as demonstrated in [here](https://docs.pytorch.org/tutorials/recipes/recipes/profiler_recipe.html#using-tracing-functionality)
 
