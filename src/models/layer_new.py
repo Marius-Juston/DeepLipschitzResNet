@@ -4,6 +4,10 @@ import torch
 from torch import nn, Tensor
 
 
+def normalize(W, R, left=False, upper=True):
+    return torch.linalg.solve_triangular(R, W, upper=upper, left=left)
+
+
 class FirstLipschitzLinearLayer(nn.Linear):
     identity: torch.Tensor
     identity_out: torch.Tensor
@@ -42,22 +46,16 @@ class FirstLipschitzLinearLayer(nn.Linear):
         self.omega_ = None
         self.omega_sqrt_t_ = None
 
-    def normalization_constant(self) -> Tensor:
-        self.omega_ = self.sum_weight(transpose=True)
-        temp = torch.linalg.cholesky(self.omega_, upper=True)
-        self.omega_sqrt_t_ = temp.T
+    def forward(self, input: Tensor) -> Tuple[Tensor, Tensor, Tensor, Tensor]:
+        omega = self.sum_weight(transpose=True)
+        R = torch.linalg.cholesky(omega, upper=True)
 
-        return temp
+        W = self.constant * normalize(self.weight, R, left=False)
 
-    def normalize(self, W, R, left=False, upper=True):
-        return torch.linalg.solve_triangular(R, W, upper=upper, left=left)
+        d_inv = omega / self.constant_sq
+        d_sqrt = self.constant * omega
 
-    def forward(self, input: Tensor) -> Tuple[Tensor, Tensor]:
-        self.R = self.normalization_constant()
-
-        W = self.constant * self.normalize(self.weight, self.R, left=False)
-
-        return torch.nn.functional.linear(input, W, self.bias), W
+        return torch.nn.functional.linear(input, W, self.bias), W, d_sqrt, d_inv
 
     def sum_weight(self, transpose: bool = False):
         if transpose:
@@ -65,39 +63,36 @@ class FirstLipschitzLinearLayer(nn.Linear):
         else:
             return self.identity_out + self.weight @ self.weight.T
 
-    def omega(self):
-        return self.omega_
-
-    def omega_sqrt(self):
-        return self.omega_sqrt_t_
-
 
 class InnerWeightLipschitzLinearLayer(FirstLipschitzLinearLayer):
-    def forward(self, input: Tensor, prev_r: Tensor) -> Tuple[Tensor, Tensor]:
-        self.R = self.normalization_constant()
+    def forward(self, input: Tensor, prev_d_sqrt: Tensor) -> Tuple[Tensor, Tensor, Tensor, Tensor]:
+        omega = self.sum_weight(transpose=True)
+        R = torch.linalg.cholesky(omega, upper=True)
 
-        W = self.normalize(self.weight, self.R, left=False)
-        W = self.constant * self.normalize(W, prev_r, left=False, upper=False)
+        W = normalize(self.weight, R, left=False)
 
-        self.omega()
+        W = self.constant * normalize(W, prev_d_sqrt, upper=True, left=False)
 
-        return torch.nn.functional.linear(input, W, self.bias), W
+        omega = self.sum_weight()
 
-    def omega(self):
-        self.omega_ = self.sum_weight()
-        return self.omega_
+        d_inv = omega / self.constant_sq
 
-    def omega_sqrt(self):
-        self.omega_sqrt_t_ = torch.linalg.cholesky(self.omega_)
-        return self.omega_sqrt_t_
+        d_sqrt = torch.linalg.cholesky(omega, upper=True)
+
+        self.omega_r = d_sqrt
+
+        d_sqrt = self.constant * d_sqrt
+
+        return torch.nn.functional.linear(input, W, self.bias), W, d_sqrt, d_inv
 
 
 class LastLipschitzLinearLayer(FirstLipschitzLinearLayer):
     def forward(self, input: Tensor, prev_r: Tensor) -> Tuple[Tensor, Tensor]:
-        self.R = self.normalization_constant()
+        omega = self.sum_weight(transpose=True)
+        R = torch.linalg.cholesky(omega, upper=True)
 
-        W = self.normalize(self.weight, self.R, left=False)
-        W = self.constant * self.normalize(W, prev_r, left=True)
+        W = normalize(self.weight, R, left=False)
+        W = self.constant * normalize(W, prev_r, left=True)
 
         return torch.nn.functional.linear(input, W, self.bias), W
 
@@ -139,16 +134,13 @@ class LinearLipschitz(nn.Linear):
             "constant", self.constant_sq.sqrt()
         )
 
-    def normalize(self, W, R, left=False, upper=True):
-        return torch.linalg.solve_triangular(R, W, upper=upper, left=left)
-
     def forward(self, input: Tensor, prev_d_sqrt: Tensor) -> Tuple[Tensor, Tensor]:
         norm = self.sum_weight(transpose=True)
         R = torch.linalg.cholesky(norm, upper=True)
 
         W = self.normalize(self.weight, R)
 
-        W = self.constant * self.normalize(W, prev_d_sqrt, upper=True, left=False)
+        W = self.constant * normalize(W, prev_d_sqrt, upper=True, left=False)
         d_sqrt = self.constant * torch.linalg.cholesky(self.sum_weight(), upper=True)
 
         out = torch.nn.functional.linear(input, W, self.bias)

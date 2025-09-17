@@ -96,8 +96,8 @@ class DeepLipschitzLinearResNet(nn.Module):
 
         self.spectral_norm = SpectralNorm(self.B.identity)
 
-    def compute_b(self, x, sigma_lower, a_weight):
-        inner_inverse = torch.cholesky_inverse(self.layers[-1].omega_sqrt(), upper=False)
+    def compute_b(self, x, sigma_lower, a_weight, prev_r):
+        inner_inverse = torch.cholesky_inverse(prev_r, upper=False)
 
         if self.first:
             self.spectral_norm.initialize(inner_inverse)
@@ -119,21 +119,17 @@ class DeepLipschitzLinearResNet(nn.Module):
 
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        first, a_weight = self.A(x)
+        first, a_weight, d_sqrt, d_inv = self.A(x)
 
         gamma = self.A.identity
         sigma_lower = None
 
-        prev_layer = self.A
-
         current_input = x
 
         for layer in self.layers:
-            current_input, c_weight = layer(current_input, prev_layer.omega_sqrt())
+            T = gamma @ d_inv
 
-            temp = prev_layer.omega_sqrt()
-
-            T = gamma @ temp
+            current_input, c_weight, d_sqrt, d_inv = layer(current_input, d_sqrt)
 
             if sigma_lower is None:
                 sigma_lower = T
@@ -142,13 +138,11 @@ class DeepLipschitzLinearResNet(nn.Module):
                 sigma_lower = torch.linalg.cholesky(sigma_lower @ sigma_lower.T + T @ T.T, upper=False)
                 # sigma_lower = cholesky_rank_k(sigma_lower, T)
 
-            gamma = gamma @ prev_layer.omega_ @ c_weight.T
-
-            prev_layer = layer
+            gamma = T @ c_weight.T
 
             current_input = self.activation(current_input)
 
-        second, b_weight = self.compute_b(current_input, sigma_lower, a_weight)
+        second, b_weight = self.compute_b(current_input, sigma_lower, a_weight, self.layers[-1].omega_r)
 
         self.first = False
 

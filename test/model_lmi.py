@@ -144,16 +144,9 @@ def extract_lmi_constants_deep_resnet_old(model: models.model.DeepLipschitzLinea
 
 
 def extract_lmi_constants_deep_resnet_new(model):
-    x = torch.empty((1, model.in_features), device=model.device, dtype=model.dtype)
+    x = torch.zeros((1, model.in_features), device=model.device, dtype=model.dtype)
 
-    first, a_weight = model.A(x)
-
-    gamma = model.A.identity
-    sigma_lower = None
-
-    prev_layer = model.A
-
-    current_input = x
+    first, a_weight, d_sqrt, d_inv = model.A(x)
 
     Cs = []
     Ls = []
@@ -162,12 +155,15 @@ def extract_lmi_constants_deep_resnet_new(model):
         a_weight.shape[1],
     ]
 
+    gamma = model.A.identity
+    sigma_lower = None
+
+    current_input = x
+
     for layer in model.layers:
-        current_input, c_weight = layer(current_input, prev_layer.omega_sqrt())
+        T = gamma @ d_inv
 
-        temp = prev_layer.omega_sqrt()
-
-        T = gamma @ temp
+        current_input, c_weight, d_sqrt, d_inv = layer(current_input, d_sqrt)
 
         if sigma_lower is None:
             sigma_lower = T
@@ -176,16 +172,14 @@ def extract_lmi_constants_deep_resnet_new(model):
             sigma_lower = torch.linalg.cholesky(sigma_lower @ sigma_lower.T + T @ T.T, upper=False)
             # sigma_lower = cholesky_rank_k(sigma_lower, T)
 
-        gamma = gamma @ prev_layer.omega_ @ c_weight.T
-
-        prev_layer = layer
+        gamma = T @ c_weight.T
 
         Cs.append(c_weight)
         Ls.append(layer.identity_out)
         Lms.append([1, 0])
         dimensions.append(c_weight.shape[0])
 
-    second, b_weight = model.compute_b(current_input, sigma_lower, a_weight)
+    second, b_weight = model.compute_b(current_input, sigma_lower, a_weight, model.layers[-1].omega_r)
 
     return a_weight, b_weight, Cs, Ls, Lms, dimensions
 
