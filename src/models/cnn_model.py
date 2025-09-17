@@ -134,14 +134,9 @@ class DeepLipschitzConvResNet(nn.Module):
         else:
             left = torch.matmul(a_weight_freq, sigma_lower)
 
-        scaling = torch.matmul(left, conjt(left))
+        scaling = self.B.identity_out + torch.matmul(left, conjt(left))
 
-        Iout = torch.eye(scaling.shape[-1], dtype=scaling.dtype, device=scaling.device)
-
-        scaling = scaling + Iout
-
-        L_sigma = torch.linalg.cholesky(scaling, upper=False)
-        R_sigma = conjt(L_sigma)  # upper triangular
+        R_sigma = torch.linalg.cholesky(scaling, upper=True)
 
         second, b_weight_spatial = self.B.forward(x, R_sigma)
         if isinstance(max_singular, torch.Tensor):
@@ -153,13 +148,10 @@ class DeepLipschitzConvResNet(nn.Module):
         return second_s, b_weight_s
 
     def forward(self, x: Tensor) -> Tensor:
-        B, C_in, H, W = x.shape
         # First layer -> get normalized freq matrices once
         first, W_spatial_A, Wfreq_A, d_sqrt, d_inv = self.A.forward(x)
         # initial gamma (identity per-frequency)
-        Ffreq = d_inv.shape[0]
-        n_inA = d_inv.shape[-1]
-        gamma = torch.eye(n_inA, dtype=d_inv.dtype, device=d_inv.device).unsqueeze(0).expand(Ffreq, -1, -1)
+        gamma = self.A.identity.to(dtype=d_inv.dtype)
 
         current_input = x
         sigma_lower = None
