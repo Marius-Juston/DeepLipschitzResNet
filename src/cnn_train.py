@@ -9,7 +9,7 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import TensorDataset, DataLoader
 
-from models.cnn_model import DeepLipschitzConvResNet, SpectralNorm
+from models.cnn_model import DeepLipschitzConvResNet
 
 # ---- assume these exist in the environment (from earlier messages) ----
 # from your_module import DeepLipschitzConvResNet, SpectralNorm
@@ -19,9 +19,6 @@ from models.cnn_model import DeepLipschitzConvResNet, SpectralNorm
 if "DeepLipschitzConvResNet" not in globals():
     raise RuntimeError(
         "DeepLipschitzConvResNet must be defined in the environment (paste the class from previous message).")
-if "SpectralNorm" not in globals():
-    raise RuntimeError(
-        "SpectralNorm must be defined in the environment (use the batched SpectralNorm provided earlier).")
 
 
 # ---------------- Synthetic dataset helpers ----------------
@@ -156,18 +153,12 @@ def run_experiment(device='cpu'):
     lipschitz_model1 = DeepLipschitzConvResNet(
         in_channels=C, out_channels=1, layers_widths=[16, 16],
         kernel_size=3, padding=1, device=device, dtype=torch.float32
-    ).to(device)
+    )
 
     lipschitz_model2 = DeepLipschitzConvResNet(
         in_channels=C, out_channels=1, layers_widths=[16, 16],
         kernel_size=3, padding=1, device=device, dtype=torch.float32
-    ).to(device)
-
-    # Attach batched SpectralNorm to each Lipschitz model (but we must initialize it after a warm-up forward)
-    sn1 = SpectralNorm(n_power_iterations=1, eps=1e-6).to(device)
-    sn2 = SpectralNorm(n_power_iterations=1, eps=1e-6).to(device)
-    lipschitz_model1.spectral_norm = sn1
-    lipschitz_model2.spectral_norm = sn2
+    )
 
     # Warm-up forward to populate internal triangular factors (omega_r) and frequency shapes
     # Use a small mini-batch from training data
@@ -175,18 +166,9 @@ def run_experiment(device='cpu'):
         xb = X_train[:8].to(device)
         _ = lipschitz_model1(
             xb)  # first forward will run compute_b with spectral_norm present but uninitialized -> that's ok
-        # get the prev_r from last inner layer (set by InnerWeightLipschitzConvLayer.forward)
-        prev_r = lipschitz_model1.layers[-1].omega_r  # shape (F, m, m) complex or real
-        # compute triangular inverse (batched) using model helper
-        inner_inverse = lipschitz_model1._triangular_inverse_batch(prev_r, upper=True)
-        # initialize spectral norm with this batched matrix
-        lipschitz_model1.spectral_norm.initialize(inner_inverse)
 
         # Repeat for the other model
         _ = lipschitz_model2(xb)
-        prev_r2 = lipschitz_model2.layers[-1].omega_r
-        inner_inverse2 = lipschitz_model2._triangular_inverse_batch(prev_r2, upper=True)
-        lipschitz_model2.spectral_norm.initialize(inner_inverse2)
 
     # Now train baseline and lipschitz model on g1
     print("Training unconstrained baseline on g1 (1-Lipschitz)...")
