@@ -102,12 +102,7 @@ class DeepLipschitzConvResNet(nn.Module):
         )
 
         # placeholder for spectral_norm helper (user can supply a batched, complex-aware spectral norm)
-        self.spectral_norm = None
-
-    def _triangular_inverse_batch(self, R: Tensor, upper: bool = True) -> Tensor:
-        F, n, _ = R.shape
-        I = torch.eye(n, dtype=R.dtype, device=R.device).unsqueeze(0).expand(F, -1, -1)
-        return torch.linalg.solve_triangular(R, I, upper=upper, left=True)
+        self.spectral_norm = BatchedConvSpectralNorm()
 
     def _cholesky_rank_k_freq(self, prev_sigma_lower: Optional[Tensor], T: Tensor) -> Tensor:
         if prev_sigma_lower is None:
@@ -120,32 +115,24 @@ class DeepLipschitzConvResNet(nn.Module):
             L = torch.linalg.cholesky(S, upper=False)
             return L
 
-    def compute_b(self, x: Tensor, sigma_lower: Optional[Tensor], a_weight_freq: Tensor, prev_r: Tensor) -> Tuple[
+    def compute_b(self, x: Tensor, sigma_lower: Tensor, a_weight_freq: Tensor, prev_r: Tensor) -> Tuple[
         Tensor, Tensor]:
         # inner_inverse = prev_r^{-1}
-        inner_inverse = self._triangular_inverse_batch(prev_r, upper=True)
+        inner_inverse = torch.cholesky_inverse(prev_r, upper=True).real
         # spectral norm scaling
-        if self.spectral_norm is None:
-            max_singular = 1.0
-        else:
-            max_singular = self.spectral_norm(inner_inverse)
+        max_singular = self.spectral_norm(inner_inverse)
+        max_singular = max_singular.max()
 
-        if sigma_lower is None:
-            left = a_weight_freq
-        else:
-            left = torch.matmul(a_weight_freq, sigma_lower)
+        left = torch.matmul(a_weight_freq, sigma_lower)
 
         scaling = self.B.identity_out + torch.matmul(left, left.mH)
 
         R_sigma = torch.linalg.cholesky(scaling, upper=True)
 
         second, b_weight_spatial = self.B.forward(x, R_sigma)
-        if isinstance(max_singular, torch.Tensor):
-            second_s = second * max_singular
-            b_weight_s = b_weight_spatial * max_singular
-        else:
-            second_s = second * float(max_singular)
-            b_weight_s = b_weight_spatial * float(max_singular)
+        second_s = second * max_singular
+        b_weight_s = b_weight_spatial * max_singular
+
         return second_s, b_weight_s
 
     def forward(self, x: Tensor) -> Tensor:
@@ -175,12 +162,7 @@ class DeepLipschitzConvResNet(nn.Module):
         return first + second
 
 
-import torch
-import torch.nn.functional as F
-from torch import nn, Tensor
-
-
-class SpectralNorm(nn.Module):
+class BatchedConvSpectralNorm(nn.Module):
     """
     Batched Spectral Norm for (F, n, n) matrices.
 
@@ -194,113 +176,121 @@ class SpectralNorm(nn.Module):
         _u: (F, n), _v: (F, n)
     """
 
-    def __init__(self, n_power_iterations: int = 1, eps: float = 1e-12) -> None:
+    def __init__(
+            self,
+            n_power_iterations: int = 1,
+            dim: int = 1,
+            eps: float = 1e-12,
+            default_n_iterations: int = 15
+    ) -> None:
         super().__init__()
+        self.dim = dim
+        self.default_n_iterations = default_n_iterations
+
         if n_power_iterations <= 0:
-            raise ValueError("n_power_iterations must be >= 1")
-        self.n_power_iterations = n_power_iterations
+            raise ValueError(
+                "Expected n_power_iterations to be positive, but "
+                f"got n_power_iterations={n_power_iterations}"
+            )
+
+        if default_n_iterations < 1:
+            raise ValueError(
+                "Expected default_n_iterations to be greater than 1, but "
+                f"got n_power_iterations={default_n_iterations}"
+            )
+
         self.eps = eps
-        # buffers will be created in initialize()
-        self.register_buffer("_u", None)
-        self.register_buffer("_v", None)
+        self.n_power_iterations = n_power_iterations
 
-    def initialize(self, weight_mat: Tensor, n_init_steps: int = 15) -> None:
-        """
-        Initialize _u and _v with random vectors and run power method n_init_steps times.
-        weight_mat: (F, n, n) or (n, n)
-        """
-        with torch.no_grad():
-            if weight_mat.ndim == 2:
-                # single matrix -> unsqueeze a batch dim of size 1
-                W = weight_mat.unsqueeze(0)
-            elif weight_mat.ndim == 3:
-                W = weight_mat
-            else:
-                raise ValueError("weight_mat must be 2D or 3D")
+        self.initialized = False
 
-            F, n, _ = W.shape
-            # create random initial u, v
-            u = W.new_empty(F, n).normal_(0, 1)
-            v = W.new_empty(F, n).normal_(0, 1)
-            u = F.normalize(u, dim=-1, eps=self.eps)
-            v = F.normalize(v, dim=-1, eps=self.eps)
+    def initialize(self, weight_mat):
+        ndim = weight_mat.ndim
+        if self.dim >= ndim or self.dim < -ndim:
+            raise IndexError(
+                "Dimension out of range (expected to be in range of "
+                f"[-{ndim}, {ndim - 1}] but got {self.dim})"
+            )
 
-            # register buffers (replace any existing)
-            self._u = u
-            self._v = v
+        self.dim = self.dim if self.dim >= 0 else self.dim + ndim
 
-            # do a few power iterations to initialize
-            self._power_method(W, n_init_steps)
+        if ndim != 3:
+            raise ValueError(f"Expected weight to have 3 dimensions, but got {ndim}")
 
-    @torch.no_grad()
-    def _power_method(self, W: Tensor, n_iters: int) -> None:
-        """
-        Batched power iteration on W shape (F, n, n).
-        Updates self._u and self._v in-place (buffers).
-        """
-        assert W.ndim == 3
-        Fbatch = W.shape[0]
-        # Ensure buffers exist and have matching shapes
-        if self._u is None or self._v is None:
-            raise RuntimeError("Buffers not initialized; call initialize(weight_mat) first.")
+        b, h, w = weight_mat.size()
 
-        # loop n_iters (usually small)
-        for _ in range(n_iters):
-            # u <- normalize( W @ v )
-            # batched matvec: (F, n, n) @ (F, n) -> (F, n)
-            v = self._v  # shape (F, n)
-            u_new = torch.einsum("fij,fj->fi", W, v)
-            F.normalize(u_new, dim=-1, eps=self.eps, out=self._u)  # in-place update _u
+        u = weight_mat.new_empty(b, h).normal_(0, 1)
+        v = weight_mat.new_empty(b, w).normal_(0, 1)
+        self.register_buffer("_u", F.normalize(u, dim=1, eps=self.eps))
+        self.register_buffer("_v", F.normalize(v, dim=1, eps=self.eps))
 
-            # v <- normalize( W^H @ u )
-            u = self._u
-            # W^H: conj transpose along last two dims
-            v_new = torch.einsum("fji,fj->fi", W.conj(), u)  # uses conj transpose
-            F.normalize(v_new, dim=-1, eps=self.eps, out=self._v)  # in-place update _v
+    @torch.autograd.no_grad()
+    def _power_method(self, weight_mat: torch.Tensor, n_power_iterations: int) -> None:
+        # See original note at torch/nn/utils/spectral_norm.py
+        # NB: If `do_power_iteration` is set, the `u` and `v` vectors are
+        #     updated in power iteration **in-place**. This is very important
+        #     because in `DataParallel` forward, the vectors (being buffers) are
+        #     broadcast from the parallelized module to each module replica,
+        #     which is a new module object created on the fly. And each replica
+        #     runs its own spectral norm power iteration. So simply assigning
+        #     the updated vectors to the module this function runs on will cause
+        #     the update to be lost forever. And the next time the parallelized
+        #     module is replicated, the same randomly initialized vectors are
+        #     broadcast and used!
+        #
+        #     Therefore, to make the change propagate back, we rely on two
+        #     important behaviors (also enforced via tests):
+        #       1. `DataParallel` doesn't clone storage if the broadcast tensor
+        #          is already on correct device; and it makes sure that the
+        #          parallelized module is already on `device[0]`.
+        #       2. If the out tensor in `out=` kwarg has correct shape, it will
+        #          just fill in the values.
+        #     Therefore, since the same power iteration is performed on all
+        #     devices, simply updating the tensors in-place will make sure that
+        #     the module replica on `device[0]` will update the _u vector on the
+        #     parallelized module (by shared storage).
+        #
+        #    However, after we update `u` and `v` in-place, we need to **clone**
+        #    them before using them to normalize the weight. This is to support
+        #    backproping through two forward passes, e.g., the common pattern in
+        #    GAN training: loss = D(real) - D(fake). Otherwise, engine will
+        #    complain that variables needed to do backward for the first forward
+        #    (i.e., the `u` and `v` vectors) are changed in the second forward.
 
-    def forward(self, weight: Tensor) -> Tensor:
-        """
-        Compute spectral norm(s) for weight.
-        - If weight is (n,n): returns spectral norm scalar (real)
-        - If weight is (F,n,n): returns scalar max singular value across batch (real)
-          (if you want per-frequency values, change the final line to return sigma_per_freq)
-        """
-        if weight.ndim == 2:
-            # Single matrix path: convert to batched form for reuse
-            W = weight.unsqueeze(0)
-            auto_init = True
-        elif weight.ndim == 3:
-            W = weight
-            auto_init = False
-        else:
-            raise ValueError("weight must be 2D or 3D")
+        # Precondition
+        assert weight_mat.ndim > 1
 
-        Fbatch, n, _ = W.shape
+        if not self.initialized:
+            self.initialize(weight_mat)
+            n_power_iterations = self.default_n_iterations
 
-        # initialize buffers if missing or batch-size changed
-        if self._u is None or self._v is None or self._u.shape[0] != Fbatch:
-            # cost: this runs an initialization power-method (15 iters) -> relatively expensive
-            # but it ensures buffers have correct batch-size
-            self.initialize(W)
+        for _ in range(n_power_iterations):
+            # Spectral norm of weight equals to `u^T W v`, where `u` and `v`
+            # are the first left and right singular vectors.
+            # This power iteration produces approximations of `u` and `v`.
+            self._u = F.normalize(
+                torch.einsum('bij,bj->bi', weight_mat, self._v),
+                dim=1,
+                eps=self.eps,
+                out=self._u,
+            )
+            self._v = F.normalize(
+                torch.einsum('bji,bj->bi', weight_mat.transpose(-2, -1), self._u),
+                dim=1,
+                eps=self.eps,
+                out=self._v,
+            )
 
-        # run configured number of power iterations if training
-        if self.training and self.n_power_iterations > 0:
-            # small number of power iterations; updates _u and _v in-place
-            self._power_method(W, self.n_power_iterations)
+        self.initialized = True
 
-        # clone u,v for safe use (same reason as PyTorch implementation)
+    def forward(self, weight_mat: torch.Tensor) -> torch.Tensor:
+        if self.training:
+            self._power_method(weight_mat, self.n_power_iterations)
+        # See above on why we need to clone
         u = self._u.clone(memory_format=torch.contiguous_format)
         v = self._v.clone(memory_format=torch.contiguous_format)
-
-        # compute W @ v (batched matvec)
-        Wv = torch.einsum("fij,fj->fi", W, v)  # (F, n)
-        # compute sigma per frequency: <u, W v>
-        # note: u can be complex; use conj for left vector
-        sigma_per_freq = torch.sum(u.conj() * Wv, dim=-1)  # (F,) complex scalars
-        # absolute value -> real singular values
-        sigma_vals = sigma_per_freq.abs()
-
-        # return the maximum singular value across frequencies (scalar)
-        sigma_max = sigma_vals.max()
-        # If you prefer per-frequency values, return sigma_vals instead.
-        return sigma_max
+        # The proper way of computing this should be through F.bilinear, but
+        # it seems to have some efficiency issues:
+        # https://github.com/pytorch/pytorch/issues/58093
+        sigma = torch.linalg.vecdot(u, torch.einsum('bij,bj->bi', weight_mat, v))
+        return sigma
