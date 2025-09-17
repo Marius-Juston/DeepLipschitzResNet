@@ -129,8 +129,10 @@ class SpectralNorm(torch.nn.Module):
             n_power_iterations: int = 1,
             dim: int = 0,
             eps: float = 1e-12,
+            default_n_iterations: int = 15
     ) -> None:
         super().__init__()
+        self.default_n_iterations = default_n_iterations
         ndim = weight.ndim
         if dim >= ndim or dim < -ndim:
             raise IndexError(
@@ -143,6 +145,13 @@ class SpectralNorm(torch.nn.Module):
                 "Expected n_power_iterations to be positive, but "
                 f"got n_power_iterations={n_power_iterations}"
             )
+
+        if default_n_iterations < 1:
+            raise ValueError(
+                "Expected default_n_iterations to be greater than 1, but "
+                f"got n_power_iterations={default_n_iterations}"
+            )
+
         self.dim = dim if dim >= 0 else dim + ndim
         self.eps = eps
         if ndim > 1:
@@ -158,10 +167,8 @@ class SpectralNorm(torch.nn.Module):
 
             # Start with u, v initialized to some reasonable values by performing a number
             # of iterations of the power method
-            self.initialize(weight_mat)
 
-    def initialize(self, weight_mat: torch.Tensor) -> None:
-        self._power_method(weight_mat, 15)
+        self.initialized = False
 
     def _reshape_weight_to_matrix(self, weight: torch.Tensor) -> torch.Tensor:
         # Precondition
@@ -211,6 +218,9 @@ class SpectralNorm(torch.nn.Module):
         # Precondition
         assert weight_mat.ndim > 1
 
+        if not self.initialized:
+            n_power_iterations = self.default_n_iterations
+
         for _ in range(n_power_iterations):
             # Spectral norm of weight equals to `u^T W v`, where `u` and `v`
             # are the first left and right singular vectors.
@@ -227,6 +237,8 @@ class SpectralNorm(torch.nn.Module):
                 eps=self.eps,
                 out=self._v,  # type: ignore[has-type]
             )
+
+        self.initialized = True
 
     def forward(self, weight: torch.Tensor) -> torch.Tensor:
         if weight.ndim == 1:

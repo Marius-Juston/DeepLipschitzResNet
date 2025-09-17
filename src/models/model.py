@@ -43,8 +43,6 @@ class DeepLipschitzLinearResNet(nn.Module):
 
         self.generate_layers()
 
-        self.first = False
-
     def reset_parameters(self) -> None:
         # Find a better initialization scheme for the current formulation of the system
         self.A.reset_parameters()
@@ -82,9 +80,6 @@ class DeepLipschitzLinearResNet(nn.Module):
 
     def compute_b(self, x, sigma_lower, a_weight, prev_r):
         inner_inverse = torch.cholesky_inverse(prev_r, upper=False)
-
-        if self.first:
-            self.spectral_norm.initialize(inner_inverse)
 
         max_singular = self.spectral_norm(inner_inverse)
 
@@ -126,8 +121,6 @@ class DeepLipschitzLinearResNet(nn.Module):
             current_input = self.activation(current_input)
 
         second, b_weight = self.compute_b(current_input, sigma_lower, a_weight, self.layers[-1].omega_r)
-
-        self.first = False
 
         return first + second
 
