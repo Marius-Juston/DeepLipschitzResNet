@@ -1,13 +1,11 @@
-import math
 from typing import Union, List, Sequence
 
 import torch
 from torch import nn
-from torch.nn import ModuleList, Module, ReLU, Parameter, init
+from torch.nn import ModuleList, Module, ReLU
 
 from models.layers import FirstLipschitzLinearLayer, LastLipschitzLinearLayer, InnerWeightLipschitzLinearLayer, \
-    LinearLipschitz
-from utils import SpectralNorm
+    LinearLipschitz, SpectralNorm
 
 
 class DeepLipschitzLinearResNet(nn.Module):
@@ -60,7 +58,8 @@ class DeepLipschitzLinearResNet(nn.Module):
                                            constant_sq=self.lipschitz_constant_sq, **self.factory_kwargs)
 
         self.B = LastLipschitzLinearLayer(in_features=self.layer_widths[-1], out_features=self.out_features,
-                                          bias=False, # Don't need bias on both A and B since they would be doing the same thing
+                                          bias=False,
+                                          # Don't need bias on both A and B since they would be doing the same thing
                                           **self.factory_kwargs)
 
         layer = []
