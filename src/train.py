@@ -60,10 +60,10 @@ def train_one_epoch(training_loader, optimizer, model, loss_fn, epoch_index, tb_
     return last_loss
 
 
-def train(x, y, model: DeepLipschitzLinearResNet, batch_size=64, lr=1e-3, termination_error=5e-3):
+def train(x, y, model: DeepLipschitzLinearResNet, learning_prefix='sine', batch_size=64, lr=1e-3, termination_error=5e-3):
     # Initializing in a separate cell so we can easily add more epochs to the same run
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    save_folder = '../runs/sin_trainer_{}'.format(timestamp)
+    save_folder = f'../runs/{learning_prefix}_trainer_{timestamp}'
 
     writer = SummaryWriter(save_folder)
 
@@ -179,7 +179,7 @@ def main():
     y = torch.sin(x + variation) * 0.5  # + x + 2 + variation
     # y = torch.sin(x + variation) * 0.5  + 0.25*  x + 2 + variation
 
-    train(x, y, model, batch_size=batch, termination_error=1e-4)
+    train(x, y, model, learning_prefix='general', batch_size=batch, termination_error=1e-4)
 
 
 def sine_training():
@@ -216,7 +216,7 @@ def sine_training():
 
     y = torch.sin(x + variation) * 0.5
 
-    train(x, y, model, batch_size=batch, termination_error=1e-4)
+    train(x, y, model, learning_prefix='sine', batch_size=batch, termination_error=1e-4)
 
 
 if __name__ == '__main__':
