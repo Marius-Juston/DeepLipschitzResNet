@@ -13,7 +13,8 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 import utils
 from models.layers import LipschitzLinearLayer
-from models.model import DeepLipschitzLinearResNet
+import models.model
+import models.new_model
 
 DEFAULT_DPI = 600
 
@@ -98,7 +99,7 @@ def main_real(A, B, Cs, Ls, Lms, dimensions, device=None):
     return M
 
 
-def extract_lmi_constants(model: DeepLipschitzLinearResNet):
+def extract_lmi_constants_deep_resnet_old(model: models.model.DeepLipschitzLinearResNet):
     a_weight = model.A.compute_weight()
 
     assert torch.linalg.matrix_norm(a_weight, ord=2) <= model.lipschitz_constant
@@ -140,6 +141,62 @@ def extract_lmi_constants(model: DeepLipschitzLinearResNet):
     b_weight = model.B.compute_weight(a_sigma_a_t, left=True)
 
     return a_weight, b_weight, Cs, Ls, Lms, dimensions
+
+
+def extract_lmi_constants_deep_resnet_new(model):
+    x = torch.empty((1, model.in_features), device=model.device, dtype=model.dtype)
+
+    first, a_weight = model.A(x)
+
+    gamma = model.A.identity
+    sigma_lower = None
+
+    prev_layer = model.A
+
+    current_input = x
+
+    Cs = []
+    Ls = []
+    Lms = []
+    dimensions = [
+        a_weight.shape[1],
+    ]
+
+    for layer in model.layers:
+        current_input, c_weight = layer(current_input, prev_layer.omega_sqrt())
+
+        temp = prev_layer.omega_sqrt()
+
+        T = gamma @ temp
+
+        if sigma_lower is None:
+            sigma_lower = T
+        else:
+            # Instead of using custom CholeskyRankK update this is computationally much faster
+            sigma_lower = torch.linalg.cholesky(sigma_lower @ sigma_lower.T + T @ T.T, upper=False)
+            # sigma_lower = cholesky_rank_k(sigma_lower, T)
+
+        gamma = gamma @ prev_layer.omega_ @ c_weight.T
+
+        prev_layer = layer
+
+        Cs.append(c_weight)
+        Ls.append(layer.identity_out)
+        Lms.append([1, 0])
+        dimensions.append(c_weight.shape[0])
+
+    second, b_weight = model.compute_b(current_input, sigma_lower, a_weight)
+
+    return a_weight, b_weight, Cs, Ls, Lms, dimensions
+
+
+
+def extract_lmi_constants(model):
+    if isinstance(model, models.model.DeepLipschitzLinearResNet):
+        return extract_lmi_constants_deep_resnet_old(model)
+
+    if isinstance(model, models.new_model.DeepLipschitzLinearResNet):
+        return extract_lmi_constants_deep_resnet_new(model)
 
 
 def plot_matrix(M: torch.Tensor, fig_name: str = None, dpi: int = DEFAULT_DPI, mask: bool = True,
@@ -321,14 +378,14 @@ def plot_zoomed_in_system(A, B, fig_name: str, dpi=DEFAULT_DPI):
     fig.savefig(f"{fig_name}.png", dpi=dpi)
 
 
-def model_artifacting(vals=None, fig_name: str = None, dpi=DEFAULT_DPI, device=None):
+def model_artifacting(model_fn, vals=None, fig_name: str = None, dpi=DEFAULT_DPI, device=None):
     if vals is None:
         vals = [2, 4, 8, 16]
 
     fig, axs = plt.subplots(ncols=2, nrows=2, figsize=(8, 8))
 
     for ax, im in zip(axs.flatten(), vals):
-        model = DeepLipschitzLinearResNet(im, im, (32, 64, 128), device=device)
+        model = model_fn(im, im, (32, 64, 128), device=device)
 
         with torch.no_grad():
             a_weight, b_weight, Cs, Ls, Lms, dimensions = extract_lmi_constants(model)
@@ -421,13 +478,15 @@ def main():
     output_features = input_features
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-    model_artifacting(fig_name=os.path.join(figs_folder, "b_artifacting_grid"))
+    model_fnc = models.new_model.DeepLipschitzLinearResNet
+
+    model_artifacting(model_fnc, fig_name=os.path.join(figs_folder, "b_artifacting_grid"), device=device)
 
     test_sqrt(device)
 
     torch.no_grad()
 
-    model = DeepLipschitzLinearResNet(input_features, output_features, (32, 64, 256, 256), device=device)
+    model = model_fnc(input_features, output_features, (32, 64, 256, 256), device=device)
     # model = DeepLipschitzLinearResNet(input_features, 2, (32, 64, 128), device=device)
 
     # save_folder = '/home/mjuston2/Documents/DeepLipschitzResNet/runs/sin_trainer_20250828_155950'
