@@ -3,12 +3,13 @@ from datetime import datetime
 
 import torch
 from matplotlib import pyplot as plt
+from prettytable import PrettyTable
 from torch.nn import MSELoss
 from torch.profiler import profile, ProfilerActivity
 from torch.utils.data import TensorDataset, DataLoader
 from torch.utils.tensorboard import SummaryWriter
 
-from models.model import DeepLipschitzLinearResNet
+from models.new_model import DeepLipschitzLinearResNet, DeepLipschitzSequential
 
 DPI = 600
 
@@ -134,7 +135,11 @@ def profile_model():
     input_features = 20
     output_features = 20
 
-    model = DeepLipschitzLinearResNet(input_features, output_features, (32, 256, 1024), device=device)
+    # model = DeepLipschitzLinearResNet(input_features, output_features, (32, 256, 1024), device=device)
+
+    model = DeepLipschitzSequential(input_features, output_features, (256, 256, 256, 256, 256, 256, 256, 256, 256),
+                                    device=device)
+    # model = SLLSequential(input_features, output_features, (256, 256, 256, 256, 256, 256, 256, 256, 256), device=device)
 
     model = torch.compile(model, mode='max-autotune')
     # model = torch.compile(model, mode='reduce-overhead')
@@ -189,7 +194,10 @@ def main():
     input_features = 1
     output_features = input_features
 
-    model = DeepLipschitzLinearResNet(input_features, output_features, (32, 256, 1024, 1024), device=device)
+    model = DeepLipschitzLinearResNet(input_features, output_features, (32, 32, 32, 32, 32), device=device)
+    # model = DeepLipschitzSequential(input_features, output_features, (256, 256, 256, 256, 256, 256, 256, 256, 256), device=device)
+    # model = SLLSequential(input_features, output_features, (256, 256, 256, 256, 256, 256, 256, 256, 256), device=device)
+    # model = DeepLipschitzSequential(input_features, output_features, (32, 256, 1024, 1024), device=device)
 
     check_gradients = False
 
@@ -202,7 +210,7 @@ def main():
             p.register_post_accumulate_grad_hook(function)
 
     # model = torch.compile(model)
-    # model = torch.compile(model, mode='max-autotune')
+    model = torch.compile(model, mode='max-autotune')
 
     print(model)
     print(print_num_parameters(model))
@@ -213,11 +221,49 @@ def main():
 
     variation = torch.arange(input_features, device=device)
 
-    y = torch.sin(x + variation) * 0.5 + 3*x + 2 + variation
+    y = torch.sin(x + variation) * 0.5 # + x + 2 + variation
+    # y = torch.sin(x + variation) * 0.5  + 0.25*  x + 2 + variation
 
-    train(x, y, model, batch_size=batch)
+    train(x, y, model, batch_size=batch, termination_error=1e-4)
+
+def sine_training():
+    torch.manual_seed(0)
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+    print("Running on device", device)
+
+    input_features = 1
+    output_features = input_features
+
+    model = DeepLipschitzLinearResNet(input_features, output_features, (32, 32, 32, 32, 32), device=device)
+
+    check_gradients = False
+
+    if check_gradients:
+        for name, p in model.named_parameters():
+            def function(grad):
+                if grad.isnan().any():
+                    print("GRADIENT IS NAN IN {}".format(name))
+
+            p.register_post_accumulate_grad_hook(function)
+
+    model = torch.compile(model, mode='max-autotune')
+
+    print(model)
+    print(print_num_parameters(model))
+
+    batch = 64
+
+    x = torch.linspace(-10, 10, 100000 * input_features, device=device).reshape((-1, input_features))
+
+    variation = torch.arange(input_features, device=device)
+
+    y = torch.sin(x + variation) * 0.5
+
+    train(x, y, model, batch_size=batch, termination_error=1e-4)
 
 
 if __name__ == '__main__':
     # profile_model()
+    # sine_training()
     main()
