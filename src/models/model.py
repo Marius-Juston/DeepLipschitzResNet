@@ -17,7 +17,7 @@ class DeepLipschitzLinearResNet(nn.Module):
 
     def __init__(self, in_features: int, out_features: int, layers_widths: Sequence[int],
                  activation: Union[Module, List[Module]] = None, lipschitz_constant: float = 1.0, bias: bool = True,
-                 num_iterations:int = 10,
+                 num_iterations: int = 10,
                  device: Union[str, torch.device] = 'cuda', dtype=None) -> None:
         super().__init__()
 
@@ -116,7 +116,6 @@ class DeepLipschitzLinearResNet(nn.Module):
 
         return second_s, b_weight_s
 
-
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         first, a_weight, d_sqrt, d_inv = self.A(x)
 
@@ -178,7 +177,6 @@ class DeepLipschitzSequential(nn.Module):
             self.activation = activation
 
         self.generate_layers()
-
 
     def reset_parameters(self) -> None:
         for layer in self.layers:

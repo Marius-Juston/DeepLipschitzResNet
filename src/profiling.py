@@ -3,6 +3,7 @@ from torch.profiler import profile, ProfilerActivity
 
 from models.model import DeepLipschitzSequential
 
+
 def profile_model():
     torch.manual_seed(0)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')

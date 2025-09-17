@@ -1,10 +1,11 @@
 from typing import Tuple, Optional, Any
 
 import torch
+import torch.nn.functional as F
 from torch import Tensor, cholesky_inverse
 from torch.autograd import Function
 from torch.linalg import eigh
-import torch.nn.functional as F
+
 
 # @torch.compile
 def matrix_inv_square_root(x: Tensor) -> Tensor:
@@ -76,14 +77,15 @@ def get_largest_singular_value_power_iteration(matrix: Tensor, num_iterations: i
     largest_eigenvalue = (v.T @ ata @ v) / (v.T @ v)
     return torch.sqrt(largest_eigenvalue.maximum(torch.tensor(0.0, device=matrix.device))), v
 
+
 # Stollen from https://docs.pytorch.org/docs/stable/generated/torch.nn.utils.parametrizations.spectral_norm.html
 class SpectralNorm(torch.nn.Module):
     def __init__(
-        self,
-        weight: torch.Tensor,
-        n_power_iterations: int = 1,
-        dim: int = 0,
-        eps: float = 1e-12,
+            self,
+            weight: torch.Tensor,
+            n_power_iterations: int = 1,
+            dim: int = 0,
+            eps: float = 1e-12,
     ) -> None:
         super().__init__()
         ndim = weight.ndim
@@ -115,7 +117,7 @@ class SpectralNorm(torch.nn.Module):
             # of iterations of the power method
             self.initialize(weight_mat)
 
-    def initialize(self, weight_mat: torch.Tensor ) -> None:
+    def initialize(self, weight_mat: torch.Tensor) -> None:
         self._power_method(weight_mat, 15)
 
     def _reshape_weight_to_matrix(self, weight: torch.Tensor) -> torch.Tensor:

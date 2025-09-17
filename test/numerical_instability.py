@@ -4,8 +4,8 @@ from matplotlib import pyplot as plt
 
 def func(a: np.ndarray, b: np.ndarray, g, n: int):
     n1 = 2 * (g + 1) ** 3 * ((a ** 2 * b ** 2 * (g + 1) ** 2) ** n + a ** 2 * b ** 2 * (
-                -(a ** 2 * b ** 2 * (g + 1) ** 2) ** n + g * (g + 2) * ((a * b) ** (2 * n) - 1) + (a * b) ** (
-                    2 * n)) - (a * b) ** (2 * n))
+            -(a ** 2 * b ** 2 * (g + 1) ** 2) ** n + g * (g + 2) * ((a * b) ** (2 * n) - 1) + (a * b) ** (
+            2 * n)) - (a * b) ** (2 * n))
     d1 = (g + 2) * (a ** 2 * b ** 2 * (g + 1) ** 2 - 1)
 
     n2 = a * (a + 1) * ((a * b) ** (2 * n) - 1)

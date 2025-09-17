@@ -1,5 +1,6 @@
 import torch
 
+
 # https://en.wikipedia.org/wiki/Cholesky_decomposition#Rank-one_update
 # @torch.compile
 def rank_1_update(L: torch.Tensor, x: torch.Tensor):
@@ -14,11 +15,12 @@ def rank_1_update(L: torch.Tensor, x: torch.Tensor):
         s = x[k] / L[k, k]
         L[k, k] = r
 
-        if k + 1  < n:
+        if k + 1 < n:
             L[k + 1: n, k] = (L[k + 1: n, k] + s * x[k + 1: n]) / c
             x[k + 1: n] = c * x[k + 1: n] - s * L[k + 1: n, k]
 
     return L
+
 
 # @torch.compile
 def rank_k_update(L: torch.Tensor, M: torch.Tensor):
@@ -66,7 +68,7 @@ def main():
 
     print(torch.dist(estimated_val, true_val))
 
-    expected_eigenvalues = eigenvalues_a.double() + eigenvalues.double()**2
+    expected_eigenvalues = eigenvalues_a.double() + eigenvalues.double() ** 2
 
     estimated_eigs = torch.linalg.eigvalsh(estimated_val.double())
     print(torch.dist(estimated_eigs, expected_eigenvalues))
