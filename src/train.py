@@ -5,11 +5,10 @@ import torch
 from matplotlib import pyplot as plt
 from prettytable import PrettyTable
 from torch.nn import MSELoss
-from torch.profiler import profile, ProfilerActivity
 from torch.utils.data import TensorDataset, DataLoader
 from torch.utils.tensorboard import SummaryWriter
 
-from models.new_model import DeepLipschitzLinearResNet, DeepLipschitzSequential
+from models.new_model import DeepLipschitzLinearResNet
 
 DPI = 600
 
@@ -127,50 +126,6 @@ def train(x, y, model: DeepLipschitzLinearResNet, batch_size=64, lr=1e-3, termin
         epoch_number += 1
 
 
-def profile_model():
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
-    print("Running on device", device)
-
-    input_features = 20
-    output_features = 20
-
-    # model = DeepLipschitzLinearResNet(input_features, output_features, (32, 256, 1024), device=device)
-
-    model = DeepLipschitzSequential(input_features, output_features, (256, 256, 256, 256, 256, 256, 256, 256, 256),
-                                    device=device)
-    # model = SLLSequential(input_features, output_features, (256, 256, 256, 256, 256, 256, 256, 256, 256), device=device)
-
-    model = torch.compile(model, mode='max-autotune')
-    # model = torch.compile(model, mode='reduce-overhead')
-    # model = torch.compile(model)
-
-    print(model)
-
-    torch.manual_seed(0)
-
-    batch = 64
-
-    x = torch.linspace(-10, 10, batch * input_features, device=device).reshape(batch, -1)
-
-    activities = [ProfilerActivity.CPU]
-    if torch.cuda.is_available():
-        activities += [ProfilerActivity.CUDA]
-
-    for i in range(10):
-        model(x)
-
-    with profile(activities=activities, record_shapes=True) as prof:
-        model(x)
-
-    print(
-        prof.key_averages(group_by_input_shape=True).table(
-            sort_by="cpu_time_total", row_limit=10
-        )
-    )
-    prof.export_chrome_trace("trace.json")
-
-
 def print_num_parameters(model):
     table = PrettyTable(["Modules", "Parameters"])
     total_params = 0
@@ -221,10 +176,11 @@ def main():
 
     variation = torch.arange(input_features, device=device)
 
-    y = torch.sin(x + variation) * 0.5 # + x + 2 + variation
+    y = torch.sin(x + variation) * 0.5  # + x + 2 + variation
     # y = torch.sin(x + variation) * 0.5  + 0.25*  x + 2 + variation
 
     train(x, y, model, batch_size=batch, termination_error=1e-4)
+
 
 def sine_training():
     torch.manual_seed(0)
@@ -264,6 +220,5 @@ def sine_training():
 
 
 if __name__ == '__main__':
-    # profile_model()
     # sine_training()
     main()
