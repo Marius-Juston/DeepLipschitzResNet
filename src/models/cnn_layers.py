@@ -155,6 +155,7 @@ class InnerWeightLipschitzConvLayer(AbstractLipschitzConvLayer):
     """
     Inner layer: uses prev_d_sqrt to normalize; now returns Wfreq_norm so the ResNet can use it.
     """
+    omega_r: torch.Tensor
 
     def forward(self, input: Tensor, prev_d_sqrt: Tensor) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
         """
@@ -212,7 +213,7 @@ class LastLipschitzConvLayer(AbstractLipschitzConvLayer):
 
         # normalize with prev_r: solve prev_r * X  = Wf  => X = @ prev_r^{-1} @ Wf
         # left=True: prev * X  = Wf -> X = prev^{-1} @ Wf
-        Wnorm_f = self.constant  *torch.linalg.solve_triangular(prev_r, Wnorm_f, upper=True, left=True)
+        Wnorm_f = self.constant * torch.linalg.solve_triangular(prev_r, Wnorm_f, upper=True, left=True)
 
         # Wnorm_f is already Wf_normed @ R^{-1}, and we keep it as the per-frequency normalized matrix
         # reconstruct spatial kernel

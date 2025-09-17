@@ -10,6 +10,10 @@ from utils import conjt
 
 
 class DeepLipschitzConvResNet(nn.Module):
+    A: FirstLipschitzConvLayer
+    B: LastLipschitzConvLayer
+    layers: Sequence[InnerWeightLipschitzConvLayer]
+
     def __init__(
             self,
             in_channels: int,
@@ -162,7 +166,7 @@ class DeepLipschitzConvResNet(nn.Module):
 
         # iterate inner layers; each inner returns its Wfreq_norm so we can use it for gamma update
         for layer in self.layers:
-            T = torch.matmul(gamma, d_inv)  # (F, n, n)
+            T = torch.matmul(gamma,  d_inv)  # (F, n, n)
             current_input, c_spatial, c_freq_norm, d_sqrt, d_inv = layer.forward(current_input, d_sqrt)
             # update sigma_lower via rank-k cholesky update in freq domain
             sigma_lower = self._cholesky_rank_k_freq(sigma_lower, T)
