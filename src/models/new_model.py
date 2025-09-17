@@ -6,7 +6,8 @@ from torch import nn
 from torch.nn import ModuleList, Module, ReLU, Parameter, init
 
 import utils
-from models.layer_new import FirstLipschitzLinearLayer, LastLipschitzLinearLayer, InnerWeightLipschitzLinearLayer
+from models.layer_new import FirstLipschitzLinearLayer, LastLipschitzLinearLayer, InnerWeightLipschitzLinearLayer, \
+    LinearLipschitz
 from utils import SpectralNorm
 
 
@@ -152,3 +153,67 @@ class DeepLipschitzLinearResNet(nn.Module):
         self.first = False
 
         return first + second + self.bias
+
+
+class DeepLipschitzSequential(nn.Module):
+    layers: ModuleList
+
+    def __init__(self, in_features: int, out_features: int, layers_widths: Sequence[int],
+                 activation: Union[Module, List[Module]] = None, lipschitz_constant: float = 1.0,
+                 device: Union[str, torch.device] = 'cuda', dtype=None) -> None:
+        super().__init__()
+
+        assert len(layers_widths) >= 1, "This deep network assumes that the number of layers is greater "
+        assert in_features > 0, "The input width needs to be larger than 0"
+        assert out_features > 0, "The output width needs to be larger than 0"
+
+        self.lipschitz_constant = lipschitz_constant
+        self.lipschitz_constant_sq = lipschitz_constant * lipschitz_constant
+
+        self.out_features = out_features
+        self.in_features = in_features
+        self.layer_widths = layers_widths
+
+        self.dtype = dtype
+        self.device = device
+
+        self.factory_kwargs = {"device": device, "dtype": dtype}
+
+        if activation is None:
+            self.activation = ReLU()
+        else:
+            self.activation = activation
+
+        self.generate_layers()
+
+
+    def reset_parameters(self) -> None:
+        for layer in self.layers:
+            layer.reset_parameters()
+
+    def generate_layers(self) -> None:
+        layer = []
+
+        prev = self.in_features
+
+        for i, out_features in enumerate(self.layer_widths):
+            activation = self.activation
+            constant = 2.0
+
+            layer.append(
+                LinearLipschitz(prev, out_features, constant_sq=constant, activation=activation, **self.factory_kwargs))
+            prev = out_features
+
+        layer.append(
+            LinearLipschitz(prev, self.out_features, constant_sq=1.0, activation=None, **self.factory_kwargs))
+
+        self.layers = ModuleList(layer)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        current_input = x
+        d_sqrt = self.lipschitz_constant * self.layers[0].identity
+
+        for layer in self.layers:
+            current_input, d_sqrt = layer(current_input, d_sqrt)
+
+        return current_input
