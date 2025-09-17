@@ -5,8 +5,6 @@ import torch.nn.functional as F
 from torch import nn, Tensor
 from torch.nn.modules.utils import _pair
 
-from utils import conjt
-
 
 def _center_and_pad_kernel(kernel: Tensor, H: int, W: int) -> Tensor:
     out_ch, in_ch, kH, kW = kernel.shape
@@ -64,12 +62,10 @@ class AbstractLipschitzConvLayer(nn.Conv2d):
         )
 
     def sum_weight(self, Wf, transpose: bool = False):
-        w_transpose = conjt(Wf)
-
         if transpose:
-            return self.identity + torch.matmul(w_transpose, Wf)
+            return self.identity + torch.matmul(Wf.mH, Wf)
         else:
-            return self.identity_out + torch.matmul(Wf, w_transpose)
+            return self.identity_out + torch.matmul(Wf, Wf.mH)
 
     def _compute_cholesky_and_normalize(self, Wf: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
         # Wf: (F, out, in) complex

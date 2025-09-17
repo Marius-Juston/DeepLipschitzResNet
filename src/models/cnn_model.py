@@ -1,12 +1,13 @@
 from typing import Sequence, Union, Optional, Tuple, List
 
 import torch
-from torch import nn, Tensor
+import torch.nn.functional as F
+from torch import Tensor
+from torch import nn
 from torch.nn import ModuleList, ReLU
 from torch.nn.common_types import _size_2_t
 
 from models.cnn_layers import InnerWeightLipschitzConvLayer, LastLipschitzConvLayer, FirstLipschitzConvLayer
-from utils import conjt
 
 
 class DeepLipschitzConvResNet(nn.Module):
@@ -113,8 +114,8 @@ class DeepLipschitzConvResNet(nn.Module):
             return T
         else:
             prev = prev_sigma_lower
-            S_prev = torch.matmul(prev, conjt(prev))
-            S_t = torch.matmul(T, conjt(T))
+            S_prev = torch.matmul(prev, prev.mH)
+            S_t = torch.matmul(T, T.mH)
             S = S_prev + S_t
             L = torch.linalg.cholesky(S, upper=False)
             return L
@@ -134,7 +135,7 @@ class DeepLipschitzConvResNet(nn.Module):
         else:
             left = torch.matmul(a_weight_freq, sigma_lower)
 
-        scaling = self.B.identity_out + torch.matmul(left, conjt(left))
+        scaling = self.B.identity_out + torch.matmul(left, left.mH)
 
         R_sigma = torch.linalg.cholesky(scaling, upper=True)
 
@@ -158,14 +159,14 @@ class DeepLipschitzConvResNet(nn.Module):
 
         # iterate inner layers; each inner returns its Wfreq_norm so we can use it for gamma update
         for layer in self.layers:
-            T = torch.matmul(gamma,  d_inv)  # (F, n, n)
+            T = torch.matmul(gamma, d_inv)  # (F, n, n)
             current_input, c_spatial, c_freq_norm, d_sqrt, d_inv = layer.forward(current_input, d_sqrt)
             # update sigma_lower via rank-k cholesky update in freq domain
             sigma_lower = self._cholesky_rank_k_freq(sigma_lower, T)
             # update gamma using the frequency-normalized inner weight returned by the layer (no recompute)
             # c_freq_norm has shape (F, out, in) where in matches gamma's second dim
             # we want gamma = T @ c_freq_norm^H
-            gamma = torch.matmul(T, conjt(c_freq_norm))
+            gamma = torch.matmul(T, c_freq_norm.mH)
             current_input = self.activation(current_input)
 
         # obtain prev_r from last inner layer (omega_r stored on that layer in forward)

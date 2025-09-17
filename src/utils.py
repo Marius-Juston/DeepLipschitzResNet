@@ -171,12 +171,3 @@ def cholesky_rank_k(L: torch.Tensor, M: torch.Tensor):
     Wrapper to apply the custom Function; this is the user-facing call.
     """
     return CholeskyRankKFunction.apply(L, M)
-
-
-def conjt(A: torch.Tensor):
-    """
-    Performs the conjugate transpose of a matrix
-    :param A:
-    :return:
-    """
-    return A.conj().transpose(-2, -1)
