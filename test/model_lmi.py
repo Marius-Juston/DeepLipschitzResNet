@@ -150,9 +150,9 @@ def extract_lmi_constants(model):
 
 
 def plot_matrix(M: torch.Tensor, fig_name: str = None, dpi: int = DEFAULT_DPI, mask: bool = True,
-                normalize: bool = True, ax: Optional[Axes] = None, eps: float = 1e-6):
+                normalize: bool = True, ax: Optional[Axes] = None):
     if mask:
-        masked_zerp = torch.abs(M) < eps
+        masked_zerp = torch.abs(M) <= torch.finfo(M.dtype).eps
         no_mask = M != 0
 
         min, max = M[no_mask].min(), M[no_mask].max()
