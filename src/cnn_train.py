@@ -7,9 +7,11 @@ import random
 import torch
 import torch.nn as nn
 import torch.optim as optim
+from torch.nn import Flatten
 from torch.utils.data import TensorDataset, DataLoader
 
 from models.cnn_model import DeepLipschitzConvResNet
+from models.model import DeepLipschitzLinearResNet
 
 # ---- assume these exist in the environment (from earlier messages) ----
 # from your_module import DeepLipschitzConvResNet, SpectralNorm
@@ -58,6 +60,22 @@ class SmallConvBaseline(nn.Module):
     def forward(self, x):
         z = self.conv(x)
         z = z.view(z.shape[0], -1)
+        return self.fc(z)
+
+
+class LipschitzNetwork(nn.Module):
+    def __init__(self, in_channels=1, hidden=32):
+        super().__init__()
+        self.conv = nn.Sequential(
+            DeepLipschitzConvResNet(
+                in_channels=in_channels, out_channels=1, layers_widths=[hidden, hidden],
+                kernel_size=3, padding=1, device=device, dtype=torch.float32
+            ), Flatten()
+        )
+        self.fc = DeepLipschitzLinearResNet(256, 1, [hidden, hidden])
+
+    def forward(self, x):
+        z = self.conv(x)
         return self.fc(z)
 
 
@@ -150,15 +168,9 @@ def run_experiment(device='cpu'):
 
     # instantiate Lipschitz conv networks using the DeepLipschitzConvResNet defined earlier
     # choose a modest width and depth
-    lipschitz_model1 = DeepLipschitzConvResNet(
-        in_channels=C, out_channels=1, layers_widths=[16, 16],
-        kernel_size=3, padding=1, device=device, dtype=torch.float32
-    )
+    lipschitz_model1 = LipschitzNetwork()
 
-    lipschitz_model2 = DeepLipschitzConvResNet(
-        in_channels=C, out_channels=1, layers_widths=[16, 16],
-        kernel_size=3, padding=1, device=device, dtype=torch.float32
-    )
+    lipschitz_model2 = LipschitzNetwork()
 
     # Warm-up forward to populate internal triangular factors (omega_r) and frequency shapes
     # Use a small mini-batch from training data
