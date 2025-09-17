@@ -42,30 +42,11 @@ def _unbatchify_freq(M_flat: Tensor, H: int, Wf: int) -> Tensor:
     return M  # (out, in, H, Wf)
 
 
-def _compute_cholesky_and_normalize(Wf: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
-    # Wf: (F, out, in) complex
-    F, out_ch, in_ch = Wf.shape
-    device = Wf.device
-    dtype = Wf.dtype
-
-    W_conj_t = Wf.conj().permute(0, 2, 1)  # (F, in, out)
-    A = torch.matmul(W_conj_t, Wf)  # (F, in, in)
-    I = torch.eye(in_ch, dtype=dtype, device=device)
-    A = A + I
-
-    # L lower triangular: A = L @ L^*
-    L = torch.linalg.cholesky(A)  # (F, in, in)
-    R = conjt(L)  # upper triangular such that A = R^* R
-
-    # Solve W @ R^{-1}: solve R X = W  -> X = W @ R^{-1}
-    # torch.linalg.solve_triangular supports batched solves: here left=False solves X R = W -> X = W R^{-1}
-    Wnorm = torch.linalg.solve_triangular(R, Wf, upper=True, left=False)
-    return Wnorm, R, A
-
-
 class AbstractLipschitzConvLayer(nn.Conv2d):
     constant_sq: torch.Tensor
     constant: torch.Tensor
+    identity: torch.Tensor
+    identity_out: torch.Tensor
 
     def __init__(self, in_channels, out_channels, kernel_size, bias=True, constant_sq: float = 1.0, **conv_kwargs):
         super().__init__(in_channels=in_channels, out_channels=out_channels, kernel_size=kernel_size, bias=bias,
@@ -73,6 +54,34 @@ class AbstractLipschitzConvLayer(nn.Conv2d):
         factory_kwargs = {"device": self.weight.device, "dtype": self.weight.dtype}
         self.register_buffer("constant_sq", torch.tensor(constant_sq, **factory_kwargs))
         self.register_buffer("constant", torch.sqrt(self.constant_sq))
+
+        self.register_buffer(
+            "identity", torch.eye(in_channels, **factory_kwargs)
+        )
+
+        self.register_buffer(
+            "identity_out", torch.eye(out_channels, **factory_kwargs)
+        )
+
+    def sum_weight(self, Wf, transpose: bool = False):
+        w_transpose = conjt(Wf)
+
+        if transpose:
+            return self.identity + torch.matmul(w_transpose, Wf)
+        else:
+            return self.identity_out + torch.matmul(Wf, w_transpose)
+
+    def _compute_cholesky_and_normalize(self, Wf: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
+        # Wf: (F, out, in) complex
+        A = self.sum_weight(Wf, transpose=True)
+
+        # upper triangular such that A = R^* R
+        R = torch.linalg.cholesky(A, upper=True)  # (F, in, in)
+
+        # Solve W @ R^{-1}: solve R X = W  -> X = W @ R^{-1}
+        # torch.linalg.solve_triangular supports batched solves: here left=False solves X R = W -> X = W R^{-1}
+        Wnorm = torch.linalg.solve_triangular(R, Wf, upper=True, left=False)
+        return Wnorm, R, A
 
     def _weight_fft_for_input(self, H: int, W: int) -> Tensor:
         pad = _center_and_pad_kernel(self.weight, H, W)
@@ -96,17 +105,30 @@ class AbstractLipschitzConvLayer(nn.Conv2d):
             )
         return F.conv2d(input, W_spatial, bias, self.stride, self.padding, self.dilation, self.groups)
 
-    # A convenience method used by forward to compute normalized frequency matrices and spatial kernel
-    def spectral_normalize_weight_for_input(self, H: int, W: int) -> Tuple[Tensor, Tensor, Tensor, Tensor]:
-        # returns: W_spatial (real), Wfreq_norm (F,out,in) complex, d_sqrt (F,in,in) complex, d_inv (F,in,in) complex
+    def spectral_norm_frequency(self, H: int, W: int) -> Tuple[Tensor, Tensor, Tensor, Tensor, int, int]:
         K_fft = self._weight_fft_for_input(H, W)  # (out,in,H,Wf)
         Wf, H_, Wf_ = _freq_batchify(K_fft)  # (F,out,in)
-        Wnorm_f, R, A = _compute_cholesky_and_normalize(Wf)
-        Wnorm_f = Wnorm_f * self.constant
+        Wnorm_f, R, A = self._compute_cholesky_and_normalize(Wf)
+
+        return Wf, Wnorm_f, R, A, H_, Wf_
+
+    def convert_to_spatial(self, Wnorm_f, H_, Wf_, W):
         M_freq = _unbatchify_freq(Wnorm_f, H_, Wf_)
         pad_spatial = self._ifft_from_freq(M_freq, H_, W)
         kH, kW = _pair(self.kernel_size)
         W_spatial = _unroll_and_crop_spatial(pad_spatial, kH, kW)
+
+        return W_spatial
+
+    # A convenience method used by forward to compute normalized frequency matrices and spatial kernel
+    def spectral_normalize_weight_for_input(self, H: int, W: int) -> Tuple[Tensor, Tensor, Tensor, Tensor]:
+        # returns: W_spatial (real), Wfreq_norm (F,out,in) complex, d_sqrt (F,in,in) complex, d_inv (F,in,in) complex
+        _, Wnorm_f, R, A, H_, Wf_ = self.spectral_norm_frequency(H, W)
+
+        Wnorm_f = Wnorm_f * self.constant
+
+        W_spatial = self.convert_to_spatial(Wnorm_f, H_, Wf_, W)
+
         d_sqrt = R * self.constant
         d_inv = A / self.constant_sq
         return W_spatial, Wnorm_f, d_sqrt, d_inv
@@ -150,32 +172,27 @@ class InnerWeightLipschitzConvLayer(AbstractLipschitzConvLayer):
           self.omega_r is set to the R (upper triangular) for use by the ResNet.
         """
         B, Cin, H, W = input.shape
-        # compute raw kernel FFT (out,in,H,Wf)
-        K_fft = self._weight_fft_for_input(H, W)
-        Wf, H_, Wf_ = _freq_batchify(K_fft)  # (F,out,in)
+
+        Wf, Wnorm_f, _, _, H_, Wf_ = self.spectral_norm_frequency(H, W)
 
         # normalize with prev_d_sqrt: solve X * prev_d_sqrt = Wf  => X = Wf @ prev_d_sqrt^{-1}
-        prev = prev_d_sqrt.to(Wf.dtype).to(Wf.device)
         # left=False: X * prev = Wf -> X = Wf @ prev^{-1}
-        Wf_normed = torch.linalg.solve_triangular(prev, Wf, upper=True, left=False)
+        Wnorm_f = torch.linalg.solve_triangular(prev_d_sqrt, Wnorm_f, upper=True, left=False)
 
         # scale by constant
-        const = self.constant.to(Wf_normed.dtype)
-        Wf_normed = Wf_normed * const
+        Wnorm_f = Wnorm_f * self.constant
 
-        # compute this layer's cholesky + normalization
-        Wnorm_f, R, A = _compute_cholesky_and_normalize(Wf_normed)
         # Wnorm_f is already Wf_normed @ R^{-1}, and we keep it as the per-frequency normalized matrix
         # reconstruct spatial kernel
-        M_freq = _unbatchify_freq(Wnorm_f, H_, Wf_)
-        pad_spatial = self._ifft_from_freq(M_freq, H_, W)
-        kH, kW = _pair(self.kernel_size)
-        W_spatial = _unroll_and_crop_spatial(pad_spatial, kH, kW)
+        W_spatial = self.convert_to_spatial(Wnorm_f, H_, Wf_, W)
 
         # store upper triangular factor (omega_r) for use by the network (and B)
+        A = self.sum_weight(Wf)
+        R = torch.linalg.cholesky(A, upper=True)  # (F, in, in)
+
         self.omega_r = R  # (F, in, in), upper triangular
 
-        d_sqrt = R * const
+        d_sqrt = R * self.constant
         d_inv = A / self.constant_sq.to(A.dtype)
 
         out = self.conv_with_normalized_weight(input, W_spatial, self.bias)
@@ -190,19 +207,16 @@ class LastLipschitzConvLayer(AbstractLipschitzConvLayer):
         returns: out spatial, W_spatial (normalized)
         """
         B, Cin, H, W = input.shape
-        # compute raw kernel FFT
-        K_fft = self._weight_fft_for_input(H, W)
-        Wf, H_, Wf_ = _freq_batchify(K_fft)  # (F,out,in)
 
-        prev_r = prev_r.to(Wf.dtype).to(Wf.device)
-        Wf_norm = torch.linalg.solve_triangular(prev_r, Wf, upper=True, left=False)
-        const = self.constant.to(Wf_norm.dtype)
-        Wf_norm = Wf_norm * const
+        Wf, Wnorm_f, _, _, H_, Wf_ = self.spectral_norm_frequency(H, W)
 
-        M_freq = _unbatchify_freq(Wf_norm, H_, Wf_)
-        pad_spatial = self._ifft_from_freq(M_freq, H_, W)
-        kH, kW = _pair(self.kernel_size)
-        W_spatial = _unroll_and_crop_spatial(pad_spatial, kH, kW)
+        # normalize with prev_r: solve prev_r * X  = Wf  => X = @ prev_r^{-1} @ Wf
+        # left=True: prev * X  = Wf -> X = prev^{-1} @ Wf
+        Wnorm_f = self.constant  *torch.linalg.solve_triangular(prev_r, Wnorm_f, upper=True, left=True)
+
+        # Wnorm_f is already Wf_normed @ R^{-1}, and we keep it as the per-frequency normalized matrix
+        # reconstruct spatial kernel
+        W_spatial = self.convert_to_spatial(Wnorm_f, H_, Wf_, W)
 
         out = self.conv_with_normalized_weight(input, W_spatial, self.bias)
         return out, W_spatial
