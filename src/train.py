@@ -161,13 +161,27 @@ def profile_model():
     prof.export_chrome_trace("trace.json")
 
 
+def print_num_parameters(model):
+    table = PrettyTable(["Modules", "Parameters"])
+    total_params = 0
+    for name, parameter in model.named_parameters():
+        if not parameter.requires_grad:
+            continue
+        params = parameter.numel()
+        table.add_row([name, params])
+        total_params += params
+    print(table)
+    print(f"Total Trainable Params: {total_params}")
+    return total_params
+
+
 def main():
     torch.manual_seed(0)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     print("Running on device", device)
 
-    input_features = 4
+    input_features = 1
     output_features = input_features
 
     model = DeepLipschitzLinearResNet(input_features, output_features, (32, 256, 1024, 1024), device=device)
@@ -186,6 +200,7 @@ def main():
     # model = torch.compile(model, mode='max-autotune')
 
     print(model)
+    print(print_num_parameters(model))
 
     batch = 64
 
