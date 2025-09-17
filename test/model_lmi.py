@@ -372,14 +372,14 @@ def plot_zoomed_in_system(A, B, fig_name: str, dpi=DEFAULT_DPI):
     fig.savefig(f"{fig_name}.png", dpi=dpi)
 
 
-def model_artifacting(model_fn, vals=None, fig_name: str = None, dpi=DEFAULT_DPI, device=None):
+def model_artifacting(model_fn, weights, vals=None, fig_name: str = None, dpi=DEFAULT_DPI, device=None):
     if vals is None:
         vals = [2, 4, 8, 16]
 
     fig, axs = plt.subplots(ncols=2, nrows=2, figsize=(8, 8))
 
     for ax, im in zip(axs.flatten(), vals):
-        model = model_fn(im, im, (32, 64, 128), device=device)
+        model = model_fn(im, im, weights, device=device)
 
         with torch.no_grad():
             a_weight, b_weight, Cs, Ls, Lms, dimensions = extract_lmi_constants(model)
@@ -474,14 +474,20 @@ def main():
 
     model_fnc = models.new_model.DeepLipschitzLinearResNet
 
-    model_artifacting(model_fnc, fig_name=os.path.join(figs_folder, "b_artifacting_grid"), device=device)
+    weights =  (32, 64, 128)
 
-    test_sqrt(device)
+    model_artifacting(model_fnc, weights, fig_name=os.path.join(figs_folder, "b_artifacting_grid"), device=device)
+
+    # test_sqrt(device)
 
     torch.no_grad()
 
-    model = model_fnc(input_features, output_features, (32, 64, 256, 256), device=device)
-    # model = DeepLipschitzLinearResNet(input_features, 2, (32, 64, 128), device=device)
+    inputs = (input_features, output_features, weights)
+
+    # model = get_maximum_model(model_fnc, *inputs, device=device)
+
+    model = model_fnc(*inputs)
+    # model = DeepLipschitzLinearResNet(*inputs, device=device)
 
     # save_folder = '/home/mjuston2/Documents/DeepLipschitzResNet/runs/sin_trainer_20250828_155950'
     save_folder = None
