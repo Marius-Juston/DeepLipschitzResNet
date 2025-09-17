@@ -461,6 +461,37 @@ def plot_ldlt_decomposition(M, dimensions, fig_name: str = None, dpi=DEFAULT_DPI
     fig.tight_layout()
     fig.savefig(f"{fig_name}_d.png", dpi=dpi)
 
+def get_maximum_model(model_func, *args, device=None):
+    if device is None:
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+    model = model_func(*args, device)
+
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-2)
+
+    for i in range(300):
+        optimizer.zero_grad(set_to_none=True)
+
+        a_weight, b_weight, Cs, Ls, Lms, dimensions = extract_lmi_constants(model)
+
+        M = main_real(a_weight, b_weight, Cs, Ls, Lms, dimensions, device=device)
+
+        eigenvalues  = torch.linalg.eigvalsh(M)
+
+        if i == 0:
+            print(eigenvalues)
+
+        loss = -eigenvalues.sum()
+
+        loss.backward()
+        optimizer.step()
+
+        print(loss.item())
+
+    print(eigenvalues)
+
+    return model
+
 
 def main():
     torch.manual_seed(0)
