@@ -11,10 +11,10 @@ from matplotlib.patches import Rectangle, ConnectionPatch
 from matplotlib.ticker import MaxNLocator
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
-import utils
-from models.layers import LipschitzLinearLayer
 import models.model
 import models.new_model
+import utils
+from models.layers import LipschitzLinearLayer
 
 DEFAULT_DPI = 600
 
@@ -23,17 +23,19 @@ def block(tensors: Sequence[Sequence[torch.Tensor]]) -> torch.Tensor:
     return torch.cat([torch.cat(b, dim=1) for b in tensors], dim=0)
 
 
-def E_real(dimensions: Sequence[int], i: Optional[int], device=None):
+def E_real(dimensions: Sequence[int], i: Optional[int], device=None, dtype=None):
     Dn = sum(dimensions)
+
+    factory_kwargs = dict(device=device, dtype=dtype)
 
     if i is None:
         d1, d2 = dimensions[0], dimensions[-1]
     else:
         d1, d2 = dimensions[i], dimensions[i + 1]
 
-    E = torch.zeros((Dn, d1 + d2), device=device)
-    id_1 = torch.eye(d1, device=device)
-    id_2 = torch.eye(d2, device=device)
+    E = torch.zeros((Dn, d1 + d2), **factory_kwargs)
+    id_1 = torch.eye(d1, **factory_kwargs)
+    id_2 = torch.eye(d2, **factory_kwargs)
 
     if i is None:
         E[:d1, :d1] = id_1
@@ -48,12 +50,15 @@ def E_real(dimensions: Sequence[int], i: Optional[int], device=None):
     return E.T
 
 
-def main_real(A, B, Cs, Ls, Lms, dimensions, device=None):
+def main_real(A: torch.Tensor, B: torch.Tensor, Cs: List[torch.Tensor], Ls: List[torch.Tensor], Lms, dimensions,
+              device=None):
     L = len(Ls)
 
-    E0 = E_real(dimensions, None, device=device)
+    factory_kwargs = dict(device=device, dtype=A.dtype)
 
-    I = torch.eye(dimensions[0], device=device)
+    E0 = E_real(dimensions, None, **factory_kwargs)
+
+    I = torch.eye(dimensions[0], **factory_kwargs)
 
     M0 = block([[A.T @ A - I, A.T @ B], [B.T @ A, B.T @ B]])
 
@@ -62,14 +67,14 @@ def main_real(A, B, Cs, Ls, Lms, dimensions, device=None):
     Ms = [M0]
 
     for i in range(L):
-        Ei = E_real(dimensions, i, device=device)
+        Ei = E_real(dimensions, i, **factory_kwargs)
 
         lambda_i = Ls[i]
         Ci = Cs[i]
 
-        CC = torch.zeros((Ci.shape[0] * 2, Ci.shape[1] + Ci.shape[0]), device=device)
+        CC = torch.zeros((Ci.shape[0] * 2, Ci.shape[1] + Ci.shape[0]), **factory_kwargs)
         CC[:Ci.shape[0], :Ci.shape[1]] = Ci
-        CC[-Ci.shape[0]:, -Ci.shape[0]:] = torch.eye(Ci.shape[0], device=device)
+        CC[-Ci.shape[0]:, -Ci.shape[0]:] = torch.eye(Ci.shape[0], **factory_kwargs)
 
         L_, m = Lms[i]
 
@@ -184,7 +189,6 @@ def extract_lmi_constants_deep_resnet_new(model):
     return a_weight, b_weight, Cs, Ls, Lms, dimensions
 
 
-
 def extract_lmi_constants(model):
     if isinstance(model, models.model.DeepLipschitzLinearResNet):
         return extract_lmi_constants_deep_resnet_old(model)
@@ -194,9 +198,9 @@ def extract_lmi_constants(model):
 
 
 def plot_matrix(M: torch.Tensor, fig_name: str = None, dpi: int = DEFAULT_DPI, mask: bool = True,
-                normalize: bool = True, ax: Optional[Axes] = None):
+                normalize: bool = True, ax: Optional[Axes] = None, eps: float = 1e-6):
     if mask:
-        masked_zerp = M == 0
+        masked_zerp = torch.abs(M) < eps
         no_mask = M != 0
 
         min, max = M[no_mask].min(), M[no_mask].max()
@@ -372,14 +376,17 @@ def plot_zoomed_in_system(A, B, fig_name: str, dpi=DEFAULT_DPI):
     fig.savefig(f"{fig_name}.png", dpi=dpi)
 
 
-def model_artifacting(model_fn, weights, vals=None, fig_name: str = None, dpi=DEFAULT_DPI, device=None):
+def model_artifacting(model_fn, weights, vals=None, fig_name: str = None, dpi=DEFAULT_DPI, factory_kwargs=None):
+    if factory_kwargs is None:
+        factory_kwargs = {}
+
     if vals is None:
         vals = [2, 4, 8, 16]
 
     fig, axs = plt.subplots(ncols=2, nrows=2, figsize=(8, 8))
 
     for ax, im in zip(axs.flatten(), vals):
-        model = model_fn(im, im, weights, device=device)
+        model = model_fn(im, im, weights, **factory_kwargs)
 
         with torch.no_grad():
             a_weight, b_weight, Cs, Ls, Lms, dimensions = extract_lmi_constants(model)
@@ -461,6 +468,7 @@ def plot_ldlt_decomposition(M, dimensions, fig_name: str = None, dpi=DEFAULT_DPI
     fig.tight_layout()
     fig.savefig(f"{fig_name}_d.png", dpi=dpi)
 
+
 def get_maximum_model(model_func, *args, device=None):
     if device is None:
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -476,7 +484,7 @@ def get_maximum_model(model_func, *args, device=None):
 
         M = main_real(a_weight, b_weight, Cs, Ls, Lms, dimensions, device=device)
 
-        eigenvalues  = torch.linalg.eigvalsh(M)
+        eigenvalues = torch.linalg.eigvalsh(M)
 
         if i == 0:
             print(eigenvalues)
@@ -503,11 +511,14 @@ def main():
     output_features = input_features
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
+    factory_kwargs = dict(device=device, dtype=torch.float64)
+
     model_fnc = models.new_model.DeepLipschitzLinearResNet
 
-    weights =  (32, 64, 128)
+    weights = (32, 64, 128)
 
-    model_artifacting(model_fnc, weights, fig_name=os.path.join(figs_folder, "b_artifacting_grid"), device=device)
+    model_artifacting(model_fnc, weights, fig_name=os.path.join(figs_folder, "b_artifacting_grid"),
+                      factory_kwargs=factory_kwargs)
 
     # test_sqrt(device)
 
@@ -517,10 +528,10 @@ def main():
 
     # model = get_maximum_model(model_fnc, *inputs, device=device)
 
-    model = model_fnc(*inputs)
+    model = model_fnc(*inputs, **factory_kwargs)
     # model = DeepLipschitzLinearResNet(*inputs, device=device)
 
-    # save_folder = '/home/mjuston2/Documents/DeepLipschitzResNet/runs/sin_trainer_20250828_155950'
+    # save_folder = '/home/mjuston2/Documents/DeepLipschitzResNet/runs/sin_trainer_20250917_020700'
     save_folder = None
 
     if save_folder is not None:
