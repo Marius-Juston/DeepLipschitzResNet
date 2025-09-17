@@ -10,6 +10,8 @@ from torch.utils.tensorboard import SummaryWriter
 
 from models.model import DeepLipschitzLinearResNet
 
+DPI = 600
+
 torch.set_float32_matmul_precision('high')
 
 
@@ -101,12 +103,15 @@ def train(x, y, model: DeepLipschitzLinearResNet, batch_size=64, lr=1e-3, termin
                            epoch_number + 1)
         writer.flush()
 
-        plt.plot(x.cpu(), y.cpu(), label='gt')
+        plt.plot(x.cpu(), y.cpu(), label='Ground Truth')
         with torch.no_grad():
             y_pred = model(x.reshape(-1, model.in_features))
 
-            plt.plot(x.cpu(), y_pred.cpu(), label='truth')
-        plt.savefig(os.path.join(save_folder, f'truth{epoch}.png'))
+            plt.plot(x.cpu(), y_pred.cpu(), label='Prediction')
+        plt.legend()
+        plt.tight_layout()
+
+        plt.savefig(os.path.join(save_folder, f'truth{epoch}.png'), dpi=DPI)
         plt.close()
 
         assert avg_loss >= theoretical_lower, "Problem with the lipschitz network since cannot be lower than theoretical lowest"
