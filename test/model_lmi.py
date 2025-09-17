@@ -16,6 +16,8 @@ from models.model import DeepLipschitzLinearResNet
 
 DEFAULT_DPI = 600
 
+OUTPUT_FORMAT = 'png'
+
 
 def block(tensors: Sequence[Sequence[torch.Tensor]]) -> torch.Tensor:
     return torch.cat([torch.cat(b, dim=1) for b in tensors], dim=0)
@@ -176,7 +178,7 @@ def plot_matrix(M: torch.Tensor, fig_name: str = None, dpi: int = DEFAULT_DPI, m
         fig, ax = plt.subplots(figsize=(8, 8))
         im = ax.matshow(normalized, cmap='viridis', vmin=vmin, vmax=vmax)
         fig.tight_layout()
-        fig.savefig(f"{fig_name}.png", dpi=dpi)
+        fig.savefig(f"{fig_name}.{OUTPUT_FORMAT}", dpi=dpi)
     else:
         im = ax.matshow(normalized, cmap='viridis', vmin=vmin, vmax=vmax)
 
@@ -206,7 +208,7 @@ def plot_histogram(x: torch.Tensor, fig_name: str, dpi=DEFAULT_DPI):
     ax.set_ylabel("Frequency")
     ax.set_title("Histogram of Torch Vector")
     fig.tight_layout()
-    fig.savefig(f"{fig_name}.png", dpi=dpi)
+    fig.savefig(f"{fig_name}.{OUTPUT_FORMAT}", dpi=dpi)
 
 
 def singular_extremes(M: torch.Tensor):
@@ -241,7 +243,7 @@ def plot_singular_extremes(a_weight, b_weight, Cs, fig_name: str, dpi=DEFAULT_DP
     ax.legend()
     ax.grid(True, alpha=0.3)
     fig.tight_layout()
-    fig.savefig(f"{fig_name}.png", dpi=dpi)
+    fig.savefig(f"{fig_name}.{OUTPUT_FORMAT}", dpi=dpi)
 
 
 def test_sqrt(device, tol=5e-3):
@@ -323,7 +325,7 @@ def plot_zoomed_in_system(A, B, fig_name: str, dpi=DEFAULT_DPI):
     disable_ticks(ax2)
 
     fig.tight_layout()
-    fig.savefig(f"{fig_name}.png", dpi=dpi)
+    fig.savefig(f"{fig_name}.{OUTPUT_FORMAT}", dpi=dpi)
 
 
 def model_artifacting(model_fn, weights, vals=None, fig_name: str = None, dpi=DEFAULT_DPI, factory_kwargs=None):
@@ -348,7 +350,7 @@ def model_artifacting(model_fn, weights, vals=None, fig_name: str = None, dpi=DE
         ax.axis("off")
 
     fig.tight_layout()
-    fig.savefig(f"{fig_name}.png", dpi=dpi)
+    fig.savefig(f"{fig_name}.{OUTPUT_FORMAT}", dpi=dpi)
 
 
 def ldlt_decomposition(M: torch.Tensor, matrix_block_sizes: List[int]):
@@ -402,7 +404,7 @@ def plot_ldlt_decomposition(M, dimensions, fig_name: str = None, dpi=DEFAULT_DPI
     ax.set_title("Unit lower triangular L Matrix")
 
     fig.tight_layout()
-    fig.savefig(f"{fig_name}_l.png", dpi=dpi)
+    fig.savefig(f"{fig_name}_l.{OUTPUT_FORMAT}", dpi=dpi)
 
     # Diagonal matrix D
     fig, ax = plt.subplots(figsize=(8, 8))
@@ -416,7 +418,7 @@ def plot_ldlt_decomposition(M, dimensions, fig_name: str = None, dpi=DEFAULT_DPI
     ax.set_title(r"Block diagonal matrix D")
 
     fig.tight_layout()
-    fig.savefig(f"{fig_name}_d.png", dpi=dpi)
+    fig.savefig(f"{fig_name}_d.{OUTPUT_FORMAT}", dpi=dpi)
 
 
 def get_maximum_model(model_func, *args, device=None):
