@@ -11,10 +11,8 @@ from matplotlib.patches import Rectangle, ConnectionPatch
 from matplotlib.ticker import MaxNLocator
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
-import models.model
-import models.new_model
 import utils
-from models.layers import LipschitzLinearLayer
+from models.model import DeepLipschitzLinearResNet
 
 DEFAULT_DPI = 600
 
@@ -104,50 +102,6 @@ def main_real(A: torch.Tensor, B: torch.Tensor, Cs: List[torch.Tensor], Ls: List
     return M
 
 
-def extract_lmi_constants_deep_resnet_old(model: models.model.DeepLipschitzLinearResNet):
-    a_weight = model.A.compute_weight()
-
-    assert torch.linalg.matrix_norm(a_weight, ord=2) <= model.lipschitz_constant
-
-    prev_d = model.A.compute_d_extra(transpose=True)
-
-    total_sum = model.A.compute_d_inv(transpose=True)
-
-    current_product = total_sum
-
-    Cs = []
-    Ls = []
-    Lms = []
-    dimensions = [
-        a_weight.shape[1],
-    ]
-
-    for i, layer in enumerate(model.layers):
-        layer: LipschitzLinearLayer
-
-        cn = layer.compute_weight(prev_d)
-        Cs.append(cn)
-        Ls.append(layer.identity_out)
-        Lms.append([1, 0])
-        dimensions.append(cn.shape[0])
-
-        if i < len(model.layers) - 1:
-            prev_d = layer.compute_d_extra()
-
-        di_inv = layer.compute_d_inv()
-
-        current_product = current_product @ cn.T
-
-        total_sum = total_sum + (current_product @ di_inv @ current_product.T)
-
-        current_product = current_product @ di_inv
-
-    a_sigma_a_t, b_factor = model.compute_b_factor(a_weight, total_sum)
-    b_weight = model.B.compute_weight(a_sigma_a_t, left=True)
-
-    return a_weight, b_weight, Cs, Ls, Lms, dimensions
-
-
 def extract_lmi_constants_deep_resnet_new(model):
     x = torch.zeros((1, model.in_features), device=model.device, dtype=model.dtype)
 
@@ -190,11 +144,7 @@ def extract_lmi_constants_deep_resnet_new(model):
 
 
 def extract_lmi_constants(model):
-    if isinstance(model, models.model.DeepLipschitzLinearResNet):
-        return extract_lmi_constants_deep_resnet_old(model)
-
-    if isinstance(model, models.new_model.DeepLipschitzLinearResNet):
-        return extract_lmi_constants_deep_resnet_new(model)
+    return extract_lmi_constants_deep_resnet_new(model)
 
 
 def plot_matrix(M: torch.Tensor, fig_name: str = None, dpi: int = DEFAULT_DPI, mask: bool = True,
@@ -513,7 +463,7 @@ def main():
 
     factory_kwargs = dict(device=device, dtype=torch.float64)
 
-    model_fnc = models.new_model.DeepLipschitzLinearResNet
+    model_fnc = DeepLipschitzLinearResNet
 
     weights = (32, 64, 128)
 

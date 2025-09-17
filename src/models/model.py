@@ -1,29 +1,34 @@
 import math
-from typing import Sequence, Union, List, Tuple
+from typing import Union, List, Sequence
 
 import torch
-from torch import Tensor, device
-from torch.nn import Module, ModuleList, ReLU, Parameter, init
+from torch import nn
+from torch.nn import ModuleList, Module, ReLU, Parameter, init
 
-import utils
-from models.layers import LipschitzLinearLayer
+from models.layers import FirstLipschitzLinearLayer, LastLipschitzLinearLayer, InnerWeightLipschitzLinearLayer, \
+    LinearLipschitz
+from utils import SpectralNorm
 
 
-class DeepLipschitzLinearResNet(Module):
-    A: LipschitzLinearLayer
-    B: LipschitzLinearLayer
+class DeepLipschitzLinearResNet(nn.Module):
+    A: FirstLipschitzLinearLayer
+    B: LastLipschitzLinearLayer
     layers: ModuleList
 
     def __init__(self, in_features: int, out_features: int, layers_widths: Sequence[int],
                  activation: Union[Module, List[Module]] = None, lipschitz_constant: float = 1.0, bias: bool = True,
-                 device: Union[str, device] = 'cuda', dtype=None) -> None:
+                 num_iterations:int = 10,
+                 device: Union[str, torch.device] = 'cuda', dtype=None) -> None:
         super().__init__()
 
         assert len(layers_widths) >= 1, "This deep network assumes that the number of layers is greater "
         assert in_features > 0, "The input width needs to be larger than 0"
         assert out_features > 0, "The output width needs to be larger than 0"
 
+        self.num_iterations = num_iterations
         self.lipschitz_constant = lipschitz_constant
+        self.lipschitz_constant_sq = lipschitz_constant * lipschitz_constant
+
         self.out_features = out_features
         self.in_features = in_features
         self.layer_widths = layers_widths
@@ -32,8 +37,6 @@ class DeepLipschitzLinearResNet(Module):
         self.device = device
 
         self.factory_kwargs = {"device": device, "dtype": dtype}
-
-        self.sqrt_2 = 1.4142135623730950  # the value of sqrt(2) to 16 decimal places
 
         if activation is None:
             self.activation = ReLU()
@@ -48,6 +51,8 @@ class DeepLipschitzLinearResNet(Module):
         self.generate_layers()
 
         self.reset_bias()
+
+        self.first = False
 
     def reset_bias(self) -> None:
         if self.bias is not None:
@@ -66,92 +71,142 @@ class DeepLipschitzLinearResNet(Module):
             layer.reset_parameters()
 
     def generate_layers(self) -> None:
-        self.A = LipschitzLinearLayer(in_features=self.in_features, out_features=self.out_features,
-                                      constant=self.lipschitz_constant, **self.factory_kwargs)
+        self.A = FirstLipschitzLinearLayer(in_features=self.in_features, out_features=self.out_features,
+                                           constant_sq=self.lipschitz_constant_sq, **self.factory_kwargs)
 
-        self.B = LipschitzLinearLayer(in_features=self.layer_widths[-1], out_features=self.out_features,
-                                      **self.factory_kwargs)
+        self.B = LastLipschitzLinearLayer(in_features=self.layer_widths[-1], out_features=self.out_features,
+                                          **self.factory_kwargs)
 
         layer = []
 
         prev = self.in_features
 
-        for out_features in self.layer_widths:
-            layer.append(LipschitzLinearLayer(prev, out_features, constant=self.sqrt_2, **self.factory_kwargs))
+        for i, out_features in enumerate(self.layer_widths):
+            if i == 0:
+                constant = 2.0 * self.lipschitz_constant_sq
+            else:
+                constant = 4.0
+
+            layer.append(
+                InnerWeightLipschitzLinearLayer(prev, out_features, constant_sq=constant, **self.factory_kwargs))
             prev = out_features
 
         self.layers = ModuleList(layer)
 
-    def check_weights(self) -> None:
-        a_weight = self.A.compute_weight()
-        assert torch.linalg.matrix_norm(a_weight.T @ a_weight, ord=2) < self.lipschitz_constant
+        self.spectral_norm = SpectralNorm(self.B.identity)
 
-    def forward(self, input: Tensor) -> Tensor:
-        first, a_weight = self.A(input)
+    def compute_b(self, x, sigma_lower, a_weight, prev_r):
+        inner_inverse = torch.cholesky_inverse(prev_r, upper=False)
 
-        second = input
+        if self.first:
+            self.spectral_norm.initialize(inner_inverse)
 
-        prev_d = self.A.compute_d_extra(transpose=True)
+        max_singular = self.spectral_norm(inner_inverse)
 
-        total_sum = self.A.compute_d_inv(transpose=True)
+        left = a_weight @ sigma_lower
 
-        current_product = total_sum
+        scaling = self.B.identity_out + left @ left.T
 
-        for i, layer in enumerate(self.layers):
-            layer: LipschitzLinearLayer
+        R_sigma = torch.linalg.cholesky(scaling, upper=True)
 
-            second, cn = layer(second, prev_d)
+        second, b_weight = self.B(x, R_sigma)
 
-            if i < len(self.layers) - 1:
-                prev_d = layer.compute_d_extra()
+        second_s = second * max_singular
+        b_weight_s = b_weight * max_singular
 
-            di_inv = layer.compute_d_inv()
+        return second_s, b_weight_s
 
-            current_product = current_product @ cn.T
 
-            # FIXME There are problems where the matrix input to the system is no longer PD or PSD due to numerical issues
-            final_step = current_product @ di_inv @ current_product.T
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        first, a_weight, d_sqrt, d_inv = self.A(x)
 
-            # eigvales = torch.linalg.eigvalsh(final_step)
-            # assert (eigvales.min() >= -5e2), f"Not all eigenvalues are zero!! {eigvales.min()}"
+        gamma = self.A.identity
+        sigma_lower = None
 
-            # FIXME There are problems where the matrix input to the system is no longer PD or PSD due to numerical issues
-            total_sum = total_sum + final_step
+        current_input = x
 
-            # eigvales = torch.linalg.eigvalsh(total_sum)
-            # assert (eigvales.min() >= -5e2), f"Not all eigenvalues are zero!! {eigvales.min()}"
+        for layer in self.layers:
+            T = gamma @ d_inv
 
-            current_product = current_product @ di_inv
+            current_input, c_weight, d_sqrt, d_inv = layer(current_input, d_sqrt)
 
-            if isinstance(self.activation, Sequence):
-                second = self.activation[i](second)
+            if sigma_lower is None:
+                sigma_lower = T
             else:
-                second = self.activation(second)
+                # Instead of using custom CholeskyRankK update this is computationally much faster
+                sigma_lower = torch.linalg.cholesky(sigma_lower @ sigma_lower.T + T @ T.T, upper=False)
+                # sigma_lower = cholesky_rank_k(sigma_lower, T)
 
-        a_sigma_a_t, b_factor = self.compute_b_factor(a_weight, total_sum)
+            gamma = T @ c_weight.T
 
-        second, b_weight = self.B(second, a_sigma_a_t, left=True)
+            current_input = self.activation(current_input)
 
-        return second + first + self.bias
+        second, b_weight = self.compute_b(current_input, sigma_lower, a_weight, self.layers[-1].omega_r)
 
-    def compute_b_factor(self, a_weight: Tensor, total_sum: Tensor) -> Tuple[Tensor, Tensor]:
-        Cn = self.layers[-1].weight
+        self.first = False
 
-        # smallest_singular_value_cn = torch.linalg.matrix_norm(Cn, ord=-2)
+        return first + second + self.bias
 
-        smallest_singular_value_cn = utils.get_largest_singular_value_power_iteration(
-            utils.fast_symmetric_positive_definitive_matrix_inverse(self.layers[-1].identity_out + Cn @ Cn.T))
 
-        # value = torch.linalg.matrix_norm(utils.fast_symmetric_positive_definitive_matrix_inverse(self.layers[-1].identity_out + Cn @ Cn.T), ord=2)
+class DeepLipschitzSequential(nn.Module):
+    layers: ModuleList
 
-        # b_factor = torch.sqrt(2.0 / (1 + (smallest_singular_value_cn * smallest_singular_value_cn)))
-        # b_factor = torch.sqrt(2.0 / (smallest_singular_value_cn * smallest_singular_value_cn))
-        b_factor = torch.sqrt(2.0 * smallest_singular_value_cn)
+    def __init__(self, in_features: int, out_features: int, layers_widths: Sequence[int],
+                 activation: Union[Module, List[Module]] = None, lipschitz_constant: float = 1.0,
+                 device: Union[str, torch.device] = 'cuda', dtype=None) -> None:
+        super().__init__()
 
-        # FIXME the problem for the triangular square root arrises in this computation
-        a_sigma_a_t = b_factor * (self.B.identity_out + a_weight @ total_sum @ a_weight.T)
+        assert len(layers_widths) >= 1, "This deep network assumes that the number of layers is greater "
+        assert in_features > 0, "The input width needs to be larger than 0"
+        assert out_features > 0, "The output width needs to be larger than 0"
 
-        return a_sigma_a_t, b_factor
+        self.lipschitz_constant = lipschitz_constant
+        self.lipschitz_constant_sq = lipschitz_constant * lipschitz_constant
 
-    def extra_repr(self) -> str:
-        return f"in_features={self.in_features}, out_features={self.out_features}, inner_widths=({','.join(map(str, self.layer_widths))})"
+        self.out_features = out_features
+        self.in_features = in_features
+        self.layer_widths = layers_widths
+
+        self.dtype = dtype
+        self.device = device
+
+        self.factory_kwargs = {"device": device, "dtype": dtype}
+
+        if activation is None:
+            self.activation = ReLU()
+        else:
+            self.activation = activation
+
+        self.generate_layers()
+
+
+    def reset_parameters(self) -> None:
+        for layer in self.layers:
+            layer.reset_parameters()
+
+    def generate_layers(self) -> None:
+        layer = []
+
+        prev = self.in_features
+
+        for i, out_features in enumerate(self.layer_widths):
+            activation = self.activation
+            constant = 2.0
+
+            layer.append(
+                LinearLipschitz(prev, out_features, constant_sq=constant, activation=activation, **self.factory_kwargs))
+            prev = out_features
+
+        layer.append(
+            LinearLipschitz(prev, self.out_features, constant_sq=1.0, activation=None, **self.factory_kwargs))
+
+        self.layers = ModuleList(layer)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        current_input = x
+        d_sqrt = self.lipschitz_constant * self.layers[0].identity
+
+        for layer in self.layers:
+            current_input, d_sqrt = layer(current_input, d_sqrt)
+
+        return current_input

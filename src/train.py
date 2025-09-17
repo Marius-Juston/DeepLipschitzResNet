@@ -8,7 +8,7 @@ from torch.nn import MSELoss
 from torch.utils.data import TensorDataset, DataLoader
 from torch.utils.tensorboard import SummaryWriter
 
-from models.new_model import DeepLipschitzLinearResNet
+from models.model import DeepLipschitzLinearResNet, DeepLipschitzSequential
 
 DPI = 600
 

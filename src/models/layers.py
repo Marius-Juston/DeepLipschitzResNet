@@ -1,24 +1,28 @@
-from typing import Optional, Tuple
+from typing import Tuple
 
 import torch
-import torch.nn.functional as F
-from torch import Tensor
-from torch.nn import Linear
-
-import utils
-from utils import fast_symmetric_positive_definitive_matrix_inverse
+from torch import nn, Tensor
 
 
-class LipschitzLinearLayer(Linear):
-    __constants__ = ['identity', 'identity_out', 'constant', 'constant_sq']
+def normalize(W, R, left=False, upper=True):
+    return torch.linalg.solve_triangular(R, W, upper=upper, left=left)
+
+
+class FirstLipschitzLinearLayer(nn.Linear):
+    identity: torch.Tensor
+    identity_out: torch.Tensor
+    constant_sq: torch.Tensor
+    constant: torch.Tensor
+    R: torch.Tensor
 
     def __init__(self, in_features: int,
                  out_features: int,
-                 bias: bool = False,
-                 constant: float = 1.0,
+                 bias: bool = True,
+                 constant_sq: float = 1.0,
                  device=None,
                  dtype=None):
-        super(LipschitzLinearLayer, self).__init__(in_features, out_features, bias=bias, device=device, dtype=dtype)
+        super(FirstLipschitzLinearLayer, self).__init__(in_features, out_features, bias=bias, device=device,
+                                                        dtype=dtype)
 
         factory_kwargs = {"device": device, "dtype": dtype}
 
@@ -31,53 +35,123 @@ class LipschitzLinearLayer(Linear):
         )
 
         self.register_buffer(
-            "constant", torch.tensor(constant, **factory_kwargs)
+            "constant_sq", torch.tensor(constant_sq, **factory_kwargs)
         )
 
         self.register_buffer(
-            "constant_sq", torch.tensor(constant * constant, **factory_kwargs)
+            "constant", self.constant_sq.sqrt()
         )
 
-        self.identity: Optional[Tensor]
-        self.identity_out: Optional[Tensor]
-        self.constant: Optional[Tensor]
-        self.constant_sq: Optional[Tensor]
+        self.R = self.identity
+        self.omega_ = None
+        self.omega_sqrt_t_ = None
 
-    def apply_inv_sqrt(self, weight, sqrt_matrix, left=False) -> torch.Tensor:
-        sqrt_matrix = utils.symmetrize_(sqrt_matrix)
+    def forward(self, input: Tensor) -> Tuple[Tensor, Tensor, Tensor, Tensor]:
+        omega = self.sum_weight(transpose=True)
+        R = torch.linalg.cholesky(omega, upper=True)
 
-        # L, info = torch.linalg.cholesky_ex(sqrt_matrix, upper=True)
-        # L = torch.linalg.cholesky_ex(sqrt_matrix, upper=True)
-        # info = 0
-        # FIXME There are problems where the matrix input to the system is no longer PD or PSD due to numerical issues
-        L = torch.linalg.cholesky(sqrt_matrix, upper=True)
+        W = self.constant * normalize(self.weight, R, left=False)
 
-        return torch.linalg.solve_triangular(L, weight, upper=True, left=left)
+        d_inv = omega / self.constant_sq
+        d_sqrt = self.constant * omega
 
-    def compute_weight(self, scaling: Optional[Tensor] = None, left: bool = False) -> Tensor:
-        weight = self.constant * self.apply_inv_sqrt(self.weight, self.sum_weight(transpose=True), left=False)
+        return torch.nn.functional.linear(input, W, self.bias), W, d_sqrt, d_inv
 
-        if scaling is not None:
-            weight = self.apply_inv_sqrt(weight, scaling, left=left)
-
-        return weight
-
-    def sum_weight(self, transpose=False):
+    def sum_weight(self, transpose: bool = False):
         if transpose:
             return self.identity + self.weight.T @ self.weight
         else:
             return self.identity_out + self.weight @ self.weight.T
 
-    def compute_d(self) -> Tensor:
-        return self.constant_sq * fast_symmetric_positive_definitive_matrix_inverse(self.sum_weight())
 
-    def compute_d_extra(self, transpose=False) -> Tensor:
-        return self.sum_weight(transpose) * self.constant_sq
+class InnerWeightLipschitzLinearLayer(FirstLipschitzLinearLayer):
+    def forward(self, input: Tensor, prev_d_sqrt: Tensor) -> Tuple[Tensor, Tensor, Tensor, Tensor]:
+        omega = self.sum_weight(transpose=True)
+        R = torch.linalg.cholesky(omega, upper=True)
 
-    def compute_d_inv(self, transpose=False) -> Tensor:
-        return self.sum_weight(transpose) / self.constant_sq
+        W = normalize(self.weight, R, left=False)
 
-    def forward(self, input: Tensor, scaling: Optional[Tensor] = None, left: bool = False) -> Tuple[Tensor, Tensor]:
-        weight = self.compute_weight(scaling, left)
+        W = self.constant * normalize(W, prev_d_sqrt, upper=True, left=False)
 
-        return F.linear(input, weight, self.bias), weight
+        omega = self.sum_weight()
+
+        d_inv = omega / self.constant_sq
+
+        d_sqrt = torch.linalg.cholesky(omega, upper=True)
+
+        self.omega_r = d_sqrt
+
+        d_sqrt = self.constant * d_sqrt
+
+        return torch.nn.functional.linear(input, W, self.bias), W, d_sqrt, d_inv
+
+
+class LastLipschitzLinearLayer(FirstLipschitzLinearLayer):
+    def forward(self, input: Tensor, prev_r: Tensor) -> Tuple[Tensor, Tensor]:
+        omega = self.sum_weight(transpose=True)
+        R = torch.linalg.cholesky(omega, upper=True)
+
+        W = normalize(self.weight, R, left=False)
+        W = self.constant * normalize(W, prev_r, left=True)
+
+        return torch.nn.functional.linear(input, W, self.bias), W
+
+
+
+class LinearLipschitz(nn.Linear):
+    identity: torch.Tensor
+    identity_out: torch.Tensor
+    constant_sq: torch.Tensor
+    constant: torch.Tensor
+    R: torch.Tensor
+
+    def __init__(self, in_features: int,
+                 out_features: int,
+                 bias: bool = True,
+                 constant_sq: float = 1.0,
+                 activation:nn.Module = None,
+                 device=None,
+                 dtype=None):
+        super(LinearLipschitz, self).__init__(in_features, out_features, bias=bias, device=device,
+                                                        dtype=dtype)
+
+        factory_kwargs = {"device": device, "dtype": dtype}
+
+        self.activation = activation
+        self.register_buffer(
+            "identity", torch.eye(in_features, **factory_kwargs)
+        )
+
+        self.register_buffer(
+            "identity_out", torch.eye(out_features, **factory_kwargs)
+        )
+
+        self.register_buffer(
+            "constant_sq", torch.tensor(constant_sq, **factory_kwargs)
+        )
+
+        self.register_buffer(
+            "constant", self.constant_sq.sqrt()
+        )
+
+    def forward(self, input: Tensor, prev_d_sqrt: Tensor) -> Tuple[Tensor, Tensor]:
+        norm = self.sum_weight(transpose=True)
+        R = torch.linalg.cholesky(norm, upper=True)
+
+        W = normalize(self.weight, R)
+
+        W = self.constant * normalize(W, prev_d_sqrt, upper=True, left=False)
+        d_sqrt = self.constant * torch.linalg.cholesky(self.sum_weight(), upper=True)
+
+        out = torch.nn.functional.linear(input, W, self.bias)
+
+        if self.activation:
+            out = self.activation(out)
+
+        return out, d_sqrt
+
+    def sum_weight(self, transpose: bool = False):
+        if transpose:
+            return self.identity + self.weight.T @ self.weight
+        else:
+            return self.identity_out + self.weight @ self.weight.T

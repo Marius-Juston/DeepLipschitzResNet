@@ -290,7 +290,6 @@ class CholeskyRankKFunction(Function):
         return L
 
 
-@torch.compile(mode='max-autotune')
 def cholesky_rank_k(L: torch.Tensor, M: torch.Tensor):
     """
     Wrapper to apply the custom Function; this is the user-facing call.
