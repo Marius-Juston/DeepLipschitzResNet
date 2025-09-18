@@ -3,9 +3,13 @@ from typing import Tuple
 import torch
 from torch import nn, Tensor
 import torch.nn.functional as F
+from torch.nn.parameter import Parameter
+from torch.nn.utils import parametrize
 
-def normalize(W, R, left=False, upper=True):
-    return torch.linalg.solve_triangular(R, W, upper=upper, left=left)
+
+class Positive(nn.Module):
+    def forward(self, X):
+        return X**2
 
 
 class AbstractLipschitzLinearLayer(nn.Linear):
@@ -42,13 +46,17 @@ class AbstractLipschitzLinearLayer(nn.Linear):
             "constant", self.constant_sq.sqrt()
         )
 
+        self.alpha = Parameter(torch.tensor(1.0, **factory_kwargs))
+
+        parametrize.register_parametrization(self, "alpha", Positive())
+
     def scale_w(self):
         omega = self.sum_weight(transpose=True)
         R = torch.linalg.cholesky(omega, upper=True)
 
-        W = normalize(self.weight, R, left=False)
+        W = torch.linalg.solve_triangular(R, self.weight, upper=True, left=False)
 
-        return omega, W
+        return omega, W, R
 
     def sum_weight(self, transpose: bool = False):
         if transpose:
@@ -59,12 +67,12 @@ class AbstractLipschitzLinearLayer(nn.Linear):
 
 class FirstLipschitzLinearLayer(AbstractLipschitzLinearLayer):
     def forward(self, input: Tensor) -> Tuple[Tensor, Tensor, Tensor, Tensor]:
-        omega, W = self.scale_w()
+        omega, W, R = self.scale_w()
 
         W = W * self.constant
 
         d_inv = omega / self.constant_sq
-        d_sqrt = self.constant * omega
+        d_sqrt = self.constant * R
 
         return torch.nn.functional.linear(input, W, self.bias), W, d_sqrt, d_inv
 
@@ -73,9 +81,10 @@ class InnerWeightLipschitzLinearLayer(AbstractLipschitzLinearLayer):
     omega_r : torch.Tensor
 
     def forward(self, input: Tensor, prev_d_sqrt: Tensor) -> Tuple[Tensor, Tensor, Tensor, Tensor]:
-        _, W = self.scale_w()
+        _, W, _ = self.scale_w()
 
-        W = self.constant * normalize(W, prev_d_sqrt, upper=True, left=False)
+        # assert torch.allclose(prev_d_sqrt.T.tril(), prev_d_sqrt.T), "This is not lower triangular"
+        W = self.constant * torch.linalg.solve_triangular(prev_d_sqrt.T, W, upper=False, left=False)
 
         omega = self.sum_weight()
 
@@ -92,9 +101,10 @@ class InnerWeightLipschitzLinearLayer(AbstractLipschitzLinearLayer):
 
 class LastLipschitzLinearLayer(AbstractLipschitzLinearLayer):
     def forward(self, input: Tensor, prev_r: Tensor) -> Tuple[Tensor, Tensor]:
-        _, W = self.scale_w()
+        _, W, _ = self.scale_w()
 
-        W = self.constant * normalize(W, prev_r, left=True)
+        # assert torch.allclose(prev_r.triu(), prev_r), "This is not upper triangular"
+        W = self.constant * torch.linalg.solve_triangular(prev_r, W, upper=True, left=True)
 
         return torch.nn.functional.linear(input, W, self.bias), W
 
@@ -107,9 +117,9 @@ class LinearLipschitz(AbstractLipschitzLinearLayer):
         self.activation = activation
 
     def forward(self, input: Tensor, prev_d_sqrt: Tensor) -> Tuple[Tensor, Tensor]:
-        _, W = self.scale_w()
+        _, W, _ = self.scale_w()
 
-        W = self.constant * normalize(W, prev_d_sqrt, upper=True, left=False)
+        W = self.constant * torch.linalg.solve_triangular(prev_d_sqrt.T, W, upper=False, left=False)
         d_sqrt = self.constant * torch.linalg.cholesky(self.sum_weight(), upper=True)
 
         out = torch.nn.functional.linear(input, W, self.bias)

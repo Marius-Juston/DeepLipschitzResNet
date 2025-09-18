@@ -79,9 +79,8 @@ class DeepLipschitzLinearResNet(nn.Module):
         self.spectral_norm = SpectralNorm(self.B.identity)
 
     def compute_b(self, x, sigma_lower, a_weight, prev_r):
-        inner_inverse = torch.cholesky_inverse(prev_r, upper=False)
-
-        max_singular = self.spectral_norm(inner_inverse)
+        inner_inverse = torch.cholesky_inverse(prev_r, upper=True)
+        max_singular = torch.sqrt(2 * self.spectral_norm(inner_inverse))
 
         left = a_weight @ sigma_lower
 
