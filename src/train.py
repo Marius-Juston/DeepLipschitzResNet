@@ -8,7 +8,7 @@ from torch.nn import MSELoss
 from torch.utils.data import TensorDataset, DataLoader
 from torch.utils.tensorboard import SummaryWriter
 
-from models.model import DeepLipschitzLinearResNet, DeepLipschitzSequential
+from models.model import DeepLipschitzLinearResNet
 
 DPI = 600
 
@@ -60,7 +60,8 @@ def train_one_epoch(training_loader, optimizer, model, loss_fn, epoch_index, tb_
     return last_loss
 
 
-def train(x, y, model: DeepLipschitzLinearResNet, learning_prefix='sine', batch_size=64, lr=1e-3, termination_error=5e-3):
+def train(x, y, model: DeepLipschitzLinearResNet, learning_prefix='sine', batch_size=64, lr=1e-3,
+          termination_error=5e-3, epochs=100):
     # Initializing in a separate cell so we can easily add more epochs to the same run
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     save_folder = f'../runs/{learning_prefix}_trainer_{timestamp}'
@@ -70,8 +71,6 @@ def train(x, y, model: DeepLipschitzLinearResNet, learning_prefix='sine', batch_
     # writer.add_graph(model, torch.randn((10, model.in_features), device=model.device))
 
     epoch_number = 0
-
-    EPOCHS = 100
 
     best_vloss = 1_000_000.
 
@@ -87,7 +86,7 @@ def train(x, y, model: DeepLipschitzLinearResNet, learning_prefix='sine', batch_
     # theoretical_lower = 135.021966261
     theoretical_lower = 0
 
-    for epoch in range(EPOCHS):
+    for epoch in range(epochs):
         print('EPOCH {}:'.format(epoch_number + 1))
 
         # Make sure gradient tracking is on, and do a pass over the data
@@ -191,7 +190,8 @@ def sine_training():
     input_features = 1
     output_features = input_features
 
-    model = DeepLipschitzLinearResNet(input_features, output_features, (32, 32, 32, 32, 32), device=device)
+    # model = DeepLipschitzSequential(input_features, output_features, (64, 64, 64, 64, 64), device=device)
+    model = DeepLipschitzLinearResNet(input_features, output_features, (64, 64, 64, 64, 64), device=device)
 
     check_gradients = False
 
@@ -214,7 +214,7 @@ def sine_training():
 
     variation = torch.arange(input_features, device=device)
 
-    y = torch.sin(x + variation) * 0.5
+    y = torch.sin(x + variation)
 
     train(x, y, model, learning_prefix='sine', batch_size=batch, termination_error=1e-4)
 
