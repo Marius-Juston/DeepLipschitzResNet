@@ -107,7 +107,7 @@ def main_real(A: torch.Tensor, B: torch.Tensor, Cs: List[torch.Tensor], Ls: List
 def extract_lmi_constants_deep_resnet_new(model):
     x = torch.zeros((1, model.in_features), device=model.device, dtype=model.dtype)
 
-    first, a_weight, d_sqrt, d_inv = model.A(x)
+    first, a_weight, d_inv = model.A(x)
 
     Cs = []
     Ls = []
@@ -121,26 +121,30 @@ def extract_lmi_constants_deep_resnet_new(model):
 
     current_input = x
 
+    prev_layer = model.A
+
     for layer in model.layers:
         T = gamma @ d_inv
 
-        current_input, c_weight, d_sqrt, d_inv = layer(current_input, d_sqrt)
+        current_input, c_weight, d_inv = layer(current_input, prev_layer)
 
         if sigma_lower is None:
             sigma_lower = T
         else:
-            # Instead of using custom CholeskyRankK update this is computationally much faster
             sigma_lower = torch.linalg.cholesky(sigma_lower @ sigma_lower.T + T @ T.T, upper=False)
-            # sigma_lower = cholesky_rank_k(sigma_lower, T)
 
         gamma = T @ c_weight.T
+
+        current_input = model.activation(current_input)
+
+        prev_layer = layer
 
         Cs.append(c_weight)
         Ls.append(layer.identity_out)
         Lms.append([1, 0])
         dimensions.append(c_weight.shape[0])
 
-    second, b_weight = model.compute_b(current_input, sigma_lower, a_weight, model.layers[-1].omega_r)
+    second, b_weight = model.compute_b(current_input, sigma_lower, a_weight, model.layers[-1])
 
     return a_weight, b_weight, Cs, Ls, Lms, dimensions
 

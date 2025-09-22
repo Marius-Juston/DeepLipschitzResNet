@@ -1,15 +1,34 @@
-from typing import Tuple
+from typing import Tuple, Union
 
 import torch
-from torch import nn, Tensor
 import torch.nn.functional as F
+from torch import nn, Tensor
 from torch.nn.parameter import Parameter
 from torch.nn.utils import parametrize
 
 
-class Positive(nn.Module):
-    def forward(self, X):
-        return X**2
+class PositiveExp(nn.Module):
+    def forward(self, X: torch.Tensor) -> torch.Tensor:
+        # return X ** 2
+        return X.exp()
+
+    def right_inverse(self, A: torch.Tensor) -> torch.Tensor:
+        return A.log()
+
+
+class PositiveSq(nn.Module):
+
+    def __init__(self, eps=1e-4, device=None,
+                 dtype=None) -> None:
+        super().__init__()
+        self.eps = torch.tensor(eps, dtype=dtype, device=device)
+
+    def forward(self, X: torch.Tensor) -> torch.Tensor:
+        # return X ** 2
+        return self.eps + X.square()
+
+    def right_inverse(self, A: torch.Tensor) -> torch.Tensor:
+        return (A - self.eps).sqrt()
 
 
 class AbstractLipschitzLinearLayer(nn.Linear):
@@ -18,11 +37,13 @@ class AbstractLipschitzLinearLayer(nn.Linear):
     constant_sq: torch.Tensor
     constant: torch.Tensor
     R: torch.Tensor
+    omega_r: torch.Tensor
 
     def __init__(self, in_features: int,
                  out_features: int,
                  bias: bool = True,
                  constant_sq: float = 1.0,
+                 enable_alpha: bool = True,
                  device=None,
                  dtype=None):
         super(AbstractLipschitzLinearLayer, self).__init__(in_features, out_features, bias=bias, device=device,
@@ -46,9 +67,13 @@ class AbstractLipschitzLinearLayer(nn.Linear):
             "constant", self.constant_sq.sqrt()
         )
 
-        self.alpha = Parameter(torch.tensor(1.0, **factory_kwargs))
+        initial_alpha = torch.tensor(1.0, **factory_kwargs)
 
-        parametrize.register_parametrization(self, "alpha", Positive())
+        if enable_alpha:
+            self.alpha = Parameter(initial_alpha)
+            parametrize.register_parametrization(self, "alpha", PositiveExp())
+        else:
+            self.register_buffer('alpha', initial_alpha)
 
     def scale_w(self):
         omega = self.sum_weight(transpose=True)
@@ -60,9 +85,9 @@ class AbstractLipschitzLinearLayer(nn.Linear):
 
     def sum_weight(self, transpose: bool = False):
         if transpose:
-            return self.identity + self.weight.T @ self.weight
+            return self.weight.T @ self.weight + self.identity * self.alpha
         else:
-            return self.identity_out + self.weight @ self.weight.T
+            return self.weight @ self.weight.T + self.identity_out * self.alpha
 
 
 class FirstLipschitzLinearLayer(AbstractLipschitzLinearLayer):
@@ -71,40 +96,102 @@ class FirstLipschitzLinearLayer(AbstractLipschitzLinearLayer):
 
         W = W * self.constant
 
-        d_inv = omega / self.constant_sq
-        d_sqrt = self.constant * R
+        d_inv = omega / (self.constant_sq * self.alpha)
+        self.omega_r = R
 
-        return torch.nn.functional.linear(input, W, self.bias), W, d_sqrt, d_inv
+        return torch.nn.functional.linear(input, W, self.bias), W, d_inv
 
 
 class InnerWeightLipschitzLinearLayer(AbstractLipschitzLinearLayer):
-    omega_r : torch.Tensor
-
-    def forward(self, input: Tensor, prev_d_sqrt: Tensor) -> Tuple[Tensor, Tensor, Tensor, Tensor]:
+    def forward(self, input: Tensor, prev_layer: Union[FirstLipschitzLinearLayer, "InnerWeightLipschitzLinearLayer"]) -> \
+            Tuple[Tensor, Tensor, Tensor]:
         _, W, _ = self.scale_w()
 
-        # assert torch.allclose(prev_d_sqrt.T.tril(), prev_d_sqrt.T), "This is not lower triangular"
-        W = self.constant * torch.linalg.solve_triangular(prev_d_sqrt.T, W, upper=False, left=False)
+        # with torch.no_grad():
+        #     assert  torch.linalg.eigvalsh(W @ W.T).max() <= 1.0
+        #     assert  torch.linalg.eigvalsh(W.T @ W).max() <= 1.0
+
+        # assert torch.allclose(prev_layer.omega_r.T.tril(), prev_layer.omega_r.T), "This is not lower triangular"
+        W = torch.linalg.solve_triangular(prev_layer.omega_r.T, W, upper=False, left=False)
+
+        # with torch.no_grad():
+        #     W_temp = W @ prev_layer.omega_r.T
+        #
+        #     assert torch.allclose(W_temp, self.scale_w()[1])
+
+        # with torch.no_grad():
+        #     omega = prev_layer.omega_r.T @ prev_layer.omega_r
+        #
+        #     value = W @ omega @ W.T
+        #
+        #     assert torch.linalg.svdvals(value).abs().max() <= 1.0
+        #     assert torch.linalg.eigvalsh(value).abs().max() <= 1.0
+
+        scale = prev_layer.alpha.sqrt() * prev_layer.constant * self.constant
+        div_scale = self.constant_sq * self.alpha
+
+        # with torch.no_grad():
+        #     square_scale = scale ** 2
+        #
+        #     div_scale_prev = prev_layer.constant_sq * prev_layer.alpha
+        #
+        #     value = square_scale / div_scale_prev
+        #
+        #     # tmep = torch.isclose(value, torch.full_like(value, 1.0))
+        #     tmep2 = torch.isclose(value, torch.full_like(value, 2.0))
+        #
+        #     assert  tmep2, value
+
+        W = scale * W
 
         omega = self.sum_weight()
 
-        d_inv = omega / self.constant_sq
+        d_inv = omega / div_scale
 
-        d_sqrt = torch.linalg.cholesky(omega, upper=True)
+        self.omega_r = torch.linalg.cholesky(omega, upper=True)
 
-        self.omega_r = d_sqrt
+        # with torch.no_grad():
+        #     assert torch.allclose(omega, self.omega_r.T @ self.omega_r)
+        #     R_inv = torch.linalg.solve_triangular(self.omega_r, self.identity_out, upper=True)
+        #
+        #     inverse_val = R_inv.T @ omega @ R_inv
+        #
+        #     assert torch.allclose(self.identity_out, inverse_val)
+        #
+        #     scale = self.alpha.sqrt() * self.constant
+        #
+        #     temp =  scale * R_inv
+        #     result = temp.T @ d_inv @ temp
+        #
+        #     assert torch.allclose(self.identity_out, result)
 
-        d_sqrt = self.constant * d_sqrt
+        # with torch.no_grad():
+        #     M = torch.randn_like(self.identity)
+        #
+        #     c = self.constant
+        #
+        #     q, _ = torch.linalg.qr(M)
+        #
+        #     q *= c
+        #
+        #     q_2 = torch.linalg.solve_triangular(prev_layer.omega_r.T, q, upper=False, left=False)
+        #
+        #     omega = prev_layer.omega_r.T @ prev_layer.omega_r
+        #
+        #     inverse_val = q_2 @ omega @ q_2.T
+        #
+        #     assert torch.allclose(self.identity * self.constant_sq, inverse_val)
 
-        return torch.nn.functional.linear(input, W, self.bias), W, d_sqrt, d_inv
+        return torch.nn.functional.linear(input, W, self.bias), W, d_inv
 
 
 class LastLipschitzLinearLayer(AbstractLipschitzLinearLayer):
-    def forward(self, input: Tensor, prev_r: Tensor) -> Tuple[Tensor, Tensor]:
+    def forward(self, input: Tensor, sigma_r: Tensor, prev_r_sqrt, prev_alpha) -> Tuple[Tensor, Tensor]:
         _, W, _ = self.scale_w()
 
         # assert torch.allclose(prev_r.triu(), prev_r), "This is not upper triangular"
-        W = self.constant * torch.linalg.solve_triangular(prev_r, W, upper=True, left=True)
+        W = torch.linalg.solve_triangular(prev_r_sqrt.T, W, upper=False, left=False)
+        W = self.constant * prev_alpha.sqrt() * torch.linalg.solve_triangular(sigma_r, W, upper=True, left=True)
 
         return torch.nn.functional.linear(input, W, self.bias), W
 

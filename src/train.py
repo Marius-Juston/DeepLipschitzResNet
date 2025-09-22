@@ -1,5 +1,6 @@
 import os
 from datetime import datetime
+from typing import Dict
 
 import torch
 from matplotlib import pyplot as plt
@@ -16,6 +17,23 @@ torch.set_float32_matmul_precision('high')
 
 
 # torch.autograd.set_detect_anomaly(True)
+
+@torch.no_grad()
+def alpha_values(model: DeepLipschitzLinearResNet) -> Dict[str, float]:
+    output = dict()
+
+    output['A'] = model.A.alpha.item()
+    output['B'] = model.B.alpha.item()
+
+    print("A", output['A'])
+    print("B", output['B'])
+    for i, l in enumerate(model.layers):
+        val = l.alpha.item()
+
+        output[f'C{i + 1}'] = val
+        print(i + 1, val)
+
+    return output
 
 
 def train_one_epoch(training_loader, optimizer, model, loss_fn, epoch_index, tb_writer, logging_frequency=100):
@@ -57,11 +75,15 @@ def train_one_epoch(training_loader, optimizer, model, loss_fn, epoch_index, tb_
             tb_writer.add_scalar('Loss/train', last_loss, tb_x)
             running_loss = 0.
 
+            alpha_vals = alpha_values(model)
+
+            tb_writer.add_scalars('Training', alpha_vals, tb_x, tb_x)
+
     return last_loss
 
 
 def train(x, y, model: DeepLipschitzLinearResNet, learning_prefix='sine', batch_size=64, lr=1e-3,
-          termination_error=5e-3, epochs=100):
+          termination_error=5e-3, epochs=100, theoretical_lower=0):
     # Initializing in a separate cell so we can easily add more epochs to the same run
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     save_folder = f'../runs/{learning_prefix}_trainer_{timestamp}'
@@ -84,7 +106,7 @@ def train(x, y, model: DeepLipschitzLinearResNet, learning_prefix='sine', batch_
     best_loss = None
 
     # theoretical_lower = 135.021966261
-    theoretical_lower = 0
+    # theoretical_lower = 0
 
     for epoch in range(epochs):
         print('EPOCH {}:'.format(epoch_number + 1))
@@ -185,13 +207,18 @@ def sine_training():
     torch.manual_seed(0)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
+    dtype = torch.float32
+
     print("Running on device", device)
 
     input_features = 1
     output_features = input_features
+    enable_alpha = True
 
     # model = DeepLipschitzSequential(input_features, output_features, (64, 64, 64, 64, 64), device=device)
-    model = DeepLipschitzLinearResNet(input_features, output_features, (64, 64, 64, 64, 64), device=device)
+    model = DeepLipschitzLinearResNet(input_features, output_features, (64, 64, 64, 64, 64),
+                                      enable_alpha=enable_alpha,
+                                      device=device, dtype=dtype)
 
     check_gradients = False
 
@@ -210,15 +237,25 @@ def sine_training():
 
     batch = 64
 
-    x = torch.linspace(-10, 10, 100000 * input_features, device=device).reshape((-1, input_features))
+    x = torch.linspace(-10, 10, 100000 * input_features, device=device, dtype=dtype).reshape((-1, input_features))
 
-    variation = torch.arange(input_features, device=device)
+    variation = torch.arange(input_features, device=device, dtype=dtype)
 
+    # y =  1/2 * torch.sin(x + variation) + 4 * x
+    # theoretical_lower = 302.473302346 * 0.9
+    # y =  1/2 * torch.sin(x + variation)
     y = torch.sin(x + variation)
+    theoretical_lower = 0
 
-    train(x, y, model, learning_prefix='sine', batch_size=batch, termination_error=1e-4)
+    # y = torch.sin(x + variation)
+    # y = 1/2 * torch.sin(x + variation)
+
+    train(x, y, model, learning_prefix='sine', batch_size=batch, termination_error=1e-4, lr=1e-4,
+          theoretical_lower=theoretical_lower)
+
+    # empirical_gradient_max_norm(model, x, device=device)
 
 
 if __name__ == '__main__':
-    # sine_training()
-    main()
+    sine_training()
+    # main()
