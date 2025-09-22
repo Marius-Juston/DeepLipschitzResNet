@@ -129,6 +129,21 @@ def train(x, y, model: DeepLipschitzLinearResNet, learning_prefix='sine', batch_
             y_pred = model(x.reshape(-1, model.in_features))
 
             plt.plot(x.cpu(), y_pred.cpu(), label='Prediction')
+
+            dy = torch.diff(y_pred, dim=0)
+            dx = torch.diff(x, dim=0)
+
+            L = torch.linalg.norm(dy) / torch.linalg.norm(dx)
+            L = L.max().item()
+
+            # relative_error = (L - model.lipschitz_constant) / model.lipschitz_constant
+
+            writer.add_scalars("Training", {'Lipschitz Constant': L}, epoch_number + 1)
+
+            # assert relative_error <= 1.25, f"The Lipschitz constraint was invalidated with {L} {model.lipschitz_constant} {relative_error}"
+
+            print("Lipschitz constant", L)
+
         plt.legend()
         plt.tight_layout()
 
