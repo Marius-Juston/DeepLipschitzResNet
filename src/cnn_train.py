@@ -9,8 +9,8 @@ import torch.nn as nn
 from torch.nn import Flatten
 
 from models.cnn_model import DeepLipschitzConvResNet
-from models.model import DeepLipschitzLinearResNet
-from train import print_num_parameters, train
+from models.linear_model import DeepLipschitzLinearResNet
+from linear_train import print_num_parameters, train
 
 
 def make_synthetic_dataset(n_samples: int, C: int, H: int, W: int, seed: int = 0, device=None):

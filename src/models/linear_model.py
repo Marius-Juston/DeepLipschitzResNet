@@ -4,7 +4,7 @@ import torch
 from torch import nn
 from torch.nn import ModuleList, Module, ReLU
 
-from models.layers import FirstLipschitzLinearLayer, LastLipschitzLinearLayer, InnerWeightLipschitzLinearLayer, \
+from models.linear_layers import FirstLipschitzLinearLayer, LastLipschitzLinearLayer, InnerWeightLipschitzLinearLayer, \
     LinearLipschitz
 
 

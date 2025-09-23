@@ -12,7 +12,7 @@ from matplotlib.ticker import MaxNLocator
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 import utils
-from models.model import DeepLipschitzLinearResNet
+from models.linear_model import DeepLipschitzLinearResNet
 
 DEFAULT_DPI = 600
 
