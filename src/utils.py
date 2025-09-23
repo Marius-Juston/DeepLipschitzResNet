@@ -171,3 +171,27 @@ def cholesky_rank_k(L: torch.Tensor, M: torch.Tensor):
     Wrapper to apply the custom Function; this is the user-facing call.
     """
     return CholeskyRankKFunction.apply(L, M)
+
+
+class PositiveExp(torch.nn.Module):
+    def forward(self, X: torch.Tensor) -> torch.Tensor:
+        # return X ** 2
+        return X.exp()
+
+    def right_inverse(self, A: torch.Tensor) -> torch.Tensor:
+        return A.log()
+
+
+class PositiveSq(torch.nn.Module):
+
+    def __init__(self, eps=1e-4, device=None,
+                 dtype=None) -> None:
+        super().__init__()
+        self.eps = torch.tensor(eps, dtype=dtype, device=device)
+
+    def forward(self, X: torch.Tensor) -> torch.Tensor:
+        # return X ** 2
+        return self.eps + X.square()
+
+    def right_inverse(self, A: torch.Tensor) -> torch.Tensor:
+        return (A - self.eps).sqrt()

@@ -6,29 +6,7 @@ from torch import nn, Tensor
 from torch.nn.parameter import Parameter
 from torch.nn.utils import parametrize
 
-
-class PositiveExp(nn.Module):
-    def forward(self, X: torch.Tensor) -> torch.Tensor:
-        # return X ** 2
-        return X.exp()
-
-    def right_inverse(self, A: torch.Tensor) -> torch.Tensor:
-        return A.log()
-
-
-class PositiveSq(nn.Module):
-
-    def __init__(self, eps=1e-4, device=None,
-                 dtype=None) -> None:
-        super().__init__()
-        self.eps = torch.tensor(eps, dtype=dtype, device=device)
-
-    def forward(self, X: torch.Tensor) -> torch.Tensor:
-        # return X ** 2
-        return self.eps + X.square()
-
-    def right_inverse(self, A: torch.Tensor) -> torch.Tensor:
-        return (A - self.eps).sqrt()
+from utils import PositiveExp
 
 
 class AbstractLipschitzLinearLayer(nn.Linear):
