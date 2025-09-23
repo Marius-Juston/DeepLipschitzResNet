@@ -5,9 +5,10 @@ from os.path import join
 import torch
 import torch.backends.cudnn as cudnn
 import torch.nn.functional as F
-from core import utils
-from core.data.readers import readers_config
-from core.models.model import NormalizedModel, LipschitzNetwork
+
+from models.model import LipschitzNetwork
+from training import utils
+from training.data.readers import readers_config
 
 
 class Evaluator:
@@ -54,7 +55,6 @@ class Evaluator:
 
         # load model
         self.model = LipschitzNetwork(self.config, self.reader.n_classes)
-        self.model = NormalizedModel(self.model, self.reader.means, self.reader.stds)
         self.model = torch.nn.DataParallel(self.model)
         self.model = self.model.cuda()
 

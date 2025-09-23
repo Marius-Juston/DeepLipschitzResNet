@@ -1,10 +1,6 @@
 import os
-import os
-import pandas as pd
-import warnings
-from torchvision.datasets import ImageFolder
+
 from torchvision.datasets import VisionDataset
-from torchvision.datasets.folder import default_loader
 from torchvision.datasets.folder import default_loader
 from torchvision.datasets.utils import extract_archive, check_integrity, download_url, verify_str_arg
 
@@ -116,6 +112,6 @@ def make_dataset(root, base_folder, dirname, class_to_idx):
 
 
 if __name__ == '__main__':
-    path = '/gpfsscratch/rech/yxj/uuc79vj/data/tiny-imagenet'
+    path = '/scratch/data/tiny-imagenet'
     train_dataset = TinyImageNet(path, split='train', download=True)
     test_dataset = TinyImageNet(path, split='val', download=True)

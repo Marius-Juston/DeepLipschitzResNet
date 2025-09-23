@@ -10,12 +10,13 @@ from os.path import join, exists
 import numpy as np
 import torch
 import torch.backends.cudnn as cudnn
-from core import utils
-from core.data.readers import readers_config
-from core.models.model import NormalizedModel, LipschitzNetwork
 from torch import nn
 from torch.distributed.elastic.multiprocessing.errors import record
 from torch.nn.parallel import DistributedDataParallel
+
+from models.model import LipschitzNetwork
+from training import utils
+from training.data.readers import readers_config
 
 
 class Trainer:
@@ -42,9 +43,8 @@ class Trainer:
     def _save_ckpt(self, step, epoch, final=False, best=False):
         """Save ckpt in train directory."""
         freq_ckpt_epochs = self.config.save_checkpoint_epochs
-        if (epoch % freq_ckpt_epochs == 0 and self.is_master \
-            and epoch not in self.saved_ckpts) \
-                or (final and self.is_master) or best:
+        if ((epoch % freq_ckpt_epochs == 0 and self.is_master and epoch not in self.saved_ckpts)
+                or (final and self.is_master) or best):
             prefix = "model" if not best else "best_model"
             ckpt_name = f"{prefix}.ckpt-{step}.pth"
             ckpt_path = join(self.train_dir, 'checkpoints', ckpt_name)
@@ -130,7 +130,6 @@ class Trainer:
 
         # load model
         self.model = LipschitzNetwork(self.config, self.reader.n_classes)
-        self.model = NormalizedModel(self.model, self.reader.means, self.reader.stds)
         self.model = self.model.cuda()
         nb_parameters = np.sum([p.numel() for p in self.model.parameters() if p.requires_grad])
         logging.info(f'Number of parameters to train: {nb_parameters}')
@@ -147,7 +146,7 @@ class Trainer:
             self.model = nn.DataParallel(self.model, device_ids=range(torch.cuda.device_count()))
 
         # define set for saved ckpt
-        self.saved_ckpts = set([0])
+        self.saved_ckpts = {0}
 
         data_loader, sampler = self.reader.load_dataset()
         if sampler is not None:
