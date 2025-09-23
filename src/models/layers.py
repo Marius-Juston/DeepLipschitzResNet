@@ -164,11 +164,14 @@ class InnerWeightLipschitzLinearLayer(AbstractLipschitzLinearLayer):
 
 
 class LastLipschitzLinearLayer(AbstractLipschitzLinearLayer):
-    def forward(self, input: Tensor, sigma_r: Tensor, prev_r_sqrt, prev_alpha) -> Tuple[Tensor, Tensor]:
+    def forward(self, input: Tensor, sigma_r: Tensor, last_layer: InnerWeightLipschitzLinearLayer) -> Tuple[Tensor, Tensor]:
         _, W, _ = self.scale_w()
 
+        prev_alpha = last_layer.alpha
+        prev_r = last_layer.omega_r
+
         # assert torch.allclose(prev_r.triu(), prev_r), "This is not upper triangular"
-        W = torch.linalg.solve_triangular(prev_r_sqrt.T, W, upper=False, left=False)
+        W = torch.linalg.solve_triangular(prev_r.T, W, upper=False, left=False)
         W = self.constant * prev_alpha.sqrt() * torch.linalg.solve_triangular(sigma_r, W, upper=True, left=True)
 
         return torch.nn.functional.linear(input, W, self.bias), W

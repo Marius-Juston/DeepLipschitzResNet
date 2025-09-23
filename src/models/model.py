@@ -90,10 +90,7 @@ class DeepLipschitzLinearResNet(nn.Module):
 
         R_sigma = torch.linalg.cholesky(scaling, upper=True)
 
-        prev_alpha = last_layer.alpha
-        prev_r = last_layer.omega_r
-
-        second, b_weight = self.B(x, R_sigma, prev_r, prev_alpha)
+        second, b_weight = self.B(x, R_sigma, last_layer)
 
         return second, b_weight
 
@@ -107,7 +104,8 @@ class DeepLipschitzLinearResNet(nn.Module):
 
         prev_layer = self.A
 
-        for i, layer in enumerate(self.layers):
+        # for i, layer in enumerate(self.layers):
+        for layer in self.layers:
             T = gamma @ d_inv
 
             # d_inv_prev = d_inv
