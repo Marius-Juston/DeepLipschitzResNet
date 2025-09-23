@@ -20,7 +20,7 @@ OUTPUT_FORMAT = 'png'
 
 
 def block(tensors: Sequence[Sequence[torch.Tensor]]) -> torch.Tensor:
-    return torch.cat([torch.cat(b, dim=1) for b in tensors], dim=0)
+    return torch.cat([torch.cat(b, dim=-1) for b in tensors], dim=-2)
 
 
 def E_real(dimensions: Sequence[int], i: Optional[int], device=None, dtype=None):
@@ -157,7 +157,7 @@ def plot_matrix(M: torch.Tensor, fig_name: str = None, dpi: int = DEFAULT_DPI, m
                 normalize: bool = True, ax: Optional[Axes] = None):
     if mask:
         masked_zerp = torch.abs(M) <= torch.finfo(M.dtype).eps
-        no_mask = M != 0
+        no_mask = torch.logical_not(masked_zerp)
 
         min, max = M[no_mask].min(), M[no_mask].max()
     else:
@@ -183,6 +183,7 @@ def plot_matrix(M: torch.Tensor, fig_name: str = None, dpi: int = DEFAULT_DPI, m
         im = ax.matshow(normalized, cmap='viridis', vmin=vmin, vmax=vmax)
         fig.tight_layout()
         fig.savefig(f"{fig_name}.{OUTPUT_FORMAT}", dpi=dpi)
+        plt.close()
     else:
         im = ax.matshow(normalized, cmap='viridis', vmin=vmin, vmax=vmax)
 
@@ -213,6 +214,7 @@ def plot_histogram(x: torch.Tensor, fig_name: str, dpi=DEFAULT_DPI):
     ax.set_title("Histogram of Torch Vector")
     fig.tight_layout()
     fig.savefig(f"{fig_name}.{OUTPUT_FORMAT}", dpi=dpi)
+    plt.close()
 
 
 def singular_extremes(M: torch.Tensor):
@@ -248,6 +250,7 @@ def plot_singular_extremes(a_weight, b_weight, Cs, fig_name: str, dpi=DEFAULT_DP
     ax.grid(True, alpha=0.3)
     fig.tight_layout()
     fig.savefig(f"{fig_name}.{OUTPUT_FORMAT}", dpi=dpi)
+    plt.close()
 
 
 def test_sqrt(device, tol=5e-3):
@@ -330,6 +333,7 @@ def plot_zoomed_in_system(A, B, fig_name: str, dpi=DEFAULT_DPI):
 
     fig.tight_layout()
     fig.savefig(f"{fig_name}.{OUTPUT_FORMAT}", dpi=dpi)
+    plt.close()
 
 
 def model_artifacting(model_fn, weights, vals=None, fig_name: str = None, dpi=DEFAULT_DPI, factory_kwargs=None):
@@ -355,6 +359,7 @@ def model_artifacting(model_fn, weights, vals=None, fig_name: str = None, dpi=DE
 
     fig.tight_layout()
     fig.savefig(f"{fig_name}.{OUTPUT_FORMAT}", dpi=dpi)
+    plt.close()
 
 
 def ldlt_decomposition(M: torch.Tensor, matrix_block_sizes: List[int]):
@@ -424,6 +429,8 @@ def plot_ldlt_decomposition(M, dimensions, fig_name: str = None, dpi=DEFAULT_DPI
     fig.tight_layout()
     fig.savefig(f"{fig_name}_d.{OUTPUT_FORMAT}", dpi=dpi)
 
+    plt.close()
+
 
 def get_maximum_model(model_func, *args, device=None):
     if device is None:
@@ -460,7 +467,7 @@ def get_maximum_model(model_func, *args, device=None):
 def main():
     torch.manual_seed(0)
 
-    figs_folder = 'figs'
+    figs_folder = 'figs/linear'
     os.makedirs(figs_folder, exist_ok=True)
 
     input_features = 4
