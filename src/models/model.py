@@ -60,6 +60,7 @@ class DeepLipschitzLinearResNet(nn.Module):
 
         self.B = LastLipschitzLinearLayer(in_features=self.layer_widths[-1], out_features=self.out_features,
                                           bias=False,
+                                          enable_alpha=self.enable_alpha,
                                           # Don't need bias on both A and B since they would be doing the same thing
                                           **self.factory_kwargs)
 
@@ -69,7 +70,10 @@ class DeepLipschitzLinearResNet(nn.Module):
 
         for i, out_features in enumerate(self.layer_widths):
             layer.append(
-                InnerWeightLipschitzLinearLayer(prev, out_features, constant_sq=2.0, **self.factory_kwargs))
+                InnerWeightLipschitzLinearLayer(prev, out_features,
+                                                constant_sq=2.0,
+                                                enable_alpha=self.enable_alpha,
+                                                **self.factory_kwargs))
             prev = out_features
 
         self.layers = ModuleList(layer)
