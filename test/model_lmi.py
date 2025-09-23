@@ -470,15 +470,15 @@ def main():
     figs_folder = 'figs/linear'
     os.makedirs(figs_folder, exist_ok=True)
 
-    input_features = 4
+    input_features = 1
     output_features = input_features
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-    factory_kwargs = dict(device=device, dtype=torch.float64)
+    factory_kwargs = dict(device=device, dtype=torch.float32)
 
     model_fnc = DeepLipschitzLinearResNet
 
-    weights = (32, 64, 128)
+    weights = (64, 64, 64, 64, 64)
 
     model_artifacting(model_fnc, weights, fig_name=os.path.join(figs_folder, "b_artifacting_grid"),
                       factory_kwargs=factory_kwargs)
@@ -494,7 +494,7 @@ def main():
     model = model_fnc(*inputs, **factory_kwargs)
     # model = DeepLipschitzLinearResNet(*inputs, device=device)
 
-    # save_folder = '/home/mjuston2/Documents/DeepLipschitzResNet/runs/sin_trainer_20250917_020700'
+    # save_folder = '/home/mjuston2/Documents/DeepLipschitzResNet/runs/sine_trainer_20250923_003644'
     save_folder = None
 
     if save_folder is not None:

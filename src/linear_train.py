@@ -219,10 +219,10 @@ def main():
 
     variation = torch.arange(input_features, device=device, dtype=dtype)
 
-    y =  1/2 * torch.sin(x + variation) + x
-    theoretical_lower = 0.11929 * 0.95
-    # y = torch.sin(x + variation)
-    # theoretical_lower = 0
+    # y =  1/2 * torch.sin(x + variation) + x
+    # theoretical_lower = 0.11929 * 0.95
+    y = torch.sin(x + variation)
+    theoretical_lower = 0
 
     train(x, y, model, learning_prefix='general', batch_size=batch, termination_error=1e-4, lr=1e-4,
           theoretical_lower=theoretical_lower)
@@ -282,5 +282,5 @@ def sine_training():
 
 
 if __name__ == '__main__':
-    # sine_training()
-    main()
+    sine_training()
+    # main()

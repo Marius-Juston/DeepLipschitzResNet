@@ -133,19 +133,21 @@ def main():
 
     # model = get_maximum_model(model_fnc, *inputs, device=device)
 
-    model = DeepLipschitzConvResNet(in_channels=1, out_channels=1, layers_widths=weights, kernel_size=3, padding=1, **factory_kwargs)
+    model = LipschitzNetwork(device=device)
     # model = DeepLipschitzLinearResNet(*inputs, device=device)
 
     print(model)
 
-    # save_folder = '/home/mjuston2/Documents/DeepLipschitzResNet/runs/sine_trainer_20250922_173010'
-    save_folder = None
+    save_folder = '/home/mjuston2/Documents/DeepLipschitzResNet/runs/general_cnn_trainer_20250923_020626'
+    # save_folder = None
 
     if save_folder is not None:
         data = torch.load(f"{save_folder}/best.pt", map_location=device)
         new_state_dict = {key.replace('_orig_mod.', ''): val for key, val in data.items()}
 
         model.load_state_dict(new_state_dict)
+
+    model = model.conv[0]
 
     with torch.no_grad():
         a_weight, b_weight, Cs, Ls, Lms, dimensions = extract_lmi_constants(model)
