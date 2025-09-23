@@ -1,19 +1,10 @@
 import os.path
-from typing import Optional, Sequence, List
+from typing import List
 
-import numpy as np
 import torch
-from matplotlib import pyplot as plt
-from matplotlib.axes import Axes
-from matplotlib.figure import Figure
-from matplotlib.image import AxesImage
-from matplotlib.patches import Rectangle, ConnectionPatch
-from matplotlib.ticker import MaxNLocator
-from mpl_toolkits.axes_grid1 import make_axes_locatable
 
-import utils
+from cnn_train import LipschitzNetwork
 from model_lmi import block, E_real, plot_matrix, plot_histogram, plot_singular_extremes
-from models.cnn_model import DeepLipschitzConvResNet
 
 DEFAULT_DPI = 600
 

@@ -164,7 +164,8 @@ class InnerWeightLipschitzLinearLayer(AbstractLipschitzLinearLayer):
 
 
 class LastLipschitzLinearLayer(AbstractLipschitzLinearLayer):
-    def forward(self, input: Tensor, sigma_r: Tensor, last_layer: InnerWeightLipschitzLinearLayer) -> Tuple[Tensor, Tensor]:
+    def forward(self, input: Tensor, sigma_r: Tensor, last_layer: InnerWeightLipschitzLinearLayer) -> Tuple[
+        Tensor, Tensor]:
         _, W, _ = self.scale_w()
 
         prev_alpha = last_layer.alpha

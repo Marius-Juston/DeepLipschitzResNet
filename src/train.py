@@ -47,8 +47,9 @@ def train_one_epoch(training_loader, optimizer, model, loss_fn, epoch_index, tb_
         # Every data instance is an input + label pair
         inputs, labels = data
 
-        inputs = inputs.reshape((-1, model.in_features))
-        labels = labels.reshape((-1, model.out_features))
+        if hasattr(model, 'in_features'):
+            inputs = inputs.reshape((-1, model.in_features))
+            labels = labels.reshape((-1, model.out_features))
 
         # Zero your gradients for every batch!
         optimizer.zero_grad(set_to_none=True)
@@ -75,15 +76,16 @@ def train_one_epoch(training_loader, optimizer, model, loss_fn, epoch_index, tb_
             tb_writer.add_scalar('Loss/Train', last_loss, tb_x)
             running_loss = 0.
 
-            alpha_vals = alpha_values(model)
+            if hasattr(model, 'A'):
+                alpha_vals = alpha_values(model)
 
-            tb_writer.add_scalars('Training/Alpha', alpha_vals, tb_x, tb_x)
+                tb_writer.add_scalars('Training/Alpha', alpha_vals, tb_x, tb_x)
 
     return last_loss
 
 
 def train(x, y, model: DeepLipschitzLinearResNet, learning_prefix='sine', batch_size=64, lr=1e-3,
-          termination_error=5e-3, epochs=100, theoretical_lower=0):
+          termination_error=5e-3, epochs=100, theoretical_lower=0, logging_frequency=100):
     # Initializing in a separate cell so we can easily add more epochs to the same run
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     save_folder = f'../runs/{learning_prefix}_trainer_{timestamp}'
@@ -113,7 +115,8 @@ def train(x, y, model: DeepLipschitzLinearResNet, learning_prefix='sine', batch_
 
         # Make sure gradient tracking is on, and do a pass over the data
         model.train(True)
-        avg_loss = train_one_epoch(training_loader, optimizer, model, loss_fn, epoch_number, writer)
+        avg_loss = train_one_epoch(training_loader, optimizer, model, loss_fn, epoch_number, writer,
+                                   logging_frequency=logging_frequency)
 
         print('LOSS train {}'.format(avg_loss))
 
@@ -124,11 +127,19 @@ def train(x, y, model: DeepLipschitzLinearResNet, learning_prefix='sine', batch_
                            epoch_number + 1)
         writer.flush()
 
-        plt.plot(x.cpu(), y.cpu(), label='Ground Truth')
         with torch.no_grad():
-            y_pred = model(x.reshape(-1, model.in_features))
+            if hasattr(model, 'in_features'):
+                y_pred = model(x.reshape(-1, model.in_features))
 
-            plt.plot(x.cpu(), y_pred.cpu(), label='Prediction')
+                plt.plot(x.cpu(), y.cpu(), label='Ground Truth')
+                plt.plot(x.cpu(), y_pred.cpu(), label='Prediction')
+                plt.legend()
+                plt.tight_layout()
+
+                plt.savefig(os.path.join(save_folder, f'truth{epoch}.png'), dpi=DPI)
+                plt.close()
+            else:
+                y_pred = model(x)
 
             dy = torch.diff(y_pred, dim=0)
             dx = torch.diff(x, dim=0)
@@ -143,12 +154,6 @@ def train(x, y, model: DeepLipschitzLinearResNet, learning_prefix='sine', batch_
             # assert relative_error <= 1.25, f"The Lipschitz constraint was invalidated with {L} {model.lipschitz_constant} {relative_error}"
 
             print("Lipschitz constant", L)
-
-        plt.legend()
-        plt.tight_layout()
-
-        plt.savefig(os.path.join(save_folder, f'truth{epoch}.png'), dpi=DPI)
-        plt.close()
 
         assert avg_loss >= theoretical_lower, "Problem with the lipschitz network since cannot be lower than theoretical lowest"
 
