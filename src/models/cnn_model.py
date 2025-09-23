@@ -104,17 +104,17 @@ class DeepLipschitzConvResNet(nn.Module):
         )
 
     def compute_b(self, x: Tensor, sigma_lower, a_wf, last_layer: InnerWeightLipschitzConvLayer) -> Tuple[
-        Tensor, Tensor]:
+        Tensor, Tensor, Tensor]:
 
         left = a_wf @ sigma_lower
 
-        scaling = self.B.identity_out + left @ left.mT
+        scaling = self.B.identity_out + left @ left.mH
 
         R_sigma = torch.linalg.cholesky(scaling, upper=True)
 
-        second, b_weight = self.B(x, R_sigma, last_layer)
+        second, b_weight, b_wf = self.B(x, R_sigma, last_layer)
 
-        return second, b_weight
+        return second, b_weight, b_wf
 
     def forward(self, x: Tensor) -> Tensor:
         first, a_weight, a_wf, d_inv = self.A(x)
@@ -134,15 +134,15 @@ class DeepLipschitzConvResNet(nn.Module):
             if sigma_lower is None:
                 sigma_lower = T
             else:
-                sigma_lower = torch.linalg.cholesky(sigma_lower @ sigma_lower.mT + T @ T.mT, upper=False)
+                sigma_lower = torch.linalg.cholesky(sigma_lower @ sigma_lower.mH + T @ T.mH, upper=False)
 
-            gamma = T @ c_wf.mT
+            gamma = T @ c_wf.mH
 
             current_input = self.activation(current_input)
 
             prev_layer = layer
 
-        second, b_weight = self.compute_b(current_input, sigma_lower, a_wf, self.layers[-1])
+        second, b_weight, b_wf = self.compute_b(current_input, sigma_lower, a_wf, self.layers[-1])
 
         return first + second
 
