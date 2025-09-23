@@ -22,6 +22,10 @@ To generate the LMI plots use [model_lmi.py](./test/model_lmi.py), where you can
 
 To generate the numerical instability graphs we have that [numerical_instability.py](./test/numerical_instability.py) script.
 
+# Performance
+
+For full performance in the CNN implementation of the lipschitz network, so that `torch.compile` works, due to a bug with the inductor compiler and complex datatypes and views `.mH`, please make sure to get either the nightly build or any build that fixes PyTorch issue [https://github.com/pytorch/pytorch/issues/163243](https://github.com/pytorch/pytorch/issues/163243), where the sample code [complex_cholesky_decomposition.py](./test/complex_cholesky_decomposition.py) should run and compile the graph.
+
 ## Tensorboard
 
 ```bash
