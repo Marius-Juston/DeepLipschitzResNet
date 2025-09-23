@@ -1,9 +1,15 @@
-from typing import Optional, Tuple
+from abc import abstractmethod, ABC
+from typing import Optional, Tuple, Union
 
 import torch
 import torch.nn.functional as F
 from torch import nn, Tensor
+from torch.nn import Parameter
+from torch.nn.common_types import _size_2_t
 from torch.nn.modules.utils import _pair
+from torch.nn.utils import parametrize
+
+from utils import PositiveExp
 
 
 def _center_and_pad_kernel(kernel: Tensor, H: int, W: int) -> Tensor:
@@ -40,18 +46,39 @@ def _unbatchify_freq(M_flat: Tensor, H: int, Wf: int) -> Tensor:
     return M  # (out, in, H, Wf)
 
 
-class AbstractLipschitzConvLayer(nn.Conv2d):
-    constant_sq: torch.Tensor
-    constant: torch.Tensor
+class AbstractLipschitzConvLayer(nn.Conv2d, ABC):
     identity: torch.Tensor
     identity_out: torch.Tensor
+    constant_sq: torch.Tensor
+    constant: torch.Tensor
+    R: torch.Tensor
+    omega_r: torch.Tensor
 
-    def __init__(self, in_channels, out_channels, kernel_size, bias=True, constant_sq: float = 1.0, **conv_kwargs):
-        super().__init__(in_channels=in_channels, out_channels=out_channels, kernel_size=kernel_size, bias=bias,
-                         **conv_kwargs)
-        factory_kwargs = {"device": self.weight.device, "dtype": self.weight.dtype}
-        self.register_buffer("constant_sq", torch.tensor(constant_sq, **factory_kwargs))
-        self.register_buffer("constant", torch.sqrt(self.constant_sq))
+    def __init__(self, in_channels: int,
+                 out_channels: int,
+                 kernel_size: _size_2_t,
+                 constant_sq: float = 1.0,
+                 enable_alpha: bool = True,
+                 stride: _size_2_t = 1,
+                 padding: Union[str, _size_2_t] = 0,
+                 dilation: _size_2_t = 1,
+                 groups: int = 1,
+                 bias: bool = True,
+                 padding_mode: str = "zeros",
+                 device=None,
+                 dtype=None, ):
+        super().__init__(in_channels=in_channels,
+                         out_channels=out_channels,
+                         kernel_size=kernel_size,
+                         stride=stride,
+                         padding=padding,
+                         dilation=dilation,
+                         groups=groups,
+                         bias=bias,
+                         padding_mode=padding_mode,
+                         device=device,
+                         dtype=dtype)
+        factory_kwargs = {"device": device, "dtype": dtype}
 
         self.register_buffer(
             "identity", torch.eye(in_channels, **factory_kwargs)
@@ -61,23 +88,35 @@ class AbstractLipschitzConvLayer(nn.Conv2d):
             "identity_out", torch.eye(out_channels, **factory_kwargs)
         )
 
+        self.register_buffer(
+            "constant_sq", torch.tensor(constant_sq, **factory_kwargs)
+        )
+
+        self.register_buffer(
+            "constant", self.constant_sq.sqrt()
+        )
+
+        initial_alpha = torch.tensor(1.0, **factory_kwargs)
+
+        if enable_alpha:
+            self.alpha = Parameter(initial_alpha)
+            parametrize.register_parametrization(self, "alpha", PositiveExp())
+        else:
+            self.register_buffer('alpha', initial_alpha)
+
     def sum_weight(self, Wf, transpose: bool = False):
         if transpose:
-            return self.identity + torch.matmul(Wf.mH, Wf)
+            return self.alpha * self.identity + torch.matmul(Wf.mH, Wf)
         else:
-            return self.identity_out + torch.matmul(Wf, Wf.mH)
+            return self.alpha * self.identity_out + torch.matmul(Wf, Wf.mH)
 
-    def _compute_cholesky_and_normalize(self, Wf: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
-        # Wf: (F, out, in) complex
-        A = self.sum_weight(Wf, transpose=True)
+    def scale_w(self, Wf: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
+        omega = self.sum_weight(Wf, transpose=True)
+        R = torch.linalg.cholesky(omega, upper=True)
 
-        # upper triangular such that A = R^* R
-        R = torch.linalg.cholesky(A, upper=True)  # (F, in, in)
+        W = torch.linalg.solve_triangular(R, Wf, upper=True, left=False)
 
-        # Solve W @ R^{-1}: solve R X = W  -> X = W @ R^{-1}
-        # torch.linalg.solve_triangular supports batched solves: here left=False solves X R = W -> X = W R^{-1}
-        Wnorm = torch.linalg.solve_triangular(R, Wf, upper=True, left=False)
-        return Wnorm, R, A
+        return omega, W, R
 
     def _weight_fft_for_input(self, H: int, W: int) -> Tensor:
         pad = _center_and_pad_kernel(self.weight, H, W)
@@ -101,12 +140,11 @@ class AbstractLipschitzConvLayer(nn.Conv2d):
             )
         return F.conv2d(input, W_spatial, bias, self.stride, self.padding, self.dilation, self.groups)
 
-    def spectral_norm_frequency(self, H: int, W: int) -> Tuple[Tensor, Tensor, Tensor, Tensor, int, int]:
+    def spectral_norm_frequency(self, H: int, W: int) -> Tuple[Tensor, int, int]:
         K_fft = self._weight_fft_for_input(H, W)  # (out,in,H,Wf)
         Wf, H_, Wf_ = _freq_batchify(K_fft)  # (F,out,in)
-        Wnorm_f, R, A = self._compute_cholesky_and_normalize(Wf)
 
-        return Wf, Wnorm_f, R, A, H_, Wf_
+        return Wf, H_, Wf_
 
     def convert_to_spatial(self, Wnorm_f, H_, Wf_, W):
         M_freq = _unbatchify_freq(Wnorm_f, H_, Wf_)
@@ -116,104 +154,80 @@ class AbstractLipschitzConvLayer(nn.Conv2d):
 
         return W_spatial
 
-    # A convenience method used by forward to compute normalized frequency matrices and spatial kernel
-    def spectral_normalize_weight_for_input(self, H: int, W: int) -> Tuple[Tensor, Tensor, Tensor, Tensor]:
-        # returns: W_spatial (real), Wfreq_norm (F,out,in) complex, d_sqrt (F,in,in) complex, d_inv (F,in,in) complex
-        _, Wnorm_f, R, A, H_, Wf_ = self.spectral_norm_frequency(H, W)
+    @abstractmethod
+    def process(self, Wf, *args, **kwargs):
+        pass
 
-        Wnorm_f = Wnorm_f * self.constant
+    def forward(self, input: Tensor, *args) -> Tuple[Tensor, Tensor, Tensor, ...]:
+        B, C_in, H, W = input.shape
 
-        W_spatial = self.convert_to_spatial(Wnorm_f, H_, Wf_, W)
+        Wf, H_, Wf_ = self.spectral_norm_frequency(H, W)
 
-        d_sqrt = R * self.constant
-        d_inv = A / self.constant_sq
-        return W_spatial, Wnorm_f, d_sqrt, d_inv
+        Wf, d_inv = self.process(Wf, *args)
+
+        W_spatial = self.convert_to_spatial(Wf, H_, Wf_, W)
+
+        output = self.conv_with_normalized_weight(input, W_spatial, self.bias)
+
+        return output, W_spatial, Wf, d_inv
 
 
 class FirstLipschitzConvLayer(AbstractLipschitzConvLayer):
-    def forward(self, input: Tensor) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
-        """
-        Returns:
-          out: spatial conv result
-          W_spatial: normalized spatial kernel (out,in,kH,kW) real
-          Wfreq_norm: normalized freq matrices (F, out, in) complex
-          d_sqrt: (F, in, in) upper triangular complex
-          d_inv: (F, in, in) complex
-        """
-        B, C_in, H, W = input.shape
-        W_spatial, Wfreq_norm, d_sqrt, d_inv = self.spectral_normalize_weight_for_input(H, W)
-        out = self.conv_with_normalized_weight(input, W_spatial, self.bias)
-        # return everything so the ResNet can reuse Wfreq_norm without recomputing
-        return out, W_spatial, Wfreq_norm, d_sqrt, d_inv
+    def process(self, Wf):
+        omega, W, R = self.scale_w(Wf)
+
+        W = self.constant * W
+
+        d_inv = omega / (self.constant_sq * self.alpha)
+
+        self.omega_r = R
+
+        return W, d_inv
 
 
 class InnerWeightLipschitzConvLayer(AbstractLipschitzConvLayer):
-    """
-    Inner layer: uses prev_d_sqrt to normalize; now returns Wfreq_norm so the ResNet can use it.
-    """
-    omega_r: torch.Tensor
+    def process(self, Wf: Tensor, prev_layer: Union[FirstLipschitzConvLayer, "InnerWeightLipschitzConvLayer"]) -> \
+            Tuple[Tensor, Tensor]:
+        _, W, _ = self.scale_w(Wf)
 
-    def forward(self, input: Tensor, prev_d_sqrt: Tensor) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
-        """
-        Args:
-          input: spatial input (B, in_ch, H, W)
-          prev_d_sqrt: (F, in_ch, in_ch) upper triangular complex from previous layer
+        W = torch.linalg.solve_triangular(prev_layer.omega_r.mT, W, upper=False, left=False)
 
-        Returns:
-          out: spatial conv output (B, out_ch, H', W')
-          W_spatial: normalized spatial kernel (out,in,kH,kW) real
-          Wfreq_norm: (F, out, in) complex normalized freq matrices (already scaled by constant)
-          d_sqrt: (F, in, in) complex upper triangular for this layer
-          d_inv: (F, in, in) complex A matrix divided by constant_sq
-        Side effect:
-          self.omega_r is set to the R (upper triangular) for use by the ResNet.
-        """
-        B, Cin, H, W = input.shape
+        scale = prev_layer.alpha.sqrt() * prev_layer.constant * self.constant
+        div_scale = self.constant_sq * self.alpha
 
-        Wf, Wnorm_f, _, _, H_, Wf_ = self.spectral_norm_frequency(H, W)
+        W = scale * W
 
-        # normalize with prev_d_sqrt: solve X * prev_d_sqrt = Wf  => X = Wf @ prev_d_sqrt^{-1}
-        # left=False: X * prev = Wf -> X = Wf @ prev^{-1}
-        Wnorm_f = torch.linalg.solve_triangular(prev_d_sqrt, Wnorm_f, upper=True, left=False)
+        omega = self.sum_weight(Wf)
 
-        # scale by constant
-        Wnorm_f = Wnorm_f * self.constant
+        d_inv = omega / div_scale
 
-        # Wnorm_f is already Wf_normed @ R^{-1}, and we keep it as the per-frequency normalized matrix
-        # reconstruct spatial kernel
-        W_spatial = self.convert_to_spatial(Wnorm_f, H_, Wf_, W)
+        self.omega_r = torch.linalg.cholesky(omega, upper=True)
 
-        # store upper triangular factor (omega_r) for use by the network (and B)
-        A = self.sum_weight(Wf)
-        R = torch.linalg.cholesky(A, upper=True)  # (F, in, in)
-
-        self.omega_r = R  # (F, in, in), upper triangular
-
-        d_sqrt = R * self.constant
-        d_inv = A / self.constant_sq.to(A.dtype)
-
-        out = self.conv_with_normalized_weight(input, W_spatial, self.bias)
-        # return the frequency normalized matrix so ResNet can update gamma without recomputing
-        return out, W_spatial, Wnorm_f, d_sqrt, d_inv
+        return W, d_inv
 
 
 class LastLipschitzConvLayer(AbstractLipschitzConvLayer):
-    def forward(self, input: Tensor, prev_r: Tensor) -> Tuple[Tensor, Tensor]:
-        """
-        prev_r: (F, in, in) upper triangular complex from previous layer
-        returns: out spatial, W_spatial (normalized)
-        """
-        B, Cin, H, W = input.shape
+    def process(self, Wf: Tensor, sigma_r: Tensor, prev_r_sqrt: torch.Tensor, prev_alpha: torch.Tensor):
+        _, W, _ = self.scale_w(Wf)
 
-        Wf, Wnorm_f, _, _, H_, Wf_ = self.spectral_norm_frequency(H, W)
+        W = torch.linalg.solve_triangular(prev_r_sqrt.mT, W, upper=False, left=False)
+        W = self.constant * prev_alpha.sqrt() * torch.linalg.solve_triangular(sigma_r, W, upper=True, left=True)
 
-        # normalize with prev_r: solve prev_r * X  = Wf  => X = @ prev_r^{-1} @ Wf
-        # left=True: prev * X  = Wf -> X = prev^{-1} @ Wf
-        Wnorm_f = self.constant * torch.linalg.solve_triangular(prev_r, Wnorm_f, upper=True, left=True)
+        return W
 
-        # Wnorm_f is already Wf_normed @ R^{-1}, and we keep it as the per-frequency normalized matrix
-        # reconstruct spatial kernel
-        W_spatial = self.convert_to_spatial(Wnorm_f, H_, Wf_, W)
+    def forward(self, input: Tensor, sigma_r: Tensor, prev_layer: InnerWeightLipschitzConvLayer) -> Tuple[
+        Tensor, Tensor]:
+        B, C_in, H, W = input.shape
 
-        out = self.conv_with_normalized_weight(input, W_spatial, self.bias)
-        return out, W_spatial
+        Wf, H_, Wf_ = self.spectral_norm_frequency(H, W)
+
+        prev_alpha = prev_layer.alpha
+        prev_r = prev_layer.omega_r
+
+        Wf = self.process(Wf, sigma_r, prev_r, prev_alpha)
+
+        W_spatial = self.convert_to_spatial(Wf, H_, Wf_, W)
+
+        output = self.conv_with_normalized_weight(input, W_spatial, self.bias)
+
+        return output, W_spatial

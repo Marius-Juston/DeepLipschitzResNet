@@ -27,13 +27,19 @@ class DeepLipschitzConvResNet(nn.Module):
             groups: int = 1,
             activation: Union[nn.Module, List[nn.Module]] = None,
             lipschitz_constant: float = 1.0,
+            enable_alpha: bool = True,
             device: Union[str, torch.device] = 'cuda',
             dtype: Optional[torch.dtype] = None
     ):
         super().__init__()
-        assert len(layers_widths) >= 1
+        assert len(layers_widths) >= 1, "This deep network assumes that the number of layers is greater "
+        assert in_channels > 0, "The input width needs to be larger than 0"
+        assert out_channels > 0, "The output width needs to be larger than 0"
+
+        self.enable_alpha = enable_alpha
         self.in_channels = in_channels
         self.out_channels = out_channels
+
         self.layer_widths = list(layers_widths)
         self.kernel_size = kernel_size
         self.stride = stride
@@ -50,7 +56,9 @@ class DeepLipschitzConvResNet(nn.Module):
 
         self.activation = ReLU() if activation is None else activation
 
-        # Build layers: first -> inner(s) -> last
+        self.generate_layers()
+
+    def generate_layers(self):
         self.A = FirstLipschitzConvLayer(
             in_channels=self.in_channels,
             out_channels=self.out_channels,
@@ -60,105 +68,82 @@ class DeepLipschitzConvResNet(nn.Module):
             dilation=self.dilation,
             groups=self.groups,
             bias=True,
+            enable_alpha=self.enable_alpha,
             constant_sq=self.lipschitz_constant_sq,
             **self.factory_kwargs
         )
 
-        # inner layers (note: layer_widths[0] is the first hidden out)
         layers = []
+
         prev = self.in_channels
-        for i, width in enumerate(self.layer_widths):
-            if i == 1:
-                constant = 2.0 * self.lipschitz_constant_sq
-            else:
-                constant = 4.0
+
+        for i, out_features in enumerate(self.layer_widths):
             layers.append(
-                InnerWeightLipschitzConvLayer(
-                    in_channels=prev,
-                    out_channels=width,
-                    kernel_size=self.kernel_size,
-                    stride=1,
-                    padding=self.padding,
-                    dilation=self.dilation,
-                    groups=self.groups,
-                    bias=True,
-                    constant_sq=constant,
-                    **self.factory_kwargs
-                )
-            )
-            prev = width
+                InnerWeightLipschitzConvLayer(prev, out_features,
+                                              enable_alpha=self.enable_alpha, constant_sq=2.0,
+                                              kernel_size=self.kernel_size,
+                                              stride=self.stride,
+                                              padding=self.padding,
+                                              dilation=self.dilation,
+                                              groups=self.groups, **self.factory_kwargs))
+            prev = out_features
+
         self.layers = ModuleList(layers)
 
         self.B = LastLipschitzConvLayer(
             in_channels=self.layer_widths[-1],
             out_channels=self.out_channels,
             kernel_size=self.kernel_size,
-            stride=1,
+            stride=self.stride,
             padding=self.padding,
             dilation=self.dilation,
             groups=self.groups,
+            # Don't need bias on both A and B since they would be doing the same thing
             bias=False,
             **self.factory_kwargs
         )
 
-        # placeholder for spectral_norm helper (user can supply a batched, complex-aware spectral norm)
-        self.spectral_norm = BatchedConvSpectralNorm()
-
-    def _cholesky_rank_k_freq(self, prev_sigma_lower: Optional[Tensor], T: Tensor) -> Tensor:
-        if prev_sigma_lower is None:
-            return T
-        else:
-            prev = prev_sigma_lower
-            S_prev = torch.matmul(prev, prev.mH)
-            S_t = torch.matmul(T, T.mH)
-            S = S_prev + S_t
-            L = torch.linalg.cholesky(S, upper=False)
-            return L
-
-    def compute_b(self, x: Tensor, sigma_lower: Tensor, a_weight_freq: Tensor, prev_r: Tensor) -> Tuple[
+    def compute_b(self, x: Tensor, sigma_lower, a_wf, last_layer: InnerWeightLipschitzConvLayer) -> Tuple[
         Tensor, Tensor]:
-        # inner_inverse = prev_r^{-1}
-        inner_inverse = torch.cholesky_inverse(prev_r, upper=True).real
-        # spectral norm scaling
-        max_singular = self.spectral_norm(inner_inverse)
-        max_singular = max_singular.max()
 
-        left = torch.matmul(a_weight_freq, sigma_lower)
+        left = a_wf @ sigma_lower
 
-        scaling = self.B.identity_out + torch.matmul(left, left.mH)
+        scaling = self.B.identity_out + left @ left.mT
 
         R_sigma = torch.linalg.cholesky(scaling, upper=True)
 
-        second, b_weight_spatial = self.B.forward(x, R_sigma)
-        second_s = second * max_singular
-        b_weight_s = b_weight_spatial * max_singular
+        second, b_weight = self.B(x, R_sigma, last_layer)
 
-        return second_s, b_weight_s
+        return second, b_weight
 
     def forward(self, x: Tensor) -> Tensor:
-        # First layer -> get normalized freq matrices once
-        first, W_spatial_A, Wfreq_A, d_sqrt, d_inv = self.A.forward(x)
-        # initial gamma (identity per-frequency)
-        gamma = self.A.identity.to(dtype=d_inv.dtype)
+        first, a_weight, a_wf, d_inv = self.A(x)
 
-        current_input = x
+        gamma = torch.eye(d_inv.shape[1], device=d_inv.device, dtype=d_inv.dtype).expand(d_inv.shape[0], -1, -1)
         sigma_lower = None
 
-        # iterate inner layers; each inner returns its Wfreq_norm so we can use it for gamma update
+        current_input = x
+
+        prev_layer = self.A
+
         for layer in self.layers:
-            T = torch.matmul(gamma, d_inv)  # (F, n, n)
-            current_input, c_spatial, c_freq_norm, d_sqrt, d_inv = layer.forward(current_input, d_sqrt)
-            # update sigma_lower via rank-k cholesky update in freq domain
-            sigma_lower = self._cholesky_rank_k_freq(sigma_lower, T)
-            # update gamma using the frequency-normalized inner weight returned by the layer (no recompute)
-            # c_freq_norm has shape (F, out, in) where in matches gamma's second dim
-            # we want gamma = T @ c_freq_norm^H
-            gamma = torch.matmul(T, c_freq_norm.mH)
+            T = gamma @ d_inv
+
+            current_input, c_weight, c_wf, d_inv = layer(current_input, prev_layer)
+
+            if sigma_lower is None:
+                sigma_lower = T
+            else:
+                sigma_lower = torch.linalg.cholesky(sigma_lower @ sigma_lower.mT + T @ T.mT, upper=False)
+
+            gamma = T @ c_wf.mT
+
             current_input = self.activation(current_input)
 
-        # obtain prev_r from last inner layer (omega_r stored on that layer in forward)
-        prev_r = self.layers[-1].omega_r
-        second, b_spatial = self.compute_b(current_input, sigma_lower, Wfreq_A, prev_r)
+            prev_layer = layer
+
+        second, b_weight = self.compute_b(current_input, sigma_lower, a_wf, self.layers[-1])
+
         return first + second
 
 
