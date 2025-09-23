@@ -5,7 +5,7 @@ from torch import nn
 from torch.nn import ModuleList, Module, ReLU
 
 from models.layers import FirstLipschitzLinearLayer, LastLipschitzLinearLayer, InnerWeightLipschitzLinearLayer, \
-    LinearLipschitz, SpectralNorm
+    LinearLipschitz
 
 
 class DeepLipschitzLinearResNet(nn.Module):
@@ -55,7 +55,7 @@ class DeepLipschitzLinearResNet(nn.Module):
 
     def generate_layers(self) -> None:
         self.A = FirstLipschitzLinearLayer(in_features=self.in_features, out_features=self.out_features,
-                                           constant_sq=self.lipschitz_constant_sq,enable_alpha=self.enable_alpha,
+                                           constant_sq=self.lipschitz_constant_sq, enable_alpha=self.enable_alpha,
                                            **self.factory_kwargs)
 
         self.B = LastLipschitzLinearLayer(in_features=self.layer_widths[-1], out_features=self.out_features,
@@ -74,7 +74,7 @@ class DeepLipschitzLinearResNet(nn.Module):
 
         self.layers = ModuleList(layer)
 
-        self.spectral_norm = SpectralNorm(self.B.identity)
+        # self.spectral_norm = SpectralNorm(self.B.identity)
 
     def compute_b(self, x, sigma_lower, a_weight, last_layer: InnerWeightLipschitzLinearLayer):
         # inner_inverse = torch.cholesky_inverse(prev_r, upper=True)
