@@ -22,6 +22,14 @@ To generate the LMI plots use [model_lmi.py](./test/model_lmi.py), where you can
 
 To generate the numerical instability graphs we have that [numerical_instability.py](./test/numerical_instability.py) script.
 
+## Tensorboard
+
+```bash
+ssh -L 6006:127.0.0.1:6006 <user>@<ip address>
+conda activate DeepLipschitzResNet
+tensorboard --logdir=.
+```
+
 ## Reference
 
 To cite please use,
