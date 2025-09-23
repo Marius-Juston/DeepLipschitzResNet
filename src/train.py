@@ -72,12 +72,12 @@ def train_one_epoch(training_loader, optimizer, model, loss_fn, epoch_index, tb_
             last_loss = running_loss / logging_frequency  # loss per batch
             print('  batch {} loss: {}'.format(i + 1, last_loss))
             tb_x = epoch_index * len(training_loader) + i + 1
-            tb_writer.add_scalar('Loss/train', last_loss, tb_x)
+            tb_writer.add_scalar('Loss/Train', last_loss, tb_x)
             running_loss = 0.
 
             alpha_vals = alpha_values(model)
 
-            tb_writer.add_scalars('Training', alpha_vals, tb_x, tb_x)
+            tb_writer.add_scalars('Training/Alpha', alpha_vals, tb_x, tb_x)
 
     return last_loss
 
@@ -138,7 +138,7 @@ def train(x, y, model: DeepLipschitzLinearResNet, learning_prefix='sine', batch_
 
             # relative_error = (L - model.lipschitz_constant) / model.lipschitz_constant
 
-            writer.add_scalars("Training", {'Lipschitz Constant': L}, epoch_number + 1)
+            writer.add_scalar("Training/Lipschitz Constant", L, epoch_number + 1)
 
             # assert relative_error <= 1.25, f"The Lipschitz constraint was invalidated with {L} {model.lipschitz_constant} {relative_error}"
 
@@ -180,15 +180,18 @@ def main():
     torch.manual_seed(0)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
+    dtype = torch.float32
+
     print("Running on device", device)
 
     input_features = 1
     output_features = input_features
+    enable_alpha = True
 
-    model = DeepLipschitzLinearResNet(input_features, output_features, (32, 32, 32, 32, 32), device=device)
-    # model = DeepLipschitzSequential(input_features, output_features, (256, 256, 256, 256, 256, 256, 256, 256, 256), device=device)
-    # model = SLLSequential(input_features, output_features, (256, 256, 256, 256, 256, 256, 256, 256, 256), device=device)
-    # model = DeepLipschitzSequential(input_features, output_features, (32, 256, 1024, 1024), device=device)
+    # model = DeepLipschitzSequential(input_features, output_features, (64, 64, 64, 64, 64), device=device)
+    model = DeepLipschitzLinearResNet(input_features, output_features, (64, 64, 64, 64, 64),
+                                      enable_alpha=enable_alpha,
+                                      device=device)
 
     check_gradients = False
 
@@ -200,7 +203,6 @@ def main():
 
             p.register_post_accumulate_grad_hook(function)
 
-    # model = torch.compile(model)
     model = torch.compile(model, mode='max-autotune')
 
     print(model)
@@ -208,14 +210,17 @@ def main():
 
     batch = 64
 
-    x = torch.linspace(-10, 10, 100000 * input_features, device=device).reshape((-1, input_features))
+    x = torch.linspace(-10, 10, 100000 * input_features, device=device, dtype=dtype).reshape((-1, input_features))
 
-    variation = torch.arange(input_features, device=device)
+    variation = torch.arange(input_features, device=device, dtype=dtype)
 
-    y = torch.sin(x + variation) * 0.5  # + x + 2 + variation
-    # y = torch.sin(x + variation) * 0.5  + 0.25*  x + 2 + variation
+    y =  1/2 * torch.sin(x + variation) + x
+    theoretical_lower = 0.11929 * 0.95
+    # y = torch.sin(x + variation)
+    # theoretical_lower = 0
 
-    train(x, y, model, learning_prefix='general', batch_size=batch, termination_error=1e-4)
+    train(x, y, model, learning_prefix='general', batch_size=batch, termination_error=1e-4, lr=1e-4,
+          theoretical_lower=theoretical_lower)
 
 
 def sine_training():
@@ -272,5 +277,5 @@ def sine_training():
 
 
 if __name__ == '__main__':
-    sine_training()
-    # main()
+    # sine_training()
+    main()
