@@ -209,9 +209,9 @@ def plot_histogram(x: torch.Tensor, fig_name: str, dpi=DEFAULT_DPI):
 
     ax.bar(edges[:-1].numpy(), counts.numpy(),
            width=(edges[1] - edges[0]).item())
-    ax.set_xlabel("Value")
-    ax.set_ylabel("Frequency")
-    ax.set_title("Histogram of Torch Vector")
+    ax.set_xlabel("Eigenvalues")
+    ax.set_ylabel("Density")
+    ax.set_title("Histogram of eigenvalues")
     fig.tight_layout()
     fig.savefig(f"{fig_name}.{OUTPUT_FORMAT}", dpi=dpi)
     plt.close()
