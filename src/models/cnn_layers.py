@@ -116,11 +116,11 @@ class AbstractLipschitzConvLayer(nn.Conv2d, ABC):
 
     def _weight_fft_for_input(self, H: int, W: int) -> Tensor:
         pad = _center_and_pad_kernel(self.weight, H, W)
-        K_fft = torch.fft.rfft2(pad, s=(H, W), norm="ortho")
+        K_fft = torch.fft.rfft2(pad, s=(H, W), norm="backward")
         return K_fft
 
     def _ifft_from_freq(self, M_freq: Tensor, H: int, W: int) -> Tensor:
-        pad_spatial = torch.fft.irfft2(M_freq, s=(H, W), norm="ortho")
+        pad_spatial = torch.fft.irfft2(M_freq, s=(H, W), norm="backward")
         return pad_spatial
 
     def conv_with_normalized_weight(self, input: Tensor, W_spatial: Tensor, bias: Optional[Tensor]):
@@ -154,7 +154,7 @@ class AbstractLipschitzConvLayer(nn.Conv2d, ABC):
 
     def circular_convolution(self, input, H, W, Wf_norm, H_fft, Wf_fft):
         # FFT of the input tensor
-        X_fft = torch.fft.rfft2(input, s=(H, W), norm="ortho")
+        X_fft = torch.fft.rfft2(input, s=(H, W), norm="backward")
         X_fft, _, _ = _freq_batchify(X_fft)
 
         # Y_fft_einsum = torch.einsum('foc,fbc->fbo', Wf_norm, X_fft)

@@ -89,9 +89,9 @@ def extract_lmi_constants_deep_resnet_new(model):
         if sigma_lower is None:
             sigma_lower = T
         else:
-            sigma_lower = torch.linalg.cholesky(sigma_lower @ sigma_lower.mT + T @ T.mT, upper=False)
+            sigma_lower = torch.linalg.cholesky(sigma_lower @ sigma_lower.mH + T @ T.mH, upper=False)
 
-        gamma = T @ c_wf.mT
+        gamma = T @ c_wf.mH
 
         current_input = model.activation(current_input)
 

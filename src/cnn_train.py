@@ -35,7 +35,7 @@ class LipschitzNetwork(nn.Module):
         super().__init__()
         self.conv = nn.Sequential(
             DeepLipschitzConvResNet(
-                in_channels=in_channels, out_channels=1, layers_widths=[hidden, hidden],
+                in_channels=in_channels, out_channels=1, layers_widths=[hidden, hidden, hidden, hidden],
                 kernel_size=3, padding=1, device=device, dtype=torch.float32,
             ), Flatten()
         )
