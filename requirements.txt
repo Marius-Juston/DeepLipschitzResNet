@@ -2,4 +2,4 @@ torch[opt-einsum]~=2.8.0+cu129
 torchvision~=0.23.0+cu129
 matplotlib~=3.10.0
 pytorch_warmup
-advertorch
+git+https://github.com/BorealisAI/advertorch.git # Need the latest version for PyTorch 2.0 compatability
