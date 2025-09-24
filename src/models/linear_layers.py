@@ -181,8 +181,9 @@ class LastLipschitzLinearLayer(AbstractLipschitzLinearLayer):
 class LinearLipschitz(AbstractLipschitzLinearLayer):
     def __init__(self, in_features: int, out_features: int, activation=None, bias: bool = True,
                  constant_sq: float = 1.0,
+                 enable_alpha=True,
                  device=None, dtype=None):
-        super().__init__(in_features, out_features, bias, constant_sq, device, dtype)
+        super().__init__(in_features, out_features, bias, constant_sq, enable_alpha, device, dtype)
         self.activation = activation
 
     def forward(self, input: Tensor, prev_d_sqrt: Tensor) -> Tuple[Tensor, Tensor]:
