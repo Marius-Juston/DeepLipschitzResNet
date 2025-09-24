@@ -104,7 +104,7 @@ class DeepLipschitzConvResNet(nn.Module):
         )
 
     def compute_b(self, x: Tensor, sigma_lower, a_wf, last_layer: InnerWeightLipschitzConvLayer) -> Tuple[
-        Tensor, Tensor, Tensor]:
+        Tensor, Tensor]:
 
         left = a_wf @ sigma_lower
 
@@ -112,12 +112,12 @@ class DeepLipschitzConvResNet(nn.Module):
 
         R_sigma = torch.linalg.cholesky(scaling, upper=True)
 
-        second, b_weight, b_wf = self.B(x, R_sigma, last_layer)
+        second, b_wf = self.B(x, R_sigma, last_layer)
 
-        return second, b_weight, b_wf
+        return second, b_wf
 
     def forward(self, x: Tensor) -> Tensor:
-        first, a_weight, a_wf, d_inv = self.A(x)
+        first, a_wf, d_inv = self.A(x)
 
         gamma = torch.eye(d_inv.shape[1], device=d_inv.device, dtype=d_inv.dtype).expand(d_inv.shape[0], -1, -1)
         sigma_lower = None
@@ -129,7 +129,7 @@ class DeepLipschitzConvResNet(nn.Module):
         for layer in self.layers:
             T = gamma @ d_inv
 
-            current_input, c_weight, c_wf, d_inv = layer(current_input, prev_layer)
+            current_input, c_wf, d_inv = layer(current_input, prev_layer)
 
             if sigma_lower is None:
                 sigma_lower = T
@@ -142,7 +142,7 @@ class DeepLipschitzConvResNet(nn.Module):
 
             prev_layer = layer
 
-        second, b_weight, b_wf = self.compute_b(current_input, sigma_lower, a_wf, self.layers[-1])
+        second, b_wf = self.compute_b(current_input, sigma_lower, a_wf, self.layers[-1])
 
         return first + second
 

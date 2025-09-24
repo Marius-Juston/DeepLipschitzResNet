@@ -152,18 +152,40 @@ class AbstractLipschitzConvLayer(nn.Conv2d, ABC):
     def process(self, Wf, *args, **kwargs):
         pass
 
-    def forward(self, input: Tensor, *args) -> Tuple[Tensor, Tensor, Tensor, Tensor]:
+    def circular_convolution(self, input, H, W, Wf_norm, H_fft, Wf_fft):
+        # FFT of the input tensor
+        X_fft = torch.fft.rfft2(input, s=(H, W), norm="ortho")
+        X_fft, _, _ = _freq_batchify(X_fft)
+
+        # The convolution is a matrix-vector product at each frequency.
+        # We use `einsum` for a clean and efficient implementation of this batched operation.
+        # `f` = frequency, `b` = batch, `o` = out_channels, `c` = in_channels
+        # Y(f,b,o) = sum_c W(f,o,c) * X(f,b,c)
+        # Y_fft_einsum = torch.einsum('foc,fbc->fbo', Wf_norm, X_fft)
+        Y_fft_einsum = torch.matmul(X_fft, Wf_norm.mH)
+
+        # Reshape result back to PyTorch's (B, C, H, Wf) format
+        Y_fft = _unbatchify_freq(Y_fft_einsum, H_fft, Wf_fft)
+
+        # IFFT to get the result in the spatial domain
+        output = self._ifft_from_freq(Y_fft, H, W)
+
+        # Add bias if it exists
+        if self.bias is not None:
+            output = output + self.bias.view(1, -1, 1, 1)
+
+        return output
+
+    def forward(self, input: Tensor, *args) -> Tuple[Tensor, Tensor, Tensor]:
         B, C_in, H, W = input.shape
 
-        Wf, H_, Wf_ = self.spectral_norm_frequency(H, W)
+        Wf_orig, H_fft, Wf_fft  = self.spectral_norm_frequency(H, W)
 
-        Wf, d_inv = self.process(Wf, *args)
+        Wf_norm, d_inv = self.process(Wf_orig, *args)
 
-        W_spatial = self.convert_to_spatial(Wf, H_, Wf_, W)
+        output = self.circular_convolution(input, H, W, Wf_norm, H_fft, Wf_fft)
 
-        output = self.conv_with_normalized_weight(input, W_spatial, self.bias)
-
-        return output, W_spatial, Wf, d_inv
+        return output, Wf_norm, d_inv
 
 
 class FirstLipschitzConvLayer(AbstractLipschitzConvLayer):
@@ -174,7 +196,7 @@ class FirstLipschitzConvLayer(AbstractLipschitzConvLayer):
 
         d_inv = omega / (self.constant_sq * self.alpha)
 
-        self.omega_r = R
+        self.omega_r = torch.linalg.cholesky(omega, upper=False)
 
         return W, d_inv
 
@@ -184,7 +206,7 @@ class InnerWeightLipschitzConvLayer(AbstractLipschitzConvLayer):
             Tuple[Tensor, Tensor]:
         _, W, _ = self.scale_w(Wf)
 
-        W = torch.linalg.solve_triangular(prev_layer.omega_r.mH, W, upper=False, left=False)
+        W = torch.linalg.solve_triangular(prev_layer.omega_r, W, upper=False, left=False)
 
         scale = prev_layer.alpha.sqrt() * prev_layer.constant * self.constant
         div_scale = self.constant_sq * self.alpha
@@ -195,7 +217,7 @@ class InnerWeightLipschitzConvLayer(AbstractLipschitzConvLayer):
 
         d_inv = omega / div_scale
 
-        self.omega_r = torch.linalg.cholesky(omega, upper=True)
+        self.omega_r = torch.linalg.cholesky(omega, upper=False)
 
         return W, d_inv
 
@@ -204,7 +226,7 @@ class LastLipschitzConvLayer(AbstractLipschitzConvLayer):
     def process(self, Wf: Tensor, sigma_r: Tensor, prev_r_sqrt: torch.Tensor, prev_alpha: torch.Tensor):
         _, W, _ = self.scale_w(Wf)
 
-        W = torch.linalg.solve_triangular(prev_r_sqrt.mH, W, upper=False, left=False)
+        W = torch.linalg.solve_triangular(prev_r_sqrt, W, upper=False, left=False)
         W = self.constant * prev_alpha.sqrt() * torch.linalg.solve_triangular(sigma_r, W, upper=True, left=True)
 
         return W
@@ -213,15 +235,13 @@ class LastLipschitzConvLayer(AbstractLipschitzConvLayer):
         Tensor, Tensor]:
         B, C_in, H, W = input.shape
 
-        Wf, H_, Wf_ = self.spectral_norm_frequency(H, W)
+        Wf_orig, H_fft, Wf_fft = self.spectral_norm_frequency(H, W)
 
         prev_alpha = prev_layer.alpha
         prev_r = prev_layer.omega_r
 
-        Wf = self.process(Wf, sigma_r, prev_r, prev_alpha)
+        Wf_norm = self.process(Wf_orig, sigma_r, prev_r, prev_alpha)
 
-        W_spatial = self.convert_to_spatial(Wf, H_, Wf_, W)
+        output = self.circular_convolution(input, H, W, Wf_norm, H_fft, Wf_fft)
 
-        output = self.conv_with_normalized_weight(input, W_spatial, self.bias)
-
-        return output, W_spatial, Wf
+        return output, Wf_norm

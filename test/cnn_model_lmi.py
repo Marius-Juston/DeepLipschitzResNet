@@ -65,7 +65,7 @@ def main_real(A: torch.Tensor, B: torch.Tensor, Cs: List[torch.Tensor], Ls: List
 def extract_lmi_constants_deep_resnet_new(model):
     x = torch.zeros((1, model.in_channels, 16, 16), device=model.device, dtype=model.dtype)
 
-    _, _, a_wf, d_inv = model.A(x)
+    _, a_wf, d_inv = model.A(x)
 
     Cs = []
     Ls = []
@@ -84,7 +84,7 @@ def extract_lmi_constants_deep_resnet_new(model):
     for layer in model.layers:
         T = gamma @ d_inv
 
-        current_input, c_weight, c_wf, d_inv = layer(current_input, prev_layer)
+        current_input, c_wf, d_inv = layer(current_input, prev_layer)
 
         if sigma_lower is None:
             sigma_lower = T
@@ -100,9 +100,9 @@ def extract_lmi_constants_deep_resnet_new(model):
         Cs.append(c_wf)
         Ls.append(layer.identity_out)
         Lms.append([1, 0])
-        dimensions.append(c_weight.shape[0])
+        dimensions.append(c_wf.shape[1])
 
-    _, _, b_wf = model.compute_b(current_input, sigma_lower, a_wf, model.layers[-1])
+    _, b_wf = model.compute_b(current_input, sigma_lower, a_wf, model.layers[-1])
 
     return a_wf, b_wf, Cs, Ls, Lms, dimensions
 
