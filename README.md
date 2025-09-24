@@ -2,11 +2,36 @@
 
 This repository is the implementation of the paper https://arxiv.org/abs/2502.21279 and should be cited as [[1]](#1).
 
+# Experiments
+
+Experiments done with Pytorch 1.10
+
+train & evaluation
+# training
+```bash
+# Training
+torchrun --standalone --nnodes=1 --nproc_per_node=gpu src/main.py --dataset cifar10 --model-name small --train_dir small_model 
+
+# Evaluation
+python3 main.py --mode certified --dataset cifar10 --model-name small --train_dir small_model
+```
+
+```bash
+ /home/mjuston2/anaconda3/envs/DeepLipschitzResNet/bin/python -m torch.distributed.run --standalone --nnodes=1 --nproc_per_node=gpu main.py --dataset cifar10 --model-name small --train_dir small_model
+```
+
+## Reproducing CIFAR10/100 results from the paper
+Download the checkpoints here
+
+```bash
+python3 reproduce_tables.py
+```
+
 # Files
 
 ## Training
 
-To run the specific trainings found in the paper you can use [train.py](./src/train.py),
+To run the specific trainings found in the paper you can use [linear_train.py](./src/linear_train.py) or [cnn_train.py](./src/cnn_train.py)  
 
 this has multiple routines that you can enable for the specific outputs that you desire.
 
