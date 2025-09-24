@@ -157,20 +157,13 @@ class AbstractLipschitzConvLayer(nn.Conv2d, ABC):
         X_fft = torch.fft.rfft2(input, s=(H, W), norm="ortho")
         X_fft, _, _ = _freq_batchify(X_fft)
 
-        # The convolution is a matrix-vector product at each frequency.
-        # We use `einsum` for a clean and efficient implementation of this batched operation.
-        # `f` = frequency, `b` = batch, `o` = out_channels, `c` = in_channels
-        # Y(f,b,o) = sum_c W(f,o,c) * X(f,b,c)
         # Y_fft_einsum = torch.einsum('foc,fbc->fbo', Wf_norm, X_fft)
         Y_fft_einsum = torch.matmul(X_fft, Wf_norm.mH)
 
-        # Reshape result back to PyTorch's (B, C, H, Wf) format
         Y_fft = _unbatchify_freq(Y_fft_einsum, H_fft, Wf_fft)
 
-        # IFFT to get the result in the spatial domain
         output = self._ifft_from_freq(Y_fft, H, W)
 
-        # Add bias if it exists
         if self.bias is not None:
             output = output + self.bias.view(1, -1, 1, 1)
 
