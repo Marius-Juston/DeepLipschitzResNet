@@ -69,7 +69,7 @@ class AbstractLipschitzLinearLayer(nn.Linear):
 
 
 class FirstLipschitzLinearLayer(AbstractLipschitzLinearLayer):
-    def forward(self, input: Tensor) -> Tuple[Tensor, Tensor, Tensor, Tensor]:
+    def forward(self, input: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
         omega, W, R = self.scale_w()
 
         W = W * self.constant
