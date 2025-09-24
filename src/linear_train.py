@@ -96,8 +96,6 @@ def train(x, y, model: DeepLipschitzLinearResNet, learning_prefix='sine', batch_
 
     epoch_number = 0
 
-    best_vloss = 1_000_000.
-
     loss_fn = MSELoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=lr, fused=True)
 
@@ -106,6 +104,7 @@ def train(x, y, model: DeepLipschitzLinearResNet, learning_prefix='sine', batch_
     training_loader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
 
     best_loss = None
+    best_epoch = None
 
     # theoretical_lower = 135.021966261
     # theoretical_lower = 0
@@ -161,10 +160,17 @@ def train(x, y, model: DeepLipschitzLinearResNet, learning_prefix='sine', batch_
             break
 
         if best_loss is None or best_loss > avg_loss:
+            best_epoch = epoch
             torch.save(model.state_dict(), os.path.join(save_folder, 'best.pt'))
             best_loss = avg_loss
+            print(f"New best loss: {best_loss} at {best_epoch}")
+
+            writer.add_scalar('Training/Best Epoch', best_epoch + 1, epoch_number + 1)
+            writer.add_scalar('Training/Best Loss', best_loss, epoch_number + 1)
 
         epoch_number += 1
+
+    return save_folder, best_loss, best_epoch
 
 
 def print_num_parameters(model):

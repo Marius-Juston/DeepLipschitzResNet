@@ -2,6 +2,7 @@
 Run this script where your DeepLipschitzConvResNet and the convolutional layers are defined
 and the batched SpectralNorm class (from the previous message) is available.
 """
+import os
 import random
 
 import torch
@@ -139,18 +140,16 @@ def run_experiment(device='cpu'):
 
     # model = torch.compile(model, mode='max-autotune')
 
-    visualize_lipschitz_pairs(model, X_train, name='start')
-
     print(model)
     print(print_num_parameters(model))
 
     # Now train baseline and lipschitz model on g1
     print("Training unconstrained baseline on g1 (1-Lipschitz)...")
-    train(X_train, y1_train, model, learning_prefix='general_cnn', batch_size=batch,
+    sav_dir, _, _ = train(X_train, y1_train, model, learning_prefix='general_cnn', batch_size=batch,
           termination_error=termination_error, lr=lr, theoretical_lower=theoretical_lower, logging_frequency=1,
           epochs=epochs)
 
-    visualize_lipschitz_pairs(model, X_train, name='1-lipschitz')
+    visualize_lipschitz_pairs(model, X_train, name=os.path.join(sav_dir, '1-lipschitz'))
     print("Finite-diff lipschitz g1:",
           finite_difference_lipschitz_estimate(model, X_test, n_pairs=1000, device=device))
     print("Grad-max lipschitz g1:", empirical_gradient_max_norm(model, X_test, device=device))
@@ -158,7 +157,7 @@ def run_experiment(device='cpu'):
     model = LipschitzNetwork(device=device)
 
     print("Training Lipschitz network on g2 (should struggle if truly 1-Lipschitz)...")
-    train(X_train, y2_train, model, learning_prefix='general_cnn_lipschitz', batch_size=batch,
+    sav_dir, _, _ = train(X_train, y2_train, model, learning_prefix='general_cnn_lipschitz', batch_size=batch,
           termination_error=termination_error, lr=lr, theoretical_lower=theoretical_lower, logging_frequency=1,
           epochs=epochs)
 
@@ -167,7 +166,7 @@ def run_experiment(device='cpu'):
           finite_difference_lipschitz_estimate(model, X_test, n_pairs=1000, device=device))
     print("Grad-max lipschitz g2:", empirical_gradient_max_norm(model, X_test, device=device))
 
-    visualize_lipschitz_pairs(model, X_train, name='K-lipschitz')
+    visualize_lipschitz_pairs(model, X_train, name=os.path.join(sav_dir, 'K-lipschitz'))
 
 
 # ---------- run ----------
