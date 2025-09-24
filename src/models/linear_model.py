@@ -7,7 +7,6 @@ from torch.nn import ModuleList, Module, ReLU
 from models.linear_layers import FirstLipschitzLinearLayer, LastLipschitzLinearLayer, InnerWeightLipschitzLinearLayer, \
     LinearLipschitz
 
-
 class DeepLipschitzLinearResNet(nn.Module):
     A: FirstLipschitzLinearLayer
     B: LastLipschitzLinearLayer
@@ -15,7 +14,6 @@ class DeepLipschitzLinearResNet(nn.Module):
 
     def __init__(self, in_features: int, out_features: int, layers_widths: Sequence[int],
                  activation: Union[Module, List[Module]] = None, lipschitz_constant: float = 1.0,
-                 num_iterations: int = 10,
                  enable_alpha: bool = True,
                  device: Union[str, torch.device] = 'cuda', dtype=None) -> None:
         super().__init__()
@@ -25,7 +23,6 @@ class DeepLipschitzLinearResNet(nn.Module):
         assert out_features > 0, "The output width needs to be larger than 0"
 
         self.enable_alpha = enable_alpha
-        self.num_iterations = num_iterations
         self.lipschitz_constant = lipschitz_constant
         self.lipschitz_constant_sq = lipschitz_constant * lipschitz_constant
 
