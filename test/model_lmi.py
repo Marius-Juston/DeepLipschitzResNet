@@ -463,6 +463,39 @@ def get_maximum_model(model_func, *args, device=None):
 
     return model
 
+def plot_information(M, a_weight, Cs, b_weight, dimensions, figs_folder, suffix=''):
+
+    plot_ldlt_decomposition(M, dimensions, os.path.join(figs_folder, f"ldlt_decomposition{suffix}"))
+
+    eigenvalues, eigenvectors = torch.linalg.eigh(M)
+
+    print(M)
+
+    print(eigenvalues)
+
+    plot_matrix(M, os.path.join(figs_folder, f"full_lmi{suffix}"))
+
+    removed_diag = (M - torch.diag(torch.diag(M)))
+
+    plot_matrix(removed_diag, os.path.join(figs_folder, f"lmi_without_diag{suffix}"))
+
+    binary = (torch.abs(M) > 1e-5).to(torch.uint8)
+
+    plot_matrix(binary, os.path.join(figs_folder, f"binary_lmi{suffix}"), mask=False)
+
+    plot_matrix(eigenvectors, os.path.join(figs_folder, f"eigenvectors_lmi{suffix}"))
+
+    B_zoom = b_weight.T @ b_weight
+    plot_matrix(B_zoom, os.path.join(figs_folder, f"zoomed_in_b{suffix}"))
+
+    plot_zoomed_in_system(removed_diag, B_zoom, os.path.join(figs_folder, f"inplace_zoomed_in_b{suffix}"))
+
+    plot_histogram(eigenvalues, os.path.join(figs_folder, f"eigenvalues_lmi{suffix}"))
+
+    plot_singular_extremes(a_weight, b_weight, Cs, os.path.join(figs_folder, f"singular_weights{suffix}"))
+
+    return eigenvalues
+
 
 def main():
     torch.manual_seed(0)
@@ -508,34 +541,7 @@ def main():
 
     M = main_real(a_weight, b_weight, Cs, Ls, Lms, dimensions, device=device)
 
-    plot_ldlt_decomposition(M, dimensions, os.path.join(figs_folder, "ldlt_decomposition"))
-
-    eigenvalues, eigenvectors = torch.linalg.eigh(M)
-
-    print(M)
-
-    print(eigenvalues)
-
-    plot_matrix(M, os.path.join(figs_folder, "full_lmi"))
-
-    removed_diag = (M - torch.diag(torch.diag(M)))
-
-    plot_matrix(removed_diag, os.path.join(figs_folder, "lmi_without_diag"))
-
-    binary = (torch.abs(M) > 1e-5).to(torch.uint8)
-
-    plot_matrix(binary, os.path.join(figs_folder, "binary_lmi"), mask=False)
-
-    plot_matrix(eigenvectors, os.path.join(figs_folder, "eigenvectors_lmi"))
-
-    B_zoom = b_weight.T @ b_weight
-    plot_matrix(B_zoom, os.path.join(figs_folder, "zoomed_in_b"))
-
-    plot_zoomed_in_system(removed_diag, B_zoom, os.path.join(figs_folder, "inplace_zoomed_in_b"))
-
-    plot_histogram(eigenvalues, os.path.join(figs_folder, "eigenvalues_lmi"))
-
-    plot_singular_extremes(a_weight, b_weight, Cs, os.path.join(figs_folder, "singular_weights"))
+    eigenvalues = plot_information(M, a_weight, Cs, b_weight, dimensions, figs_folder)
 
     assert torch.all(eigenvalues < 1e-3), "Not all the eigenvalues of the LMI are negative"
 

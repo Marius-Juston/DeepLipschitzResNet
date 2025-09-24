@@ -1,15 +1,15 @@
 import os.path
+import traceback
 from typing import List
 
 import torch
 
 from cnn_train import LipschitzNetwork
-from model_lmi import block, E_real, plot_matrix, plot_histogram, plot_singular_extremes
+from model_lmi import block, E_real, plot_histogram, plot_singular_extremes, plot_information
 
 DEFAULT_DPI = 600
 
 OUTPUT_FORMAT = 'png'
-
 
 
 def main_real(A: torch.Tensor, B: torch.Tensor, Cs: List[torch.Tensor], Ls: List[torch.Tensor], Lms, dimensions,
@@ -162,26 +162,44 @@ def main():
 
     print(eigenvalues)
 
-    plot_histogram(eigenvalues.flatten(), os.path.join(figs_folder, "eigenvalues_lmi"))
-    plot_singular_extremes(a_weight, b_weight, Cs, os.path.join(figs_folder, "singular_weights"))
+    plot_histogram(eigenvalues.flatten(), os.path.join(figs_folder, "cnn_eigenvalues_lmi"))
+    plot_singular_extremes(a_weight, b_weight, Cs, os.path.join(figs_folder, "cnn_singular_weights"))
 
     max_num = 5
 
-    v = torch.arange(M.shape[1])
-
-    M[:, v,v] = 0.0
+    # v = torch.arange(M.shape[1])
+    #
+    # M[:, v,v] = 0.0
 
     for freq in range(min(M.shape[0], max_num)):
-        plot_matrix(M[freq].real, os.path.join(figs_folder, f"full_lmi_{freq}_real"))
+        a_weight_f, b_weight_f = a_weight[freq], b_weight[freq]
+        Cs_f_r = [C[freq].real for C in Cs]
+        Cs_f_i = [C[freq].imag for C in Cs]
+
+        Mf = M[freq]
+
+        figs_folder_freq = os.path.join(figs_folder, f"freq_{freq}")
+        figs_folder_freq_real = os.path.join(figs_folder_freq, f"real")
+
+        os.makedirs(figs_folder_freq_real, exist_ok=True)
+
+        plot_information(Mf.real, a_weight_f.real, Cs_f_r, b_weight_f.real, dimensions, figs_folder_freq_real,
+                         suffix=f'_{freq}_real')
 
         im_sum = M[freq].imag.abs().sum()
 
         print(im_sum)
 
         if im_sum > 1e-2:
-            plot_matrix(M[freq].imag, os.path.join(figs_folder, f"full_lmi_{freq}_img"))
+            figs_folder_freq_img = os.path.join(figs_folder_freq, f"img")
+            os.makedirs(figs_folder_freq_img, exist_ok=True)
 
-
+            try:
+                plot_information(Mf.imag, a_weight_f.imag, Cs_f_i, b_weight_f.imag, dimensions, figs_folder_freq_img,
+                                 suffix=f'_{freq}_img')
+            except Exception as e:
+                traceback.print_exc()
+                pass
 
 
 if __name__ == '__main__':
