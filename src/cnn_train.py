@@ -6,11 +6,12 @@ import random
 
 import torch
 import torch.nn as nn
+from matplotlib import pyplot as plt
 from torch.nn import Flatten
 
+from linear_train import print_num_parameters, train
 from models.cnn_model import DeepLipschitzConvResNet
 from models.linear_model import DeepLipschitzLinearResNet
-from linear_train import print_num_parameters, train
 
 
 def make_synthetic_dataset(n_samples: int, C: int, H: int, W: int, seed: int = 0, device=None):
@@ -35,7 +36,7 @@ class LipschitzNetwork(nn.Module):
         self.conv = nn.Sequential(
             DeepLipschitzConvResNet(
                 in_channels=in_channels, out_channels=1, layers_widths=[hidden, hidden],
-                kernel_size=3, padding=1, device=device, dtype=torch.float32
+                kernel_size=3, padding=1, device=device, dtype=torch.float32,
             ), Flatten()
         )
         self.fc = DeepLipschitzLinearResNet(256, 1, [hidden, hidden])
@@ -86,12 +87,38 @@ def empirical_gradient_max_norm(model, X, device='cpu'):
     return max_norm
 
 
+@torch.no_grad()
+def visualize_lipschitz_pairs(model, X, n_pairs=500, name="lipschitz_pairs.png"):
+    model.eval()
+    n = X.shape[0]
+    i_j = torch.randint(0, n, size=(n_pairs * 2,), device=X.device)
+
+    masked_x_i_j = X[i_j]
+
+    fi_j = model(masked_x_i_j)
+
+    df = torch.diff(fi_j, dim=0).view(-1)
+
+    d_x = torch.diff(masked_x_i_j, dim=0)
+
+    dist = torch.linalg.norm(d_x.reshape(df.shape[0], -1), ord=2, dim=1)
+
+    ratios = df / dist
+
+    plt.scatter(dist.cpu(), ratios.cpu(), alpha=0.5, s=10)
+    plt.xlabel("||x_i - x_j|| (input distance)")
+    plt.ylabel("|f(x_i)-f(x_j)| / ||x_i - x_j|| (Lipschitz ratio)")
+    plt.title("Finite-difference Lipschitz scatter")
+    plt.savefig(name, dpi=600)
+    plt.close()
+
+
 def run_experiment(device='cpu'):
     torch.manual_seed(0)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     # dataset
-    n_train, n_test = 512, 256
+    n_train, n_test = 512 * 2, 256 * 2
     C, H, W = 1, 16, 16
     X_train = make_synthetic_dataset(n_train, C, H, W, seed=0, device=device)
     X_test = make_synthetic_dataset(n_test, C, H, W, seed=1, device=device)
@@ -100,17 +127,19 @@ def run_experiment(device='cpu'):
     y2_train = K * y1_train
 
     batch = 64
-    epochs = 20
+    epochs = 60
 
     theoretical_lower = 0
     lr = 1e-4
-    termination_error = 1e-4
+    termination_error = 1e-5
 
     print(X_train.shape)
 
     model = LipschitzNetwork(device=device)
 
-    model = torch.compile(model, mode='max-autotune')
+    # model = torch.compile(model, mode='max-autotune')
+
+    visualize_lipschitz_pairs(model, X_train, name='start')
 
     print(model)
     print(print_num_parameters(model))
@@ -121,6 +150,7 @@ def run_experiment(device='cpu'):
           termination_error=termination_error, lr=lr, theoretical_lower=theoretical_lower, logging_frequency=1,
           epochs=epochs)
 
+    visualize_lipschitz_pairs(model, X_train, name='1-lipschitz')
     print("Finite-diff lipschitz g1:",
           finite_difference_lipschitz_estimate(model, X_test, n_pairs=1000, device=device))
     print("Grad-max lipschitz g1:", empirical_gradient_max_norm(model, X_test, device=device))
@@ -136,6 +166,8 @@ def run_experiment(device='cpu'):
     print("Finite-diff lipschitz g2:",
           finite_difference_lipschitz_estimate(model, X_test, n_pairs=1000, device=device))
     print("Grad-max lipschitz g2:", empirical_gradient_max_norm(model, X_test, device=device))
+
+    visualize_lipschitz_pairs(model, X_train, name='K-lipschitz')
 
 
 # ---------- run ----------
