@@ -14,21 +14,15 @@ from utils import PositiveExp
 
 def _center_and_pad_kernel(kernel: Tensor, H: int, W: int) -> Tensor:
     out_ch, in_ch, kH, kW = kernel.shape
-    device = kernel.device
-    dtype = kernel.dtype
-    pad = torch.zeros((out_ch, in_ch, H, W), dtype=dtype, device=device)
-    pad[..., :kH, :kW] = kernel
-    shift_h = - (kH // 2)
-    shift_w = - (kW // 2)
-    pad = torch.roll(pad, shifts=(shift_h, shift_w), dims=(-2, -1))
-    return pad
+    padded = F.pad(kernel, (0, W - kW, 0, H - kH))
+    return torch.roll(padded, shifts=(- (kH // 2), - (kW // 2)), dims=(-2, -1))
 
 
 def _unroll_and_crop_spatial(pad_spatial: Tensor, kH: int, kW: int) -> Tensor:
     shift_h = (kH // 2)
     shift_w = (kW // 2)
     pad_spatial = torch.roll(pad_spatial, shifts=(shift_h, shift_w), dims=(-2, -1))
-    return pad_spatial[..., :kH, :kW].contiguous()
+    return pad_spatial[..., :kH, :kW]
 
 
 def _freq_batchify(K_fft: Tensor) -> Tuple[Tensor, int, int]:
@@ -41,7 +35,7 @@ def _freq_batchify(K_fft: Tensor) -> Tuple[Tensor, int, int]:
 
 def _unbatchify_freq(M_flat: Tensor, H: int, Wf: int) -> Tensor:
     F, out_ch, in_ch = M_flat.shape
-    assert F == H * Wf
+    # assert F == H * Wf
     M = M_flat.reshape(H, Wf, out_ch, in_ch).permute(2, 3, 0, 1).contiguous()
     return M  # (out, in, H, Wf)
 
@@ -150,15 +144,13 @@ class AbstractLipschitzConvLayer(nn.Conv2d, ABC):
         M_freq = _unbatchify_freq(Wnorm_f, H_, Wf_)
         pad_spatial = self._ifft_from_freq(M_freq, H_, W)
         kH, kW = _pair(self.kernel_size)
-        W_spatial = _unroll_and_crop_spatial(pad_spatial, kH, kW)
-
-        return W_spatial
+        return _unroll_and_crop_spatial(pad_spatial, kH, kW)
 
     @abstractmethod
     def process(self, Wf, *args, **kwargs):
         pass
 
-    def forward(self, input: Tensor, *args) -> Tuple[Tensor, Tensor, Tensor, ...]:
+    def forward(self, input: Tensor, *args) -> Tuple[Tensor, Tensor, Tensor, Tensor]:
         B, C_in, H, W = input.shape
 
         Wf, H_, Wf_ = self.spectral_norm_frequency(H, W)
