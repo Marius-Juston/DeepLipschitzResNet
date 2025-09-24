@@ -29,6 +29,7 @@ def _freq_batchify(K_fft: Tensor) -> Tuple[Tensor, int, int]:
     # input K_fft: (out, in, H, Wf) complex -> returns (F, out, in)
     out_ch, in_ch, H, Wf = K_fft.shape
     F = H * Wf
+    # K_flat = K_fft.reshape(out_ch, in_ch, F).permute(2, 0, 1)
     K_flat = K_fft.permute(2, 3, 0, 1).reshape(F, out_ch, in_ch)
     return K_flat, H, Wf
 
@@ -36,7 +37,8 @@ def _freq_batchify(K_fft: Tensor) -> Tuple[Tensor, int, int]:
 def _unbatchify_freq(M_flat: Tensor, H: int, Wf: int) -> Tensor:
     F, out_ch, in_ch = M_flat.shape
     # assert F == H * Wf
-    M = M_flat.reshape(H, Wf, out_ch, in_ch).permute(2, 3, 0, 1).contiguous()
+    # M =  M_flat.permute(1, 2, 0).reshape(out_ch, in_ch, H, Wf)
+    M = M_flat.reshape(H, Wf, out_ch, in_ch).permute(2, 3, 0, 1)
     return M  # (out, in, H, Wf)
 
 
