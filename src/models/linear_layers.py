@@ -75,7 +75,7 @@ class FirstLipschitzLinearLayer(AbstractLipschitzLinearLayer):
         W = W * self.constant
 
         d_inv = omega / (self.constant_sq * self.alpha)
-        self.omega_r = R
+        self.omega_r = R.T
 
         return torch.nn.functional.linear(input, W, self.bias), W, d_inv
 
@@ -90,7 +90,7 @@ class InnerWeightLipschitzLinearLayer(AbstractLipschitzLinearLayer):
         #     assert  torch.linalg.eigvalsh(W.T @ W).max() <= 1.0
 
         # assert torch.allclose(prev_layer.omega_r.T.tril(), prev_layer.omega_r.T), "This is not lower triangular"
-        W = torch.linalg.solve_triangular(prev_layer.omega_r.T, W, upper=False, left=False)
+        W = torch.linalg.solve_triangular(prev_layer.omega_r, W, upper=False, left=False)
 
         # with torch.no_grad():
         #     W_temp = W @ prev_layer.omega_r.T
@@ -126,7 +126,7 @@ class InnerWeightLipschitzLinearLayer(AbstractLipschitzLinearLayer):
 
         d_inv = omega / div_scale
 
-        self.omega_r = torch.linalg.cholesky(omega, upper=True)
+        self.omega_r = torch.linalg.cholesky(omega, upper=False)
 
         # with torch.no_grad():
         #     assert torch.allclose(omega, self.omega_r.T @ self.omega_r)
@@ -172,7 +172,7 @@ class LastLipschitzLinearLayer(AbstractLipschitzLinearLayer):
         prev_r = last_layer.omega_r
 
         # assert torch.allclose(prev_r.triu(), prev_r), "This is not upper triangular"
-        W = torch.linalg.solve_triangular(prev_r.T, W, upper=False, left=False)
+        W = torch.linalg.solve_triangular(prev_r, W, upper=False, left=False)
         W = self.constant * prev_alpha.sqrt() * torch.linalg.solve_triangular(sigma_r, W, upper=True, left=True)
 
         return torch.nn.functional.linear(input, W, self.bias), W
