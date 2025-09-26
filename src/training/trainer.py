@@ -68,8 +68,12 @@ class Trainer:
                 'global_step': step,
                 'model_state_dict': self.model.state_dict(),
                 'optimizer_state_dict': self.optimizer.state_dict(),
-                'scheduler': self.scheduler.state_dict(),
+                # 'scheduler': self.scheduler.state_dict(),
             }
+
+            if callable(getattr(self.scheduler, 'state_dict', None)):
+                state['scheduler'] = self.scheduler.state_dict()
+
             logging.debug("Saving checkpoint '{}'.".format(ckpt_name))
             torch.save(state, ckpt_path)
 
