@@ -116,6 +116,7 @@ class DeepLipschitzConvResNet(nn.Module):
 
         return second, b_wf
 
+    @torch.compiler.disable
     def forward(self, x: Tensor) -> Tensor:
         first, a_wf, d_inv = self.A(x)
 

@@ -172,7 +172,7 @@ class AbstractLipschitzConvLayer(nn.Conv2d, ABC):
     def forward(self, input: Tensor, *args) -> Tuple[Tensor, Tensor, Tensor]:
         B, C_in, H, W = input.shape
 
-        Wf_orig, H_fft, Wf_fft  = self.spectral_norm_frequency(H, W)
+        Wf_orig, H_fft, Wf_fft = self.spectral_norm_frequency(H, W)
 
         Wf_norm, d_inv = self.process(Wf_orig, *args)
 
