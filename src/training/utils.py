@@ -2,7 +2,7 @@ import glob
 import logging
 import os
 import re
-import subprocess
+import sys
 from os.path import join
 
 import numpy as np
@@ -65,8 +65,8 @@ def setup_logging(config, rank):
              }[config.logging_verbosity]
     format_ = "[%(asctime)s %(filename)s:%(lineno)s] %(message)s"
     filename = '{}/log_{}_{}.logs'.format(config.train_dir, config.mode, rank)
-    f = open(filename, "a")
-    logging.basicConfig(filename=filename, level=level, format=format_, datefmt='%H:%M:%S')
+    logging.basicConfig(level=level, format=format_, datefmt='%H:%M:%S',
+                        handlers=[logging.FileHandler(filename), logging.StreamHandler(sys.stdout)])
 
 
 def setup_distributed_training(world_size, rank):
