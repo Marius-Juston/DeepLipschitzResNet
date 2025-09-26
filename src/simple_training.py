@@ -283,12 +283,12 @@ class Trainer:
         self.best_accuracy = [0., 0.]
         for epoch_id in range(start_epoch, self.config.epochs):
             for n_batch, data in enumerate(data_loader):
-                if global_step == 2:
+                if global_step == 10:
                     start_time = time.time()
                 epoch = (int(global_step) * self.batch_size) / self.reader.n_train_files
                 self.one_step_training(data, epoch, global_step)
                 self._save_ckpt(global_step, epoch_id)
-                if global_step == 20:
+                if global_step == 40:
                     self._print_approximated_train_time(start_time)
                 global_step += 1
 
