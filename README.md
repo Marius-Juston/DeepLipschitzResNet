@@ -61,10 +61,15 @@ pip3 install --pre -U torch torchvision --index-url https://download.pytorch.org
 
 ## Tensorboard
 
+### For remote server
 ```bash
 ssh -L 6006:127.0.0.1:6006 <user>@<ip address>
 conda activate DeepLipschitzResNet
 tensorboard --logdir=.
+```
+### For WSL2
+```bash
+nsorboard --host localhost --port 8888 --logdir=.
 ```
 
 ## Reference
