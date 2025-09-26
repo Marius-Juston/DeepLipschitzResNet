@@ -216,7 +216,7 @@ class Trainer:
 
     def _print_approximated_train_time(self, start_time):
         total_steps = self.reader.n_train_files * self.config.epochs / self.global_batch_size
-        total_seconds = total_steps * ((time.time() - start_time) / self.end_approx - self.start_approx)
+        total_seconds = total_steps * ((time.time() - start_time) / (self.end_approx - self.start_approx))
         n_days = total_seconds // 86400
         n_hours = (total_seconds % 86400) / 3600
         logging.info(
