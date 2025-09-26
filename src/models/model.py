@@ -1,13 +1,36 @@
+import numpy as np
+import torch.nn.functional as F
 from torch import nn
-from torch.nn import ZeroPad2d
 
 from models.cnn_model import DeepLipschitzConvResNet
 from models.linear_model import DeepLipschitzLinearResNet
 
 
+class PaddingChannels(nn.Module):
+    def __init__(self, ncout, ncin=3, mode="zero"):
+        super(PaddingChannels, self).__init__()
+        self.ncout = ncout
+        self.ncin = ncin
+        self.mode = mode
+
+        assert mode in ["zero", "clone"], "You must have the mode either be 'zero' or 'clone'"
+
+        self.pad_channels = self.ncout - self.ncin
+
+        self.repeat_num = int(self.ncout / self.ncin)
+        self.repeat_norm = np.sqrt(int(self.ncout / self.ncin))
+
+    def forward(self, x):
+        if self.mode == "zero":
+            return F.pad(x, (0, 0, 0, 0, 0, self.pad_channels), mode="constant", value=0)
+        elif self.mode == "clone":
+            return x.repeat(1, self.repeat_num, 1, 1) / self.repeat_norm
+        return None
+
+
 class LipschitzNetwork(nn.Module):
 
-    def __init__(self, config, n_classes):
+    def __init__(self, config, n_classes, device=None):
         super(LipschitzNetwork, self).__init__()
 
         self.n_conv: int = config.n_conv
@@ -26,13 +49,13 @@ class LipschitzNetwork(nn.Module):
 
         self.model = []
         self.model.append(
-            ZeroPad2d(3)
+            PaddingChannels(self.cin, 3, 'zero')
         )
 
         inner_conv_layers = [self.conv_inner_dim] * self.n_interior_conv
 
         for _ in range(self.n_conv):
-            self.model.append(DeepLipschitzConvResNet(self.cin, self.conv_inner_dim, inner_conv_layers))
+            self.model.append(DeepLipschitzConvResNet(self.cin, self.cin, inner_conv_layers, device=device))
 
         self.model.append(nn.AvgPool2d(4, divisor_override=4))
 
@@ -47,9 +70,10 @@ class LipschitzNetwork(nn.Module):
         inner_linear_layers = [self.conv_inner_dim] * self.n_interior_conv
 
         for _ in range(self.n_dense):
-            self.model.append(DeepLipschitzLinearResNet(in_channels, self.dense_inner_dim, inner_linear_layers))
+            self.model.append(
+                DeepLipschitzLinearResNet(in_channels, in_channels, inner_linear_layers, device=device))
 
-        self.model.append(DeepLipschitzLinearResNet(in_channels, self.n_classes, inner_linear_layers))
+        self.model.append(DeepLipschitzLinearResNet(in_channels, self.n_classes, inner_linear_layers, device=device))
 
         self.model = nn.Sequential(*self.model)
 
