@@ -48,6 +48,21 @@ def main(config):
     finally:
         destroy_process_group()
 
+def model_choice(config):
+    if config.model_name == 'small':
+        config = override_args(config, 20, 4, 16, 7, 4, 45, 256, 2048)
+    elif config.model_name == 'medium':
+        config = override_args(config, 30, 4, 16, 10, 4, 60, 256, 2048)
+    elif config.model_name == 'large':
+        config = override_args(config, 50, 4, 16, 10, 4, 90, 256, 2048)
+    elif config.model_name == 'xlarge':
+        config = override_args(config, 70, 4, 16, 15, 4, 120, 256, 2048)
+    elif config.model_name is None and \
+            not all([config.n_conv, config.n_dense, config.w, config.dense_inner_dim]):
+        ValueError("Choose --model-name 'small' 'medium' 'large' 'xlarge'")
+
+    return config
+
 
 if __name__ == '__main__':
 
@@ -122,18 +137,7 @@ if __name__ == '__main__':
         config.dense_next_layer = dense_next_layer
         return config
 
-
-    if config.model_name == 'small':
-        config = override_args(config, 20, 4, 16, 7, 4, 45, 256, 2048)
-    elif config.model_name == 'medium':
-        config = override_args(config, 30, 4, 16, 10, 4, 60, 256, 2048)
-    elif config.model_name == 'large':
-        config = override_args(config, 50, 4, 16, 10, 4, 90, 256, 2048)
-    elif config.model_name == 'xlarge':
-        config = override_args(config, 70, 4, 16, 15, 4, 120, 256, 2048)
-    elif config.model_name is None and \
-            not all([config.n_conv, config.n_dense, config.w, config.dense_inner_dim]):
-        ValueError("Choose --model-name 'small' 'medium' 'large' 'xlarge'")
+    config = model_choice(config)
 
     # process argments
     eval_mode = ['certified', 'attack']
