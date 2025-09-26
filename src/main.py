@@ -1,6 +1,8 @@
 import random
+import traceback
 
 import torch
+from torch.distributed import destroy_process_group
 
 torch.set_float32_matmul_precision('high')
 torch.backends.cudnn.benchmark = True
@@ -19,6 +21,7 @@ from training.trainer import Trainer
 
 warnings.filterwarnings("ignore")
 
+
 def set_seed(seed):
     if seed is None:
         return
@@ -31,13 +34,19 @@ def set_seed(seed):
 def main(config):
     set_seed(config.seed)
 
-    folder = config.train_dir.split('/')[-1]
-    if config.mode == 'train':
-        trainer = Trainer(config)
-        trainer()
-    elif config.mode in ['certified', 'attack']:
-        evaluate = Evaluator(config)
-        evaluate()
+    try:
+
+        folder = config.train_dir.split('/')[-1]
+        if config.mode == 'train':
+            trainer = Trainer(config)
+            trainer()
+        elif config.mode in ['certified', 'attack']:
+            evaluate = Evaluator(config)
+            evaluate()
+    except Exception as e:
+        traceback.print_exc()
+    finally:
+        destroy_process_group()
 
 
 if __name__ == '__main__':
@@ -49,6 +58,8 @@ if __name__ == '__main__':
     parser.add_argument("--train_dir", type=str, help="Name of the training directory.")
     parser.add_argument("--data_dir", type=str, help="Name of the data directory.")
     parser.add_argument("--dataset", type=str, default='cifar10', help="Dataset to use")
+    parser.add_argument("--num_workers", type=int, default=20, help="how many subprocesses to use for data loading. 0 means that the data will be loaded in the main process")
+    parser.add_argument("--prefetch_factor_scale", type=int, default=2, help="Number of batches loaded in advance by each worker: batch_size * prefetch_factor_scale")
 
     parser.add_argument("--shift_data", type=bool, default=True, help="Shift dataset with mean.")
 
@@ -72,9 +83,10 @@ if __name__ == '__main__':
     parser.add_argument("--batch_size", type=int, default=64)
     parser.add_argument("--seed", type=int, help="Make the training deterministic.", default=42)
     parser.add_argument("--print_grad_norm", action='store_true', help="Print of the norm of the gradients")
-    parser.add_argument("--frequency_log_steps", type=int, default=1000, help="Print log for every step.")
+    parser.add_argument("--frequency_log_steps", type=int, default=10, help="Print log for every step.")
     parser.add_argument("--logging_verbosity", type=str, default='INFO', help="Level of verbosity of the logs")
     parser.add_argument("--save_checkpoint_epochs", type=int, default=5, help="Save checkpoint every epoch.")
+    parser.add_argument("--compile", type=bool, default=True, help="Compile model")
 
     # specific parameters for eval
     parser.add_argument("--attack", type=str, choices=['pgd', 'autoattack'], help="Choose the attack.")
@@ -92,25 +104,31 @@ if __name__ == '__main__':
     config = parser.parse_args()
     config.cmd = f"python3 {' '.join(sys.argv)}"
 
+    config.ngpus = torch.cuda.device_count()
 
-    def override_args(config, n_conv, n_interior_conv, n_dense, n_interior_dense, w, dense_inner_dim):
+
+    def override_args(config, n_conv, n_interior_conv, conv_inner_dim, n_dense, n_interior_dense, w, dense_inner_dim,
+                      dense_next_layer):
         config.n_conv = n_conv
         config.n_interior_conv = n_interior_conv
         config.n_dense = n_dense
         config.n_interior_dense = n_interior_dense
         config.w = w
         config.dense_inner_dim = dense_inner_dim
+        config.conv_inner_dim = conv_inner_dim
+
+        config.dense_next_layer = dense_next_layer
         return config
 
 
     if config.model_name == 'small':
-        config = override_args(config, 20, 4, 7, 4, 45, 2048)
+        config = override_args(config, 20, 4, 16, 7, 4, 45, 256, 2048)
     elif config.model_name == 'medium':
-        config = override_args(config, 30, 4, 10, 4, 60, 2048)
+        config = override_args(config, 30, 4, 16, 10, 4, 60, 256, 2048)
     elif config.model_name == 'large':
-        config = override_args(config, 50, 4, 10, 4, 90, 2048)
+        config = override_args(config, 50, 4, 16, 10, 4, 90, 256, 2048)
     elif config.model_name == 'xlarge':
-        config = override_args(config, 70, 4, 15, 4, 120, 2048)
+        config = override_args(config, 70, 4, 16, 15, 4, 120, 256, 2048)
     elif config.model_name is None and \
             not all([config.n_conv, config.n_dense, config.w, config.dense_inner_dim]):
         ValueError("Choose --model-name 'small' 'medium' 'large' 'xlarge'")

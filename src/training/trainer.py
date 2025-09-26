@@ -13,6 +13,7 @@ import torch.backends.cudnn as cudnn
 from torch import nn
 from torch.distributed.elastic.multiprocessing.errors import record
 from torch.nn.parallel import DistributedDataParallel
+from torch.nn.parallel import DistributedDataParallel as DDP
 
 from models.model import LipschitzNetwork
 from training import utils
@@ -53,7 +54,7 @@ class Trainer:
             state = {
                 'epoch': epoch,
                 'global_step': step,
-                'model_state_dict': self.model.state_dict(),
+                'model_state_dict': self.model._orig_mod.state_dict() if self.config.compile else self.model.state_dict(),
                 'optimizer_state_dict': self.optimizer.state_dict(),
                 # 'scheduler': self.scheduler.state_dict()
             }
@@ -68,6 +69,9 @@ class Trainer:
 
         self.train_dir = self.config.train_dir
         self.ngpus = 1
+
+        self.start_approx = 10
+        self.end_approx = 40
 
         # job_env = submitit.JobEnvironment()
         self.rank = int(os.environ['RANK'])
@@ -116,6 +120,9 @@ class Trainer:
         else:
             self.batch_size = self.config.batch_size
 
+        if self.is_distributed:
+            utils.setup_distributed_training()
+
         self.global_batch_size = self.batch_size * self.world_size
         logging.info('World Size={} => Total batch size {}'.format(
             self.world_size, self.global_batch_size))
@@ -129,15 +136,18 @@ class Trainer:
             logging.info(f"Using dataset: {self.config.dataset}")
 
         # load model
-        self.model = LipschitzNetwork(self.config, self.reader.n_classes)
-        self.model = self.model.cuda()
+        self.model = LipschitzNetwork(self.config, self.reader.n_classes, device=f'cuda:{self.local_rank}')
+
+        if self.config.compile:
+            self.model = torch.compile(self.model, mode='max-autotune', dynamic=True)
+
+        self.model = DDP(self.model, device_ids=[self.local_rank])
         nb_parameters = np.sum([p.numel() for p in self.model.parameters() if p.requires_grad])
         logging.info(f'Number of parameters to train: {nb_parameters}')
 
         # setup distributed process if training is distributed
         # and use DistributedDataParallel for distributed training
         if self.is_distributed:
-            utils.setup_distributed_training(self.world_size, self.rank)
             self.model = DistributedDataParallel(
                 self.model, device_ids=[self.local_rank], output_device=self.local_rank)
             if self.local_rank == 0:
@@ -182,28 +192,17 @@ class Trainer:
             if self.is_distributed:
                 sampler.set_epoch(epoch_id)
             for n_batch, data in enumerate(data_loader):
-                if global_step == 2 and self.is_master:
+                if global_step == self.start_approx and self.is_master:
                     start_time = time.time()
                 epoch = (int(global_step) * self.global_batch_size) / self.reader.n_train_files
                 self.one_step_training(data, epoch, global_step)
                 self._save_ckpt(global_step, epoch_id)
-                if global_step == 20 and self.is_master:
+                if global_step == self.end_approx and self.is_master:
                     self._print_approximated_train_time(start_time)
                 global_step += 1
 
         self._save_ckpt(global_step, epoch_id, final=True)
         logging.info("Done training -- epoch limit reached.")
-
-    def filter_parameters(self):
-        conv_params, linear_params = [], []
-        for name, params in self.model.named_parameters():
-            if 'weight' in name.lower() and params.dim() == 4:
-                conv_params.append(params)
-            elif 'weight' in name.lower() and params.dim() == 2:
-                linear_params.append(params)
-            elif 'bias' in name.lower():
-                conv_params.append(params)
-        return conv_params, linear_params
 
     def compute_gradient_norm(self):
         grad_norm = 0.
@@ -216,7 +215,7 @@ class Trainer:
 
     def _print_approximated_train_time(self, start_time):
         total_steps = self.reader.n_train_files * self.config.epochs / self.global_batch_size
-        total_seconds = total_steps * ((time.time() - start_time) / 18)
+        total_seconds = total_steps * ((time.time() - start_time) / self.end_approx - self.start_approx)
         n_days = total_seconds // 86400
         n_hours = (total_seconds % 86400) / 3600
         logging.info(
@@ -250,7 +249,7 @@ class Trainer:
 
         batch_start_time = time.time()
         images, labels = data
-        images, labels = images.cuda(), labels.cuda()
+        images, labels = images.to(self.local_rank), labels.to(self.local_rank)
 
         if step == 0 and self.local_rank == 0:
             logging.info(f'images {images.shape}')

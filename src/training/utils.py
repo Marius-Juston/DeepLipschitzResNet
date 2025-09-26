@@ -9,10 +9,10 @@ import numpy as np
 # from autoattack import AutoAttack
 import pytorch_warmup as warmup
 import torch
-import torch.distributed as dist
 import torch.nn as nn
 import torch.nn.functional as F
 from advertorch import attacks
+from torch.distributed import init_process_group
 from torch.optim import lr_scheduler
 
 
@@ -69,22 +69,9 @@ def setup_logging(config, rank):
                         handlers=[logging.FileHandler(filename), logging.StreamHandler(sys.stdout)])
 
 
-def setup_distributed_training(world_size, rank):
-    """ find a common host name on all nodes and setup distributed training """
-    # make sure http proxy are unset, in order for the nodes to communicate
-    for var in ['http_proxy', 'https_proxy']:
-        if var in os.environ:
-            del os.environ[var]
-        if var.upper() in os.environ:
-            del os.environ[var.upper()]
-    # get distributed url
-    cmd = 'scontrol show hostnames ' + os.getenv('SLURM_JOB_NODELIST')
-    stdout = subprocess.check_output(cmd.split())
-    host_name = stdout.decode().splitlines()[0]
-    dist_url = f'tcp://{host_name}:9000'
-    # setup dist.init_process_group
-    dist.init_process_group(backend='nccl', init_method=dist_url,
-                            world_size=world_size, rank=rank)
+def setup_distributed_training():
+    torch.cuda.set_device(int(os.environ["LOCAL_RANK"]))
+    init_process_group(backend="nccl")
 
 
 class LossMargin(nn.Module):

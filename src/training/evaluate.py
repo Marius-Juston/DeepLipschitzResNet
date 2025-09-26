@@ -42,7 +42,7 @@ class Evaluator:
         # Setup logging & log the version.
         utils.setup_logging(self.config, 0)
 
-        ngpus = torch.cuda.device_count()
+        ngpus = 1
         if ngpus:
             self.batch_size = self.config.batch_size * ngpus
         else:

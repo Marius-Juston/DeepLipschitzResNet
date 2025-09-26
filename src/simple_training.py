@@ -206,7 +206,7 @@ class Trainer:
             state = {
                 'epoch': epoch,
                 'global_step': step,
-                'model_state_dict': self.model.state_dict(),
+                'model_state_dict': self.model._orig_mod.state_dict()  if self.config.compile else self.model.state_dict(),
                 'optimizer_state_dict': self.optimizer.state_dict(),
                 # 'scheduler': self.scheduler.state_dict()
             }
@@ -218,6 +218,9 @@ class Trainer:
         """Performs training and evaluation
         """
         self.train_dir = self.config.train_dir
+
+        self.start_approx = 10
+        self.end_approx = 40
 
         # Setup logging
         utils.setup_logging(self.config, 0)
@@ -283,12 +286,12 @@ class Trainer:
         self.best_accuracy = [0., 0.]
         for epoch_id in range(start_epoch, self.config.epochs):
             for n_batch, data in enumerate(data_loader):
-                if global_step == 10:
+                if global_step == self.start_approx:
                     start_time = time.time()
                 epoch = (int(global_step) * self.batch_size) / self.reader.n_train_files
                 self.one_step_training(data, epoch, global_step)
                 self._save_ckpt(global_step, epoch_id)
-                if global_step == 40:
+                if global_step == self.end_approx:
                     self._print_approximated_train_time(start_time)
                 global_step += 1
 
@@ -317,7 +320,7 @@ class Trainer:
 
     def _print_approximated_train_time(self, start_time):
         total_steps = self.reader.n_train_files * self.config.epochs / self.batch_size
-        total_seconds = total_steps * ((time.time() - start_time) / 18)
+        total_seconds = total_steps * ((time.time() - start_time) / (self.end_approx - self.start_approx))
         n_days = total_seconds // 86400
         n_hours = (total_seconds % 86400) / 3600
         logging.info(

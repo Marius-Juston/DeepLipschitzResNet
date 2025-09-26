@@ -14,8 +14,8 @@ class BaseReader:
         self.batch_size = batch_size
         self.is_training = is_training
         self.is_distributed = is_distributed
-        self.num_workers = 10
-        self.prefetch_factor = self.batch_size * 2
+        self.num_workers = config.num_workers
+        self.prefetch_factor = self.batch_size * config.prefetch_factor_scale
 
     def transform(self):
         """Create the transformer pipeline."""
