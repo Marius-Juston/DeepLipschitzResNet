@@ -12,12 +12,12 @@ import torch
 import torch.backends.cudnn as cudnn
 from torch import nn
 from torch.distributed.elastic.multiprocessing.errors import record
-from torch.nn.parallel import DistributedDataParallel
 from torch.nn.parallel import DistributedDataParallel as DDP
 
 from models.model import LipschitzNetwork
 from training import utils
 from training.data.readers import readers_config
+from training.utils import print_module_parameters
 
 
 class Trainer:
@@ -137,18 +137,19 @@ class Trainer:
 
         # load model
         self.model = LipschitzNetwork(self.config, self.reader.n_classes, device=f'cuda:{self.local_rank}')
+        print_module_parameters(self.model)
+        nb_parameters = np.sum([p.numel() for p in self.model.parameters() if p.requires_grad])
+        logging.info(f'Number of parameters to train: {nb_parameters}')
 
         if self.config.compile:
             self.model = torch.compile(self.model, mode='max-autotune', dynamic=True)
 
         self.model = DDP(self.model, device_ids=[self.local_rank])
-        nb_parameters = np.sum([p.numel() for p in self.model.parameters() if p.requires_grad])
-        logging.info(f'Number of parameters to train: {nb_parameters}')
 
         # setup distributed process if training is distributed
         # and use DistributedDataParallel for distributed training
         if self.is_distributed:
-            self.model = DistributedDataParallel(
+            self.model = DDP(
                 self.model, device_ids=[self.local_rank], output_device=self.local_rank)
             if self.local_rank == 0:
                 logging.info('Model defined with DistributedDataParallel')

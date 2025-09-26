@@ -10,7 +10,7 @@ train & evaluation
 # training
 ```bash
 # Training
-torchrun --standalone --nnodes=1 --nproc_per_node=gpu src/main.py --dataset cifar10 --model-name small --train_dir small_model 
+torchrun --standalone --nproc_per_node=4 src/main.py --dataset cifar10 --model-name small --train_dir small_model
 
 # Evaluation
 python3 main.py --mode certified --dataset cifar10 --model-name small --train_dir small_model

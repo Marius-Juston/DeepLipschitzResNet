@@ -1,7 +1,8 @@
 import random
 
 import torch
-from prettytable import PrettyTable
+
+from training.utils import print_module_parameters
 
 torch.set_float32_matmul_precision('high')
 torch.backends.cudnn.benchmark = True
@@ -33,25 +34,6 @@ import os
 
 import torch
 import torch.nn.functional as F
-
-
-def print_num_parameters(model : torch.nn.Module):
-    table = PrettyTable(["Modules", "Parameters"])
-    total_params = 0
-    for name, parameter in model.named_parameters():
-        if not parameter.requires_grad:
-            continue
-        params = parameter.numel()
-        table.add_row([name, params])
-        total_params += params
-    logging.info(table)
-    logging.info(f"Total Trainable Params: {total_params}")
-    return total_params
-
-def print_module_parameters(model: LipschitzNetwork):
-    for i, module in enumerate(model.model):
-        logging.info("Module {}: {}".format(i, module.__class__.__name__))
-        print_num_parameters(module)
 
 
 class Evaluator:
@@ -206,7 +188,7 @@ class Trainer:
             state = {
                 'epoch': epoch,
                 'global_step': step,
-                'model_state_dict': self.model._orig_mod.state_dict()  if self.config.compile else self.model.state_dict(),
+                'model_state_dict': self.model._orig_mod.state_dict() if self.config.compile else self.model.state_dict(),
                 'optimizer_state_dict': self.optimizer.state_dict(),
                 # 'scheduler': self.scheduler.state_dict()
             }
@@ -464,7 +446,8 @@ if __name__ == '__main__':
     config.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 
-    def override_args(config, n_conv, n_interior_conv, conv_inner_dim, n_dense, n_interior_dense, w, dense_inner_dim, dense_next_layer):
+    def override_args(config, n_conv, n_interior_conv, conv_inner_dim, n_dense, n_interior_dense, w, dense_inner_dim,
+                      dense_next_layer):
         config.n_conv = n_conv
         config.n_interior_conv = n_interior_conv
         config.n_dense = n_dense

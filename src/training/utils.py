@@ -12,6 +12,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from advertorch import attacks
+from prettytable import PrettyTable
 from torch.distributed import init_process_group
 from torch.optim import lr_scheduler
 
@@ -233,3 +234,22 @@ class TriangularLRScheduler:
                        [0, self.num_steps * 2 // 5, self.num_steps * 4 // 5, self.num_steps],
                        [0, self.lr, self.lr / 20.0, 0])[0]
         self.optimizer.param_groups[0].update(lr=lr)
+
+
+def print_num_parameters(model : torch.nn.Module):
+    table = PrettyTable(["Modules", "Parameters"])
+    total_params = 0
+    for name, parameter in model.named_parameters():
+        if not parameter.requires_grad:
+            continue
+        params = parameter.numel()
+        table.add_row([name, params])
+        total_params += params
+    logging.info(table)
+    logging.info(f"Total Trainable Params: {total_params}")
+    return total_params
+
+def print_module_parameters(model):
+    for i, module in enumerate(model.model):
+        logging.info("Module {}: {}".format(i, module.__class__.__name__))
+        print_num_parameters(module)
