@@ -108,7 +108,7 @@ class DeepLipschitzConvResNet(nn.Module):
 
         left = a_wf @ sigma_lower
 
-        scaling = self.B.identity_out + left @ left.mH
+        scaling = self.B.identity_out + left @ left.mT
 
         R_sigma = torch.linalg.cholesky(scaling, upper=True)
 
@@ -116,7 +116,7 @@ class DeepLipschitzConvResNet(nn.Module):
 
         return second, b_wf
 
-    @torch.compiler.disable
+    # @torch.compiler.disable
     def forward(self, x: Tensor) -> Tensor:
         first, a_wf, d_inv = self.A(x)
 
@@ -135,9 +135,9 @@ class DeepLipschitzConvResNet(nn.Module):
             if sigma_lower is None:
                 sigma_lower = T
             else:
-                sigma_lower = torch.linalg.cholesky(sigma_lower @ sigma_lower.mH + T @ T.mH, upper=False)
+                sigma_lower = torch.linalg.cholesky(sigma_lower @ sigma_lower.mT + T @ T.mT, upper=False)
 
-            gamma = T @ c_wf.mH
+            gamma = T @ c_wf.mT
 
             current_input = self.activation(current_input)
 

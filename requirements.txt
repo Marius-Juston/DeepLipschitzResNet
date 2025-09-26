@@ -4,3 +4,4 @@ matplotlib~=3.10.0
 pytorch_warmup
 git+https://github.com/BorealisAI/advertorch.git # Need the latest version for PyTorch 2.0 compatability
 torch-tb-profiler
+prettytable

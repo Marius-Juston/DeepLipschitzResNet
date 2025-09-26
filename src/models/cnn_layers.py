@@ -102,9 +102,9 @@ class AbstractLipschitzConvLayer(nn.Conv2d, ABC):
 
     def sum_weight(self, Wf, transpose: bool = False):
         if transpose:
-            return self.alpha * self.identity + torch.matmul(Wf.mH, Wf)
+            return self.alpha * self.identity + torch.matmul(Wf.mT, Wf)
         else:
-            return self.alpha * self.identity_out + torch.matmul(Wf, Wf.mH)
+            return self.alpha * self.identity_out + torch.matmul(Wf, Wf.mT)
 
     def scale_w(self, Wf: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
         omega = self.sum_weight(Wf, transpose=True)
@@ -114,13 +114,32 @@ class AbstractLipschitzConvLayer(nn.Conv2d, ABC):
 
         return omega, W, R
 
+    def make_real(self, M):
+        top = torch.concat([M.real, -M.imag], dim=-1)
+        bottom = torch.concat([M.imag, M.real], dim=-1)
+
+        return torch.cat([top, bottom], dim=-2)
+
+    def make_complex(self, M):
+        A = M[..., :M.size(-2) // 2, :M.size(-1) // 2, None]
+        B = M[..., M.size(-2) // 2:, :M.size(-1) // 2, None]
+
+        complex = torch.cat([A, B], dim=-1)
+
+        return torch.view_as_complex(complex)
+
     def _weight_fft_for_input(self, H: int, W: int) -> Tensor:
         pad = _center_and_pad_kernel(self.weight, H, W)
         K_fft = torch.fft.rfft2(pad, s=(H, W), norm="backward")
-        return K_fft
+
+        K_fft_expanded_real = self.make_real(K_fft)
+
+        return K_fft_expanded_real
 
     def _ifft_from_freq(self, M_freq: Tensor, H: int, W: int) -> Tensor:
-        pad_spatial = torch.fft.irfft2(M_freq, s=(H, W), norm="backward")
+        M_freq_complex = self.make_complex(M_freq)
+
+        pad_spatial = torch.fft.irfft2(M_freq_complex, s=(H, W), norm="backward")
         return pad_spatial
 
     def conv_with_normalized_weight(self, input: Tensor, W_spatial: Tensor, bias: Optional[Tensor]):
@@ -155,10 +174,12 @@ class AbstractLipschitzConvLayer(nn.Conv2d, ABC):
     def circular_convolution(self, input, H, W, Wf_norm, H_fft, Wf_fft):
         # FFT of the input tensor
         X_fft = torch.fft.rfft2(input, s=(H, W), norm="backward")
+        X_fft = self.make_real(X_fft)
+
         X_fft, _, _ = _freq_batchify(X_fft)
 
         # Y_fft_einsum = torch.einsum('foc,fbc->fbo', Wf_norm, X_fft)
-        Y_fft_einsum = torch.matmul(X_fft, Wf_norm.mH)
+        Y_fft_einsum = torch.matmul(X_fft, Wf_norm.mT)
 
         Y_fft = _unbatchify_freq(Y_fft_einsum, H_fft, Wf_fft)
 
