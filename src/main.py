@@ -64,11 +64,13 @@ if __name__ == '__main__':
     parser.add_argument("--shift_data", type=bool, default=True, help="Shift dataset with mean.")
 
     parser.add_argument("--epochs", type=int, default=1000, help="Number of epochs for training.")
+    parser.add_argument("--validate_every", type=int, default=1, help="Number of epochs to run the validation on the test dataset on.")
+
     parser.add_argument("--loss", type=str, default="xent", help="Define the loss to use for training.")
     parser.add_argument("--margin", type=float, default=0.7, help="Define margin")
     parser.add_argument("--offset", type=float, default=np.sqrt(2) * 3 / 2)
     parser.add_argument("--temperature", type=float, default=0.25)
-    parser.add_argument("--optimizer", type=str, default='adam')
+    parser.add_argument("--optimizer", type=str, default='adamw')
     parser.add_argument("--scheduler", type=str, default="interp")
     parser.add_argument("--lr", type=float, default=0.01)
     parser.add_argument("--beta1", type=float, default=0.5)
@@ -144,11 +146,11 @@ if __name__ == '__main__':
     if config.train_dir is None:
         ValueError("--train_dir must be defined.")
     elif config.mode == 'train' and config.train_dir is not None:
-        config.train_dir = f'{path}/{config.train_dir}'
+        config.train_dir = f'{path}/{config.train_dir}/{config.dataset}'
         os.makedirs(config.train_dir, exist_ok=True)
         os.makedirs(f'{config.train_dir}/checkpoints', exist_ok=True)
     elif config.mode in eval_mode and config.train_dir is not None:
-        config.train_dir = f'{path}/{config.train_dir}'
+        config.train_dir = f'{path}/{config.train_dir}/{config.dataset}'
     elif config.mode in eval_mode and config.train_dir is None:
         ValueError("--train_dir must be defined.")
 

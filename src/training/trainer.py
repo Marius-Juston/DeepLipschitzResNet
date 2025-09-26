@@ -1,3 +1,4 @@
+import datetime
 import glob
 import logging
 import os
@@ -13,11 +14,21 @@ import torch.backends.cudnn as cudnn
 from torch import nn
 from torch.distributed.elastic.multiprocessing.errors import record
 from torch.nn.parallel import DistributedDataParallel as DDP
+from torch.utils.tensorboard import SummaryWriter
 
 from models.model import LipschitzNetwork
 from training import utils
 from training.data.readers import readers_config
 from training.utils import print_module_parameters
+
+
+def local_only(func):
+    def wrapper(self, *args, **kwargs):
+        if self.local_rank == 0:
+            return func(self, *args, **kwargs)
+        return None
+
+    return wrapper
 
 
 class Trainer:
@@ -61,6 +72,26 @@ class Trainer:
             logging.debug("Saving checkpoint '{}'.".format(ckpt_name))
             torch.save(state, ckpt_path)
 
+    @local_only
+    def setup_tensorboard(self):
+        self.run_name = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+        save_folder = os.path.join(self.train_dir, 'tensorboard', f'{self.config.dataset}_{self.run_name}')
+
+        self.summary_writer = SummaryWriter(log_dir=save_folder)
+
+        self.hparams_dict = {
+
+            "n_conv": self.config.n_conv, "n_interior_conv": self.config.n_interior_conv,
+            "n_dense": self.config.n_dense, "n_interior_dense": self.config.n_interior_dense,
+            "cin": self.config.w,
+            "conv_inner_dim": self.config.conv_inner_dim, "dense_inner_dim": self.config.dense_inner_dim,
+            "n_classes": self.reader.n_classes, "dense_next_layer": self.config.dense_next_layer
+        }
+
+    @local_only
+    def print_module_parameters(self, model):
+        print_module_parameters(model)
+
     @record
     def __call__(self):
         """Performs training and evaluation
@@ -68,6 +99,7 @@ class Trainer:
         cudnn.benchmark = True
 
         self.train_dir = self.config.train_dir
+
         self.ngpus = 1
 
         self.start_approx = 10
@@ -132,12 +164,26 @@ class Trainer:
         # load dataset
         Reader = readers_config[self.config.dataset]
         self.reader = Reader(self.config, self.batch_size, self.is_distributed, is_training=True)
+
+        # ###############
+        self.validation_reader = Reader(self.config, self.batch_size, self.is_distributed, is_training=False)
+
+        validator_data_loader, validator_sampler = self.validation_reader.load_dataset()
+        if self.is_distributed:
+            n_validation_files = validator_sampler.num_samples
+        else:
+            n_validation_files = self.validation_reader.n_test_files
+        # ###############
+
         if self.local_rank == 0:
             logging.info(f"Using dataset: {self.config.dataset}")
 
+        self.setup_tensorboard()
+
         # load model
         self.model = LipschitzNetwork(self.config, self.reader.n_classes, device=f'cuda:{self.local_rank}')
-        print_module_parameters(self.model)
+
+        self.print_module_parameters(self.model)
         nb_parameters = np.sum([p.numel() for p in self.model.parameters() if p.requires_grad])
         logging.info(f'Number of parameters to train: {nb_parameters}')
 
@@ -181,17 +227,20 @@ class Trainer:
         self.criterion = utils.get_loss(self.config)
 
         if self.local_rank == 0:
-            logging.info("Number of files on worker: {}".format(n_files))
+            logging.info("Number of train files on worker: {}".format(n_files))
+            logging.info("Number of test files on worker: {}".format(n_validation_files))
             logging.info("Start training")
 
         # training loop
         start_epoch, global_step = 0, 0
         self.best_checkpoint = None
-        self.best_accuracy = None
-        self.best_accuracy = [0., 0.]
+        self.best_accuracy = 0
         for epoch_id in range(start_epoch, self.config.epochs):
             if self.is_distributed:
                 sampler.set_epoch(epoch_id)
+            if epoch_id % self.config.validate_every == 0:
+                self.validate(validator_data_loader, validator_sampler, epoch_id)
+
             for n_batch, data in enumerate(data_loader):
                 if global_step == self.start_approx and self.is_master:
                     start_time = time.time()
@@ -204,6 +253,52 @@ class Trainer:
 
         self._save_ckpt(global_step, epoch_id, final=True)
         logging.info("Done training -- epoch limit reached.")
+
+    @torch.no_grad()
+    @local_only  # local order
+    def validate(self, dataloader, sampler, epoch):
+        if self.is_distributed:
+            sampler.set_epoch(epoch)
+
+        logging.info("Starting validation")
+
+        self.model.eval()
+
+        accuracy = self.eval_certified_run(dataloader, epoch)
+
+        logging.info("Finished validation")
+
+        if accuracy > self.best_accuracy:
+            logging.info(f"New best validation accuracy: {accuracy}")
+            self.best_accuracy = accuracy
+
+            self.summary_writer.add_hparams(self.hparams_dict, {
+                'hparam/accuracy': accuracy
+            }, run_name=self.run_name, global_step=epoch)
+
+        self.model.train()
+
+        return accuracy
+
+    @torch.no_grad()
+    def eval_certified_run(self, dataloader, epoch):
+        running_accuracy = 0
+        running_inputs = 0
+        for batch_n, data in enumerate(dataloader):
+            inputs, labels = data
+            inputs, labels = inputs.to(self.local_rank), labels.to(self.local_rank)
+            outputs = self.model(inputs)
+            predicted = outputs.argmax(axis=1)
+            running_accuracy += predicted.eq(labels.data).sum().item()
+            running_inputs += inputs.size(0)
+        accuracy = running_accuracy / running_inputs
+        self.message.add('epoch', epoch, format='.0f')
+        self.message.add('accuracy', accuracy, format='.5f')
+        logging.info(self.message.get_message())
+
+        self.summary_writer.add_scalar(f'Validation/Accuracy', accuracy, global_step=epoch)
+
+        return accuracy
 
     def compute_gradient_norm(self):
         grad_norm = 0.
@@ -246,7 +341,7 @@ class Trainer:
 
     def one_step_training(self, data, epoch, step):
 
-        self.optimizer.zero_grad()
+        self.optimizer.zero_grad(set_to_none=True)
 
         batch_start_time = time.time()
         images, labels = data
@@ -280,5 +375,10 @@ class Trainer:
             if self.config.print_grad_norm:
                 grad_norm = self.compute_gradient_norm()
                 self.message.add("grad", grad_norm, format=".4f")
+                self.summary_writer.add_scalar('Training/Grad Norm', grad_norm)
             self.message.add("imgs/sec", examples_per_second, width=5, format=".0f")
             logging.info(self.message.get_message())
+
+            self.summary_writer.add_scalar('Training/LR', lr, global_step=step)
+            self.summary_writer.add_scalar('Training/Loss', loss, global_step=step)
+            self.summary_writer.add_scalar('Training/FPS', examples_per_second, global_step=step)
