@@ -106,9 +106,10 @@ class DeepLipschitzConvResNet(nn.Module):
     def compute_b(self, x: Tensor, sigma_lower, a_wf, last_layer: InnerWeightLipschitzConvLayer) -> Tuple[
         Tensor, Tensor]:
 
-        left = a_wf @ sigma_lower
+        # left = a_wf @ sigma_lower
+        # scaling = self.B.identity_out + left @ left.mT
 
-        scaling = self.B.identity_out + left @ left.mT
+        scaling = self.B.identity_out + torch.einsum("fir,fjs,frk,fsk->fij", a_wf, a_wf, sigma_lower, sigma_lower)
 
         R_sigma = torch.linalg.cholesky(scaling, upper=True)
 

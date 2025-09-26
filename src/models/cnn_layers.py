@@ -102,8 +102,17 @@ class AbstractLipschitzConvLayer(nn.Conv2d, ABC):
 
     def sum_weight(self, Wf, transpose: bool = False):
         if transpose:
+            # m = torch.einsum('fim,fin->fmn', Wf, Wf)
+            # n = torch.matmul(Wf.mT, Wf)
+            # assert torch.allclose(m, n)
+
             return self.alpha * self.identity + torch.matmul(Wf.mT, Wf)
         else:
+            # m = torch.einsum('fni,fmi->fmn', Wf, Wf)
+            # n = torch.matmul(Wf, Wf.mT)
+            # assert torch.allclose(m, n)
+
+            # return self.alpha * self.identity_out + m
             return self.alpha * self.identity_out + torch.matmul(Wf, Wf.mT)
 
     def scale_w(self, Wf: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
@@ -115,12 +124,14 @@ class AbstractLipschitzConvLayer(nn.Conv2d, ABC):
         return omega, W, R
 
     def make_real(self, M):
+        # return M
         top = torch.concat([M.real, -M.imag], dim=-1)
         bottom = torch.concat([M.imag, M.real], dim=-1)
 
         return torch.cat([top, bottom], dim=-2)
 
     def make_complex(self, M):
+        # return M
         A = M[..., :M.size(-2) // 2, :M.size(-1) // 2, None]
         B = M[..., M.size(-2) // 2:, :M.size(-1) // 2, None]
 
