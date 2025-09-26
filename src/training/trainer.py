@@ -63,16 +63,12 @@ class Trainer:
             if exists(ckpt_path) and not best: return
             self.saved_ckpts.add(epoch)
 
-            base_model = self.model.module.module.model
-            pure_model = base_model._orig_mod if self.config.compile else base_model
-
             state = {
                 'epoch': epoch,
                 'global_step': step,
                 'model_state_dict': self.model.state_dict(),
                 'optimizer_state_dict': self.optimizer.state_dict(),
                 'scheduler': self.scheduler.state_dict(),
-                'pure_model_state_dict': pure_model.state_dict(),
             }
             logging.debug("Saving checkpoint '{}'.".format(ckpt_name))
             torch.save(state, ckpt_path)
