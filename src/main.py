@@ -1,3 +1,11 @@
+import random
+
+import torch
+
+torch.set_float32_matmul_precision('high')
+torch.backends.cudnn.benchmark = True
+torch.backends.cuda.matmul.allow_tf32 = True
+
 import argparse
 import os
 import sys
@@ -11,8 +19,18 @@ from training.trainer import Trainer
 
 warnings.filterwarnings("ignore")
 
+def set_seed(seed):
+    if seed is None:
+        return
+
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+
 
 def main(config):
+    set_seed(config.seed)
+
     folder = config.train_dir.split('/')[-1]
     if config.mode == 'train':
         trainer = Trainer(config)
@@ -52,7 +70,7 @@ if __name__ == '__main__':
     parser.add_argument("--gradient_clip_by_norm", type=float, default=None)
     parser.add_argument("--gradient_clip_by_value", type=float, default=None)
     parser.add_argument("--batch_size", type=int, default=64)
-    parser.add_argument("--seed", type=int, help="Make the training deterministic.")
+    parser.add_argument("--seed", type=int, help="Make the training deterministic.", default=42)
     parser.add_argument("--print_grad_norm", action='store_true', help="Print of the norm of the gradients")
     parser.add_argument("--frequency_log_steps", type=int, default=1000, help="Print log for every step.")
     parser.add_argument("--logging_verbosity", type=str, default='INFO', help="Level of verbosity of the logs")
