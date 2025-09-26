@@ -1,4 +1,5 @@
 import torch
+from torch.autograd.profiler import record_function
 
 from models.cnn_model import DeepLipschitzConvResNet
 
@@ -26,7 +27,7 @@ def ensure_dir(d):
     return d
 
 
-@torch.no_grad()
+# @torch.no_grad()
 def profile_model(input_dict, *,
                   wait: int = 1,
                   warmup: int = 1,
@@ -55,7 +56,7 @@ def profile_model(input_dict, *,
     data_size = input_dict['data_size']
     do_compile = bool(input_dict.get('compile', False))
 
-    model.eval()
+    # model.eval()
 
     # Optionally compile BEFORE warmup so compilation happens once and results are stable.
     if do_compile:
@@ -121,7 +122,13 @@ def profile_model(input_dict, *,
                 # mark step for cudagraph capture behaviour if experimenting with cudagraphs
                 torch.compiler.cudagraph_mark_step_begin()
 
-            model(x)
+            with record_function("model_inference"):
+                y = model(x)
+
+            with record_function("model_backward"):
+                y.sum().backward()
+
+            model.zero_grad(set_to_none=True)
 
             # step the profiler to advance the schedule
             prof.step()
@@ -149,14 +156,14 @@ if __name__ == '__main__':
     output_features = 16
 
     linear_inner_weights = (256, 256, 256, 256, 256)
-    conv_weights = (256, 256, 256, 256, 256)
+    conv_weights = (32, 32, 32, 32)
 
     image_size = (64, 64)
 
     inputs = [
         {
             'model': DeepLipschitzConvResNet(in_features, output_features,
-                                             linear_inner_weights,
+                                             conv_weights,
                                              padding=1,
                                              kernel_size=3,
                                              device=device),
