@@ -41,6 +41,7 @@ class LipschitzNetwork(nn.Module):
         self.conv_inner_dim: int = config.conv_inner_dim
         self.dense_inner_dim: int = config.dense_inner_dim
         self.n_classes: int = n_classes
+        self.dense_next_layer: int = config.dense_next_layer
 
         if config.dataset == 'tiny-imagenet':
             imsize = 64
@@ -71,7 +72,9 @@ class LipschitzNetwork(nn.Module):
 
         for _ in range(self.n_dense):
             self.model.append(
-                DeepLipschitzLinearResNet(in_channels, in_channels, inner_linear_layers, device=device))
+                DeepLipschitzLinearResNet(in_channels, self.dense_next_layer, inner_linear_layers, device=device))
+
+            in_channels = self.dense_next_layer
 
         self.model.append(DeepLipschitzLinearResNet(in_channels, self.n_classes, inner_linear_layers, device=device))
 
