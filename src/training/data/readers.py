@@ -83,7 +83,7 @@ class CIFAR10Reader(CIFARReader):
 
         transform = self.transform()
         self.dataset = CIFAR10('./data', train=self.is_training,
-                               download=False, transform=transform)
+                               download=True, transform=transform)
 
 
 class CIFAR100Reader(CIFARReader):
@@ -99,7 +99,7 @@ class CIFAR100Reader(CIFARReader):
 
         transform = self.transform()
         self.dataset = CIFAR100('./data', train=self.is_training,
-                                download=False, transform=transform)
+                                download=True, transform=transform)
 
 
 class TinyImageNetReader(BaseReader):
@@ -123,7 +123,7 @@ class TinyImageNetReader(BaseReader):
         split = 'train' if self.is_training else 'val'
         transform = self.transform()
         self.dataset = TinyImageNet(self.path, split=split,
-                                    download=False, transform=transform)
+                                    download=True, transform=transform)
 
     def transform(self):
         hue = 0.02
