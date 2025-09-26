@@ -62,12 +62,17 @@ class Trainer:
             ckpt_path = join(self.train_dir, 'checkpoints', ckpt_name)
             if exists(ckpt_path) and not best: return
             self.saved_ckpts.add(epoch)
+
+            base_model = self.model.module.module.model
+            pure_model = base_model._orig_mod if self.config.compile else base_model
+
             state = {
                 'epoch': epoch,
                 'global_step': step,
-                'model_state_dict': self.model._orig_mod.state_dict() if self.config.compile else self.model.state_dict(),
+                'model_state_dict': self.model.state_dict(),
                 'optimizer_state_dict': self.optimizer.state_dict(),
-                # 'scheduler': self.scheduler.state_dict()
+                'scheduler': self.scheduler.state_dict(),
+                'pure_model_state_dict': pure_model.state_dict(),
             }
             logging.debug("Saving checkpoint '{}'.".format(ckpt_name))
             torch.save(state, ckpt_path)
@@ -238,9 +243,6 @@ class Trainer:
         for epoch_id in range(start_epoch, self.config.epochs):
             if self.is_distributed:
                 sampler.set_epoch(epoch_id)
-            if epoch_id % self.config.validate_every == 0:
-                self.validate(validator_data_loader, validator_sampler, epoch_id)
-
             for n_batch, data in enumerate(data_loader):
                 if global_step == self.start_approx and self.is_master:
                     start_time = time.time()
@@ -250,6 +252,8 @@ class Trainer:
                 if global_step == self.end_approx and self.is_master:
                     self._print_approximated_train_time(start_time)
                 global_step += 1
+            if epoch_id % self.config.validate_every == 0:
+                self.validate(validator_data_loader, validator_sampler, epoch_id)
 
         self._save_ckpt(global_step, epoch_id, final=True)
         logging.info("Done training -- epoch limit reached.")
