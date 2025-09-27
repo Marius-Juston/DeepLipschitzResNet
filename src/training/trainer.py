@@ -11,7 +11,6 @@ from os.path import join, exists
 import numpy as np
 import torch
 import torch.backends.cudnn as cudnn
-from torch import nn
 from torch.distributed.elastic.multiprocessing.errors import record
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.tensorboard import SummaryWriter
@@ -366,7 +365,6 @@ class Trainer:
             logging.info('Loss is NaN')
 
             raise ValueError("The loss computation did yielded a NaN.")
-
 
         if self._to_print(step):
             lr = self.optimizer.param_groups[0]['lr']
