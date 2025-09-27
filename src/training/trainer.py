@@ -119,6 +119,8 @@ class Trainer:
         self.is_master = bool(self.rank == 0)
         self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
+        self.device_id = f'cuda:{self.local_rank}'
+
         # Setup logging
         utils.setup_logging(self.config, self.rank)
 
@@ -188,7 +190,7 @@ class Trainer:
         self.setup_tensorboard()
 
         # load model
-        self.model = LipschitzNetwork(self.config, self.reader.n_classes, device=f'cuda:{self.local_rank}')
+        self.model = LipschitzNetwork(self.config, self.reader.n_classes, device=self.device_id)
 
         self.print_module_parameters(self.model)
         nb_parameters = np.sum([p.numel() for p in self.model.parameters() if p.requires_grad])
@@ -291,7 +293,7 @@ class Trainer:
         running_inputs = 0
         for batch_n, data in enumerate(dataloader):
             inputs, labels = data
-            inputs, labels = inputs.to(self.local_rank), labels.to(self.local_rank)
+            inputs, labels = inputs.to(self.device_id), labels.to(self.device_id)
             outputs = self.model(inputs)
             predicted = outputs.argmax(axis=1)
             running_accuracy += predicted.eq(labels.data).sum().item()
@@ -353,7 +355,7 @@ class Trainer:
 
         batch_start_time = time.time()
         images, labels = data
-        images, labels = images.to(self.local_rank), labels.to(self.local_rank)
+        images, labels = images.to(self.device_id), labels.to(self.device_id)
 
         with torch.autocast(device_type=self.device, dtype=torch.float16, enabled=self.config.use_amp):
             outputs = self.model(images)
