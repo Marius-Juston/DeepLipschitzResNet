@@ -9,7 +9,7 @@ from torch.nn.common_types import _size_2_t
 from torch.nn.modules.utils import _pair
 from torch.nn.utils import parametrize
 
-from utils import PositiveSq, safe_cholesky
+from utils import PositiveSq, safe_cholesky, amp_solve_triangular
 
 
 def _center_and_pad_kernel(kernel: Tensor, H: int, W: int) -> Tensor:
@@ -119,7 +119,7 @@ class AbstractLipschitzConvLayer(nn.Conv2d, ABC):
         omega = self.sum_weight(Wf, transpose=True)
         R = safe_cholesky(omega, upper=True)
 
-        W = torch.linalg.solve_triangular(R, Wf, upper=True, left=False)
+        W = amp_solve_triangular(R, Wf, upper=True, left=False)
 
         return omega, W, R
 
@@ -231,7 +231,7 @@ class InnerWeightLipschitzConvLayer(AbstractLipschitzConvLayer):
             Tuple[Tensor, Tensor]:
         _, W, _ = self.scale_w(Wf)
 
-        W = torch.linalg.solve_triangular(prev_layer.omega_r, W, upper=False, left=False)
+        W = amp_solve_triangular(prev_layer.omega_r, W, upper=False, left=False)
 
         scale = prev_layer.alpha.sqrt() * prev_layer.constant * self.constant
         div_scale = self.constant_sq * self.alpha
@@ -251,8 +251,8 @@ class LastLipschitzConvLayer(AbstractLipschitzConvLayer):
     def process(self, Wf: Tensor, sigma_r: Tensor, prev_r_sqrt: torch.Tensor, prev_alpha: torch.Tensor):
         _, W, _ = self.scale_w(Wf)
 
-        W = torch.linalg.solve_triangular(prev_r_sqrt, W, upper=False, left=False)
-        W = self.constant * prev_alpha.sqrt() * torch.linalg.solve_triangular(sigma_r, W, upper=True, left=True)
+        W = amp_solve_triangular(prev_r_sqrt, W, upper=False, left=False)
+        W = self.constant * prev_alpha.sqrt() * amp_solve_triangular(sigma_r, W, upper=True, left=True)
 
         return W
 

@@ -37,6 +37,15 @@ def safe_cholesky(A: torch.Tensor, upper=False, eps=1e-3):
 
     return res.to(A.dtype) if A.dtype != torch.float32 else res
 
+def amp_solve_triangular(A, B, **kwargs):
+
+    A32 = A.to(torch.float32)
+    B32 = B.to(torch.float32)
+
+    C = torch.linalg.solve_triangular(A32, B32, **kwargs)
+
+    return C.to(A.dtype)
+
 
 # @torch.compile
 def matrix_inv_square_root(x: Tensor) -> Tensor:
