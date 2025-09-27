@@ -9,13 +9,15 @@ from torch.linalg import eigh
 
 
 def safe_cholesky(A: torch.Tensor, upper=False, eps=1e-3):
-    res, info = torch.linalg.cholesky_ex(A, upper=upper)
+    A32 = A.to(torch.float32)
+
+    res, info = torch.linalg.cholesky_ex(A32, upper=upper)
 
     if info.any():
         logging.warning("Cholesky failed:\n" + traceback.format_exc())
 
         with torch.no_grad():
-            A_sym = (A + A.mT) / 2
+            A_sym = (A32 + A32.mT) / 2
             w, V = torch.linalg.eigh(A_sym)
 
             w_clamped = torch.clamp(w, min=eps)
@@ -24,16 +26,16 @@ def safe_cholesky(A: torch.Tensor, upper=False, eps=1e-3):
 
             B_pos = V.matmul(D).matmul(V.mT)
 
-            A.data = B_pos.data
+            A.data = B_pos.data.to(A.dtype)
 
-        res, info = torch.linalg.cholesky_ex(A, upper=upper)
+            res, info = torch.linalg.cholesky_ex(A, upper=upper)
 
         if info.any():
             logging.error("eigh failed:\n" + traceback.format_exc())
 
             raise ValueError("Unable to perform Cholesky.")
 
-    return res
+    return res.to(A.dtype) if A.dtype != torch.float32 else res
 
 
 # @torch.compile

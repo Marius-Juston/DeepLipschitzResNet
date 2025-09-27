@@ -68,6 +68,7 @@ class Trainer:
                 'global_step': step,
                 'model_state_dict': self.model.state_dict(),
                 'optimizer_state_dict': self.optimizer.state_dict(),
+                'scaler':self.scaler.state_dict(),
                 # 'scheduler': self.scheduler.state_dict(),
             }
 
@@ -116,6 +117,7 @@ class Trainer:
         self.num_nodes = int(os.environ['LOCAL_WORLD_SIZE'])
         self.num_tasks = int(os.environ['WORLD_SIZE'])
         self.is_master = bool(self.rank == 0)
+        self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
         # Setup logging
         utils.setup_logging(self.config, self.rank)
@@ -195,8 +197,6 @@ class Trainer:
         if self.config.compile:
             self.model = torch.compile(self.model, mode='max-autotune')
 
-        self.model = DDP(self.model, device_ids=[self.local_rank])
-
         # setup distributed process if training is distributed
         # and use DistributedDataParallel for distributed training
         if self.is_distributed:
@@ -221,6 +221,7 @@ class Trainer:
 
         # define optimizer
         self.optimizer = utils.get_optimizer(self.config, self.model.parameters())
+        self.scaler = torch.amp.GradScaler("cuda" ,enabled=self.config.use_amp)
 
         # define learning rate scheduler
         num_steps = self.config.epochs * (self.reader.n_train_files // self.global_batch_size)
@@ -334,35 +335,37 @@ class Trainer:
             if step == 0 and self.local_rank == 0:
                 logging.info("Clipping Gradient by norm: {}".format(
                     self.config.gradient_clip_by_norm))
+
+            self.scaler.unscale_(self.optimizer)
             torch.nn.utils.clip_grad_norm_(
                 self.model.parameters(), self.config.gradient_clip_by_norm)
         elif self.config.gradient_clip_by_value:
             if step == 0 and self.local_rank == 0:
                 logging.info("Clipping Gradient by value: {}".format(
                     self.config.gradient_clip_by_value))
+
+            self.scaler.unscale_(self.optimizer)
             torch.nn.utils.clip_grad_value_(
                 self.model.parameters(), self.config.gradient_clip_by_value)
 
     def one_step_training(self, data, epoch, step):
-
         self.optimizer.zero_grad(set_to_none=True)
 
         batch_start_time = time.time()
         images, labels = data
-        images, labels = images.to(self.local_rank), labels.to(self.local_rank)
+        images, labels = images.to(self.local_rank, non_blocking=True), labels.to(self.local_rank, non_blocking=True)
 
-        if step == 0 and self.local_rank == 0:
-            logging.info(f'images {images.shape}')
-            logging.info(f'labels {labels.shape}')
+        with torch.autocast(device_type=self.device, dtype=torch.float16, enabled=self.config.use_amp):
+            outputs = self.model(images)
+            loss = self.criterion(outputs, labels)
 
-        outputs = self.model(images)
-        if step == 0 and self.local_rank == 0:
-            logging.info(f'outputs {outputs.shape}')
 
-        loss = self.criterion(outputs, labels)
-        loss.backward()
+        self.scaler.scale(loss).backward()
         self.process_gradients(step)
-        self.optimizer.step()
+
+        self.scaler.step(self.optimizer)
+        self.scaler.update()
+
         with self.warmup.dampening() if self.warmup else nullcontext():
             self.scheduler.step(step)
 
@@ -374,6 +377,12 @@ class Trainer:
             logging.info('Loss is NaN')
 
             raise ValueError("The loss computation did yielded a NaN.")
+
+        if step == 0 and self.local_rank == 0:
+            logging.info(f'images {images.shape}')
+            logging.info(f'labels {labels.shape}')
+
+            logging.info(f'outputs {outputs.shape}')
 
         if self._to_print(step):
             lr = self.optimizer.param_groups[0]['lr']
