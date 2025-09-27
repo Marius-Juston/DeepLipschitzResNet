@@ -1,3 +1,5 @@
+import logging
+import traceback
 from typing import Tuple, Optional, Any
 
 import torch
@@ -200,3 +202,32 @@ class PositiveSq(torch.nn.Module):
 
     def right_inverse(self, A: torch.Tensor) -> torch.Tensor:
         return (A - self.eps).sqrt()
+
+
+def safe_cholesky(A: torch.Tensor, upper=False, eps=1e-4):
+    res, info = torch.linalg.cholesky_ex(A, upper=upper)
+
+    if info.any():
+        logging.warning(f"Cholesky failed: {info}\n{'\n'.join(traceback.format_stack())}")
+
+        A64 = A.to(torch.float64)
+
+        A_sym = (A64 + A64.mT) / 2
+        w, V = torch.linalg.eigh(A_sym)
+
+        w_clamped = torch.clamp(w, min=eps)
+
+        D = torch.diag_embed(w_clamped)
+
+        B_pos = V.matmul(D).matmul(V.mT)
+
+        res, info = torch.linalg.cholesky_ex(B_pos, upper=upper)
+
+        if info.any():
+            logging.error(f"Chokesy failed: {info}")
+
+            raise ValueError(f"Unable to perform Cholesky.\n{'\n'.join(traceback.format_stack())}")
+
+        return res.to(A.dtype)
+
+    return res

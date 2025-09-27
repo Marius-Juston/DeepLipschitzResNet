@@ -6,7 +6,7 @@ from torch import nn, Tensor
 from torch.nn.parameter import Parameter
 from torch.nn.utils import parametrize
 
-from utils import PositiveExp
+from utils import PositiveExp, safe_cholesky
 
 
 class AbstractLipschitzLinearLayer(nn.Linear):
@@ -55,7 +55,7 @@ class AbstractLipschitzLinearLayer(nn.Linear):
 
     def scale_w(self):
         omega = self.sum_weight(transpose=True)
-        R = torch.linalg.cholesky(omega, upper=True)
+        R = safe_cholesky(omega, upper=True)
 
         W = torch.linalg.solve_triangular(R, self.weight, upper=True, left=False)
 
@@ -126,7 +126,7 @@ class InnerWeightLipschitzLinearLayer(AbstractLipschitzLinearLayer):
 
         d_inv = omega / div_scale
 
-        self.omega_r = torch.linalg.cholesky(omega, upper=False)
+        self.omega_r = safe_cholesky(omega, upper=False)
 
         # with torch.no_grad():
         #     assert torch.allclose(omega, self.omega_r.T @ self.omega_r)
@@ -190,7 +190,7 @@ class LinearLipschitz(AbstractLipschitzLinearLayer):
         _, W, _ = self.scale_w()
 
         W = self.constant * torch.linalg.solve_triangular(prev_d_sqrt.T, W, upper=False, left=False)
-        d_sqrt = self.constant * torch.linalg.cholesky(self.sum_weight(), upper=True)
+        d_sqrt = self.constant * safe_cholesky(self.sum_weight(), upper=True)
 
         out = torch.nn.functional.linear(input, W, self.bias)
 

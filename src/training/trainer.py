@@ -343,15 +343,13 @@ class Trainer:
         images, labels = data
         images, labels = images.to(self.local_rank), labels.to(self.local_rank)
 
-        if step == 0 and self.local_rank == 0:
-            logging.info(f'images {images.shape}')
-            logging.info(f'labels {labels.shape}')
-
         outputs = self.model(images)
-        if step == 0 and self.local_rank == 0:
-            logging.info(f'outputs {outputs.shape}')
-
         loss = self.criterion(outputs, labels)
+
+        if not torch.isfinite(loss).all():
+            logging.info("Loss is no longer finite, check problem")
+            raise RuntimeError('Loss is infinite', loss)
+
         loss.backward()
         self.process_gradients(step)
         self.optimizer.step()
@@ -361,6 +359,11 @@ class Trainer:
         seconds_per_batch = time.time() - batch_start_time
         examples_per_second = self.batch_size / seconds_per_batch
         examples_per_second *= self.world_size
+
+        if step == 0 and self.local_rank == 0:
+            logging.info(f'images {images.shape}')
+            logging.info(f'labels {labels.shape}')
+            logging.info(f'outputs {outputs.shape}')
 
         if self._to_print(step):
             lr = self.optimizer.param_groups[0]['lr']

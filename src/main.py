@@ -95,7 +95,7 @@ if __name__ == '__main__':
     parser.add_argument("--warmup_scheduler", type=float, default=0., help="Percentage of training.")
     parser.add_argument("--decay", type=str, help="Milestones for MultiStepLR")
     parser.add_argument("--gamma", type=float, help="Gamma for MultiStepLR")
-    parser.add_argument("--gradient_clip_by_norm", type=float, default=None)
+    parser.add_argument("--gradient_clip_by_norm", type=float, default=1.0)
     parser.add_argument("--gradient_clip_by_value", type=float, default=None)
     parser.add_argument("--batch_size", type=int, default=64)
     parser.add_argument("--seed", type=int, help="Make the training deterministic.", default=42)

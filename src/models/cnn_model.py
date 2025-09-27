@@ -8,6 +8,7 @@ from torch.nn import ModuleList, ReLU
 from torch.nn.common_types import _size_2_t
 
 from models.cnn_layers import InnerWeightLipschitzConvLayer, LastLipschitzConvLayer, FirstLipschitzConvLayer
+from utils import safe_cholesky
 
 
 class DeepLipschitzConvResNet(nn.Module):
@@ -111,7 +112,7 @@ class DeepLipschitzConvResNet(nn.Module):
 
         scaling = self.B.identity_out + torch.einsum("fir,fjs,frk,fsk->fij", a_wf, a_wf, sigma_lower, sigma_lower)
 
-        R_sigma = torch.linalg.cholesky(scaling, upper=True)
+        R_sigma = safe_cholesky(scaling, upper=True)
 
         second, b_wf = self.B(x, R_sigma, last_layer)
 
@@ -136,7 +137,7 @@ class DeepLipschitzConvResNet(nn.Module):
             if sigma_lower is None:
                 sigma_lower = T
             else:
-                sigma_lower = torch.linalg.cholesky(sigma_lower @ sigma_lower.mT + T @ T.mT, upper=False)
+                sigma_lower = safe_cholesky(sigma_lower @ sigma_lower.mT + T @ T.mT, upper=False)
 
             gamma = T @ c_wf.mT
 
