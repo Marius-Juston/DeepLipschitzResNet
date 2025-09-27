@@ -65,7 +65,6 @@ def model_choice(config):
 
 
 if __name__ == '__main__':
-
     parser = argparse.ArgumentParser(description='Train or Evaluate Lipschitz Networks.')
 
     # parameters training or eval
@@ -104,7 +103,6 @@ if __name__ == '__main__':
     parser.add_argument("--logging_verbosity", type=str, default='INFO', help="Level of verbosity of the logs")
     parser.add_argument("--save_checkpoint_epochs", type=int, default=5, help="Save checkpoint every epoch.")
     parser.add_argument("--compile", type=bool, default=True, help="Compile model")
-    parser.add_argument("--use_amp", type=bool, default=True, help="Use automatic mixed precision.")
 
     # specific parameters for eval
     parser.add_argument("--attack", type=str, choices=['pgd', 'autoattack'], help="Choose the attack.")

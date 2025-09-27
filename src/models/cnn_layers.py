@@ -9,7 +9,7 @@ from torch.nn.common_types import _size_2_t
 from torch.nn.modules.utils import _pair
 from torch.nn.utils import parametrize
 
-from utils import PositiveSq, safe_cholesky, amp_solve_triangular
+from utils import PositiveExp
 
 
 def _center_and_pad_kernel(kernel: Tensor, H: int, W: int) -> Tensor:
@@ -96,7 +96,7 @@ class AbstractLipschitzConvLayer(nn.Conv2d, ABC):
 
         if enable_alpha:
             self.alpha = Parameter(initial_alpha)
-            parametrize.register_parametrization(self, "alpha", PositiveSq(**factory_kwargs))
+            parametrize.register_parametrization(self, "alpha", PositiveExp(**factory_kwargs))
         else:
             self.register_buffer('alpha', initial_alpha)
 
@@ -117,9 +117,9 @@ class AbstractLipschitzConvLayer(nn.Conv2d, ABC):
 
     def scale_w(self, Wf: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
         omega = self.sum_weight(Wf, transpose=True)
-        R = safe_cholesky(omega, upper=True)
+        R = torch.linalg.cholesky(omega, upper=True)
 
-        W = amp_solve_triangular(R, Wf, upper=True, left=False)
+        W = torch.linalg.solve_triangular(R, Wf, upper=True, left=False)
 
         return omega, W, R
 
@@ -221,7 +221,7 @@ class FirstLipschitzConvLayer(AbstractLipschitzConvLayer):
 
         d_inv = omega / (self.constant_sq * self.alpha)
 
-        self.omega_r = safe_cholesky(omega, upper=False)
+        self.omega_r = torch.linalg.cholesky(omega, upper=False)
 
         return W, d_inv
 
@@ -231,7 +231,7 @@ class InnerWeightLipschitzConvLayer(AbstractLipschitzConvLayer):
             Tuple[Tensor, Tensor]:
         _, W, _ = self.scale_w(Wf)
 
-        W = amp_solve_triangular(prev_layer.omega_r, W, upper=False, left=False)
+        W = torch.linalg.solve_triangular(prev_layer.omega_r, W, upper=False, left=False)
 
         scale = prev_layer.alpha.sqrt() * prev_layer.constant * self.constant
         div_scale = self.constant_sq * self.alpha
@@ -242,7 +242,7 @@ class InnerWeightLipschitzConvLayer(AbstractLipschitzConvLayer):
 
         d_inv = omega / div_scale
 
-        self.omega_r = safe_cholesky(omega, upper=False)
+        self.omega_r = torch.linalg.cholesky(omega, upper=False)
 
         return W, d_inv
 
@@ -251,8 +251,8 @@ class LastLipschitzConvLayer(AbstractLipschitzConvLayer):
     def process(self, Wf: Tensor, sigma_r: Tensor, prev_r_sqrt: torch.Tensor, prev_alpha: torch.Tensor):
         _, W, _ = self.scale_w(Wf)
 
-        W = amp_solve_triangular(prev_r_sqrt, W, upper=False, left=False)
-        W = self.constant * prev_alpha.sqrt() * amp_solve_triangular(sigma_r, W, upper=True, left=True)
+        W = torch.linalg.solve_triangular(prev_r_sqrt, W, upper=False, left=False)
+        W = self.constant * prev_alpha.sqrt() * torch.linalg.solve_triangular(sigma_r, W, upper=True, left=True)
 
         return W
 
