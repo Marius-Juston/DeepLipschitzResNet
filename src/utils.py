@@ -174,12 +174,17 @@ def cholesky_rank_k(L: torch.Tensor, M: torch.Tensor):
 
 
 class PositiveExp(torch.nn.Module):
+    def __init__(self, eps=1e-4, device=None,
+                 dtype=None) -> None:
+        super().__init__()
+        self.register_buffer("eps", torch.tensor(eps, dtype=dtype, device=device))
+
     def forward(self, X: torch.Tensor) -> torch.Tensor:
         # return X ** 2
-        return X.exp()
+        return X.exp() + self.eps
 
     def right_inverse(self, A: torch.Tensor) -> torch.Tensor:
-        return A.log()
+        return (A - self.eps).log()
 
 
 class PositiveSq(torch.nn.Module):
@@ -187,7 +192,7 @@ class PositiveSq(torch.nn.Module):
     def __init__(self, eps=1e-4, device=None,
                  dtype=None) -> None:
         super().__init__()
-        self.eps = torch.tensor(eps, dtype=dtype, device=device)
+        self.register_buffer("eps", torch.tensor(eps, dtype=dtype, device=device))
 
     def forward(self, X: torch.Tensor) -> torch.Tensor:
         # return X ** 2

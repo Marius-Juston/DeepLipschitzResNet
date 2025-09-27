@@ -193,19 +193,9 @@ class Trainer:
         logging.info(f'Number of parameters to train: {nb_parameters}')
 
         if self.config.compile:
-            self.model = torch.compile(self.model, mode='max-autotune', dynamic=True)
+            self.model = torch.compile(self.model, mode='max-autotune')
 
         self.model = DDP(self.model, device_ids=[self.local_rank])
-
-        # setup distributed process if training is distributed
-        # and use DistributedDataParallel for distributed training
-        if self.is_distributed:
-            self.model = DDP(
-                self.model, device_ids=[self.local_rank], output_device=self.local_rank)
-            if self.local_rank == 0:
-                logging.info('Model defined with DistributedDataParallel')
-        else:
-            self.model = nn.DataParallel(self.model, device_ids=range(torch.cuda.device_count()))
 
         # define set for saved ckpt
         self.saved_ckpts = {0}
@@ -259,7 +249,6 @@ class Trainer:
         logging.info("Done training -- epoch limit reached.")
 
     @torch.no_grad()
-    @local_only  # local order
     def validate(self, dataloader, sampler, epoch):
         if self.is_distributed:
             sampler.set_epoch(epoch)
@@ -272,13 +261,14 @@ class Trainer:
 
         logging.info("Finished validation")
 
-        if accuracy > self.best_accuracy:
-            logging.info(f"New best validation accuracy: {accuracy}")
-            self.best_accuracy = accuracy
+        if self.local_rank == 0:
+            if accuracy > self.best_accuracy:
+                logging.info(f"New best validation accuracy: {accuracy}")
+                self.best_accuracy = accuracy
 
-            self.summary_writer.add_hparams(self.hparams_dict, {
-                'hparam/accuracy': accuracy
-            }, run_name=self.run_name, global_step=epoch)
+                self.summary_writer.add_hparams(self.hparams_dict, {
+                    'hparam/accuracy': accuracy
+                }, run_name=self.run_name, global_step=epoch)
 
         self.model.train()
 
@@ -296,11 +286,13 @@ class Trainer:
             running_accuracy += predicted.eq(labels.data).sum().item()
             running_inputs += inputs.size(0)
         accuracy = running_accuracy / running_inputs
-        self.message.add('epoch', epoch, format='.0f')
-        self.message.add('accuracy', accuracy, format='.5f')
-        logging.info(self.message.get_message())
 
-        self.summary_writer.add_scalar(f'Validation/Accuracy', accuracy, global_step=epoch)
+        if self.local_rank == 0:
+            self.message.add('epoch', epoch, format='.0f')
+            self.message.add('accuracy', accuracy, format='.5f')
+            logging.info(self.message.get_message())
+
+            self.summary_writer.add_scalar(f'Validation/Accuracy', accuracy, global_step=epoch)
 
         return accuracy
 
