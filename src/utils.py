@@ -8,6 +8,7 @@ from torch.autograd import Function
 from torch.linalg import eigh
 
 
+@torch.autocast(device_type='cuda', enabled=False)
 def safe_cholesky(A: torch.Tensor, upper=False, eps=1e-3):
     A32 = A.to(torch.float32)
 
@@ -37,8 +38,9 @@ def safe_cholesky(A: torch.Tensor, upper=False, eps=1e-3):
 
     return res.to(A.dtype) if A.dtype != torch.float32 else res
 
-def amp_solve_triangular(A, B, **kwargs):
 
+@torch.autocast(device_type='cuda', enabled=False)
+def amp_solve_triangular(A, B, **kwargs):
     A32 = A.to(torch.float32)
     B32 = B.to(torch.float32)
 

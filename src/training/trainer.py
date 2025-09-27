@@ -68,7 +68,7 @@ class Trainer:
                 'global_step': step,
                 'model_state_dict': self.model.state_dict(),
                 'optimizer_state_dict': self.optimizer.state_dict(),
-                'scaler':self.scaler.state_dict(),
+                'scaler': self.scaler.state_dict(),
                 # 'scheduler': self.scheduler.state_dict(),
             }
 
@@ -221,7 +221,7 @@ class Trainer:
 
         # define optimizer
         self.optimizer = utils.get_optimizer(self.config, self.model.parameters())
-        self.scaler = torch.amp.GradScaler("cuda" ,enabled=self.config.use_amp)
+        self.scaler = torch.amp.GradScaler("cuda", enabled=self.config.use_amp)
 
         # define learning rate scheduler
         num_steps = self.config.epochs * (self.reader.n_train_files // self.global_batch_size)
@@ -353,12 +353,11 @@ class Trainer:
 
         batch_start_time = time.time()
         images, labels = data
-        images, labels = images.to(self.local_rank, non_blocking=True), labels.to(self.local_rank, non_blocking=True)
+        images, labels = images.to(self.local_rank), labels.to(self.local_rank)
 
         with torch.autocast(device_type=self.device, dtype=torch.float16, enabled=self.config.use_amp):
             outputs = self.model(images)
             loss = self.criterion(outputs, labels)
-
 
         self.scaler.scale(loss).backward()
         self.process_gradients(step)
