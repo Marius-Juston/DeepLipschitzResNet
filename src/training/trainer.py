@@ -193,7 +193,7 @@ class Trainer:
         logging.info(f'Number of parameters to train: {nb_parameters}')
 
         if self.config.compile:
-            self.model = torch.compile(self.model, mode='max-autotune', dynamic=True)
+            self.model = torch.compile(self.model, mode='max-autotune')
 
         self.model = DDP(self.model, device_ids=[self.local_rank])
 
@@ -369,6 +369,11 @@ class Trainer:
         seconds_per_batch = time.time() - batch_start_time
         examples_per_second = self.batch_size / seconds_per_batch
         examples_per_second *= self.world_size
+
+        if loss.isnan().all():
+            logging.info('Loss is NaN')
+
+            raise ValueError("The loss computation did yielded a NaN.")
 
         if self._to_print(step):
             lr = self.optimizer.param_groups[0]['lr']
