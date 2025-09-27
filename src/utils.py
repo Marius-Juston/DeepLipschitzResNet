@@ -29,7 +29,7 @@ def safe_cholesky(A: torch.Tensor, upper=False, eps=1e-3):
 
             A.data = B_pos.data.to(A.dtype)
 
-            res, info = torch.linalg.cholesky_ex(A, upper=upper)
+            res, info = torch.linalg.cholesky_ex(B_pos, upper=upper)
 
         if info.any():
             logging.error("eigh failed:\n" + traceback.format_exc())
