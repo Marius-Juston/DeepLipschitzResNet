@@ -9,7 +9,7 @@ from torch.nn.common_types import _size_2_t
 from torch.nn.modules.utils import _pair
 from torch.nn.utils import parametrize
 
-from utils import PositiveExp, safe_cholesky
+from utils import PositiveExp
 
 
 def _center_and_pad_kernel(kernel: Tensor, H: int, W: int) -> Tensor:
@@ -117,7 +117,7 @@ class AbstractLipschitzConvLayer(nn.Conv2d, ABC):
 
     def scale_w(self, Wf: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
         omega = self.sum_weight(Wf, transpose=True)
-        R = safe_cholesky(omega, upper=True)
+        R = torch.linalg.cholesky(omega, upper=True)
 
         W = torch.linalg.solve_triangular(R, Wf, upper=True, left=False)
 
@@ -221,7 +221,7 @@ class FirstLipschitzConvLayer(AbstractLipschitzConvLayer):
 
         d_inv = omega / (self.constant_sq * self.alpha)
 
-        self.omega_r = safe_cholesky(omega, upper=False)
+        self.omega_r = torch.linalg.cholesky(omega, upper=False)
 
         return W, d_inv
 
@@ -242,7 +242,7 @@ class InnerWeightLipschitzConvLayer(AbstractLipschitzConvLayer):
 
         d_inv = omega / div_scale
 
-        self.omega_r = safe_cholesky(omega, upper=False)
+        self.omega_r = torch.linalg.cholesky(omega, upper=False)
 
         return W, d_inv
 

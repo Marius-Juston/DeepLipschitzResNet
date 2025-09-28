@@ -1,5 +1,3 @@
-import logging
-import traceback
 from typing import Tuple, Optional, Any
 
 import torch
@@ -205,20 +203,34 @@ class PositiveSq(torch.nn.Module):
 
 
 def safe_cholesky(A: torch.Tensor, upper: bool = False, min_eps: float = 1e-4, max_eps: float = 1e5) -> torch.Tensor:
+    was_batched = (A.ndim == 3)
+    if not was_batched:
+        A = A.unsqueeze(0)
+
+    A = A.contiguous()
     res, info = torch.linalg.cholesky_ex(A, upper=upper)
+    res = res.contiguous()
 
-    def true_fn():
-        A64 = A.to(torch.float64)
-
+    def true_fn(A_operand, res_operand, min_eps_operand, max_eps_operand):
+        A64 = A_operand.to(torch.float64)
         A_sym = (A64 + A64.mT) / 2.0
         w, V = torch.linalg.eigh(A_sym)
-        w_pos = torch.clamp(w, min=min_eps, max=max_eps)
+        w_pos = torch.clamp(w, min=min_eps_operand, max=max_eps_operand)
         D = torch.diag_embed(w_pos)
         B_pos = V.matmul(D).matmul(V.mT)
         res2, _ = torch.linalg.cholesky_ex(B_pos, upper=upper)
-        return res2.to(A.dtype).contiguous()
+        return res2.to(A_operand.dtype).contiguous().clone().contiguous()
 
-    def false_fn():
-        return res.contiguous()
+    def false_fn(A_operand, res_operand, min_eps_operand, max_eps_operand):
+        return res_operand.contiguous().clone().contiguous()
 
-    return torch.cond(info.any(), true_fn, false_fn)
+    min_eps_tensor = torch.tensor(min_eps, dtype=A.dtype, device=A.device)
+    max_eps_tensor = torch.tensor(max_eps, dtype=A.dtype, device=A.device)
+
+    operands = (A, res, min_eps_tensor, max_eps_tensor)
+    out = torch.cond(info.any(), true_fn, false_fn, operands)
+
+    if not was_batched:
+        out = out.squeeze(0)
+
+    return out

@@ -1,7 +1,7 @@
 from typing import Union, List, Sequence
 
 import torch
-from torch import nn
+from torch import nn, Tensor
 from torch.nn import ModuleList, Module, ReLU
 
 from models.linear_layers import FirstLipschitzLinearLayer, LastLipschitzLinearLayer, InnerWeightLipschitzLinearLayer, \
@@ -79,7 +79,7 @@ class DeepLipschitzLinearResNet(nn.Module):
 
         # self.spectral_norm = SpectralNorm(self.B.identity)
 
-    def compute_b(self, x, sigma_lower, a_weight, last_layer: InnerWeightLipschitzLinearLayer):
+    def compute_b(self, x: Tensor, sigma_lower: Tensor, a_weight: Tensor, last_layer: InnerWeightLipschitzLinearLayer):
         # inner_inverse = torch.cholesky_inverse(prev_r, upper=True)
         # max_singular = torch.sqrt(2 * self.spectral_norm(inner_inverse))
 
