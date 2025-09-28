@@ -1,9 +1,52 @@
+import logging
+import traceback
 from typing import Tuple, Optional, Any
 
 import torch
 from torch import Tensor, cholesky_inverse
 from torch.autograd import Function
 from torch.linalg import eigh
+
+
+@torch.autocast(device_type='cuda', enabled=False)
+def safe_cholesky(A: torch.Tensor, upper=False, eps=1e-3):
+    A32 = A.to(torch.float32)
+
+    res, info = torch.linalg.cholesky_ex(A32, upper=upper)
+
+    if info.any():
+        logging.warning("Cholesky failed:\n" + traceback.format_exc())
+
+        with torch.no_grad():
+            A_sym = (A32 + A32.mT) / 2
+            w, V = torch.linalg.eigh(A_sym)
+
+            w_clamped = torch.clamp(w, min=eps)
+
+            D = torch.diag_embed(w_clamped)
+
+            B_pos = V.matmul(D).matmul(V.mT)
+
+            A.data = B_pos.data.to(A.dtype)
+
+            res, info = torch.linalg.cholesky_ex(B_pos, upper=upper)
+
+        if info.any():
+            logging.error("eigh failed:\n" + traceback.format_exc())
+
+            raise ValueError("Unable to perform Cholesky.")
+
+    return res.to(A.dtype) if A.dtype != torch.float32 else res
+
+
+@torch.autocast(device_type='cuda', enabled=False)
+def amp_solve_triangular(A, B, **kwargs):
+    A32 = A.to(torch.float32)
+    B32 = B.to(torch.float32)
+
+    C = torch.linalg.solve_triangular(A32, B32, **kwargs)
+
+    return C.to(A.dtype)
 
 
 # @torch.compile
@@ -174,12 +217,17 @@ def cholesky_rank_k(L: torch.Tensor, M: torch.Tensor):
 
 
 class PositiveExp(torch.nn.Module):
+    def __init__(self, eps=1e-4, device=None,
+                 dtype=None) -> None:
+        super().__init__()
+        self.register_buffer("eps", torch.tensor(eps, dtype=dtype, device=device))
+
     def forward(self, X: torch.Tensor) -> torch.Tensor:
         # return X ** 2
-        return X.exp()
+        return X.exp() + self.eps
 
     def right_inverse(self, A: torch.Tensor) -> torch.Tensor:
-        return A.log()
+        return (A - self.eps).log()
 
 
 class PositiveSq(torch.nn.Module):
@@ -187,7 +235,7 @@ class PositiveSq(torch.nn.Module):
     def __init__(self, eps=1e-4, device=None,
                  dtype=None) -> None:
         super().__init__()
-        self.eps = torch.tensor(eps, dtype=dtype, device=device)
+        self.register_buffer("eps", torch.tensor(eps, dtype=dtype, device=device))
 
     def forward(self, X: torch.Tensor) -> torch.Tensor:
         # return X ** 2

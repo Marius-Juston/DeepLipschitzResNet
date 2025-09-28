@@ -48,6 +48,7 @@ def main(config):
     finally:
         destroy_process_group()
 
+
 def model_choice(config):
     if config.model_name == 'small':
         config = override_args(config, 20, 4, 16, 7, 4, 45, 256, 2048)
@@ -65,7 +66,6 @@ def model_choice(config):
 
 
 if __name__ == '__main__':
-
     parser = argparse.ArgumentParser(description='Train or Evaluate Lipschitz Networks.')
 
     # parameters training or eval
@@ -73,13 +73,16 @@ if __name__ == '__main__':
     parser.add_argument("--train_dir", type=str, help="Name of the training directory.")
     parser.add_argument("--data_dir", type=str, help="Name of the data directory.")
     parser.add_argument("--dataset", type=str, default='cifar10', help="Dataset to use")
-    parser.add_argument("--num_workers", type=int, default=20, help="how many subprocesses to use for data loading. 0 means that the data will be loaded in the main process")
-    parser.add_argument("--prefetch_factor_scale", type=int, default=2, help="Number of batches loaded in advance by each worker: batch_size * prefetch_factor_scale")
+    parser.add_argument("--num_workers", type=int, default=20,
+                        help="how many subprocesses to use for data loading. 0 means that the data will be loaded in the main process")
+    parser.add_argument("--prefetch_factor_scale", type=int, default=2,
+                        help="Number of batches loaded in advance by each worker: batch_size * prefetch_factor_scale")
 
     parser.add_argument("--shift_data", type=bool, default=True, help="Shift dataset with mean.")
 
     parser.add_argument("--epochs", type=int, default=1000, help="Number of epochs for training.")
-    parser.add_argument("--validate_every", type=int, default=1, help="Number of epochs to run the validation on the test dataset on.")
+    parser.add_argument("--validate_every", type=int, default=1,
+                        help="Number of epochs to run the validation on the test dataset on.")
 
     parser.add_argument("--loss", type=str, default="xent", help="Define the loss to use for training.")
     parser.add_argument("--margin", type=float, default=0.7, help="Define margin")
@@ -136,6 +139,7 @@ if __name__ == '__main__':
 
         config.dense_next_layer = dense_next_layer
         return config
+
 
     config = model_choice(config)
 

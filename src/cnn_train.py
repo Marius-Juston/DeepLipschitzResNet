@@ -146,8 +146,9 @@ def run_experiment(device='cpu'):
     # Now train baseline and lipschitz model on g1
     print("Training unconstrained baseline on g1 (1-Lipschitz)...")
     sav_dir, _, _ = train(X_train, y1_train, model, learning_prefix='general_cnn', batch_size=batch,
-          termination_error=termination_error, lr=lr, theoretical_lower=theoretical_lower, logging_frequency=1,
-          epochs=epochs)
+                          termination_error=termination_error, lr=lr, theoretical_lower=theoretical_lower,
+                          logging_frequency=1,
+                          epochs=epochs)
 
     visualize_lipschitz_pairs(model, X_train, name=os.path.join(sav_dir, '1-lipschitz'))
     print("Finite-diff lipschitz g1:",
@@ -158,8 +159,9 @@ def run_experiment(device='cpu'):
 
     print("Training Lipschitz network on g2 (should struggle if truly 1-Lipschitz)...")
     sav_dir, _, _ = train(X_train, y2_train, model, learning_prefix='general_cnn_lipschitz', batch_size=batch,
-          termination_error=termination_error, lr=lr, theoretical_lower=theoretical_lower, logging_frequency=1,
-          epochs=epochs)
+                          termination_error=termination_error, lr=lr, theoretical_lower=theoretical_lower,
+                          logging_frequency=1,
+                          epochs=epochs)
 
     print(f"\nEvaluation on g2 (K={K}):")
     print("Finite-diff lipschitz g2:",

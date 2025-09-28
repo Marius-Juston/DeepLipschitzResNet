@@ -11,7 +11,6 @@ from os.path import join, exists
 import numpy as np
 import torch
 import torch.backends.cudnn as cudnn
-from torch import nn
 from torch.distributed.elastic.multiprocessing.errors import record
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.tensorboard import SummaryWriter
@@ -157,8 +156,7 @@ class Trainer:
         else:
             self.batch_size = self.config.batch_size
 
-        if self.is_distributed:
-            utils.setup_distributed_training()
+        utils.setup_distributed_training()
 
         self.global_batch_size = self.batch_size * self.world_size
         logging.info('World Size={} => Total batch size {}'.format(
@@ -193,19 +191,12 @@ class Trainer:
         logging.info(f'Number of parameters to train: {nb_parameters}')
 
         if self.config.compile:
-            self.model = torch.compile(self.model, mode='max-autotune', dynamic=True)
+            self.model = torch.compile(self.model, mode='max-autotune')
 
-        self.model = DDP(self.model, device_ids=[self.local_rank])
-
-        # setup distributed process if training is distributed
-        # and use DistributedDataParallel for distributed training
-        if self.is_distributed:
-            self.model = DDP(
-                self.model, device_ids=[self.local_rank], output_device=self.local_rank)
-            if self.local_rank == 0:
-                logging.info('Model defined with DistributedDataParallel')
-        else:
-            self.model = nn.DataParallel(self.model, device_ids=range(torch.cuda.device_count()))
+        self.model = DDP(
+            self.model, device_ids=[self.local_rank])
+        if self.local_rank == 0:
+            logging.info('Model defined with DistributedDataParallel')
 
         # define set for saved ckpt
         self.saved_ckpts = {0}
@@ -369,6 +360,11 @@ class Trainer:
         seconds_per_batch = time.time() - batch_start_time
         examples_per_second = self.batch_size / seconds_per_batch
         examples_per_second *= self.world_size
+
+        if not torch.isfinite(loss).all():
+            logging.info('Loss is NaN')
+
+            raise ValueError("The loss computation did yielded a NaN.")
 
         if self._to_print(step):
             lr = self.optimizer.param_groups[0]['lr']

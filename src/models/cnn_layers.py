@@ -96,7 +96,7 @@ class AbstractLipschitzConvLayer(nn.Conv2d, ABC):
 
         if enable_alpha:
             self.alpha = Parameter(initial_alpha)
-            parametrize.register_parametrization(self, "alpha", PositiveExp())
+            parametrize.register_parametrization(self, "alpha", PositiveExp(**factory_kwargs))
         else:
             self.register_buffer('alpha', initial_alpha)
 

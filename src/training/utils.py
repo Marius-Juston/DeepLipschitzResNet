@@ -236,7 +236,7 @@ class TriangularLRScheduler:
         self.optimizer.param_groups[0].update(lr=lr)
 
 
-def print_num_parameters(model : torch.nn.Module):
+def print_num_parameters(model: torch.nn.Module):
     table = PrettyTable(["Modules", "Parameters"])
     total_params = 0
     for name, parameter in model.named_parameters():
@@ -248,6 +248,7 @@ def print_num_parameters(model : torch.nn.Module):
     logging.info(table)
     logging.info(f"Total Trainable Params: {total_params}")
     return total_params
+
 
 def print_module_parameters(model):
     for i, module in enumerate(model.model):
