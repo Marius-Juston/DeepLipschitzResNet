@@ -216,9 +216,9 @@ def safe_cholesky(A: torch.Tensor, upper: bool = False, min_eps: float = 1e-4, m
         D = torch.diag_embed(w_pos)
         B_pos = V.matmul(D).matmul(V.mT)
         res2, _ = torch.linalg.cholesky_ex(B_pos, upper=upper)
-        return res2.to(A.dtype)
+        return res2.to(A.dtype).contiguous()
 
     def false_fn():
-        return res.clone()
+        return res.contiguous()
 
     return torch.cond(info.any(), true_fn, false_fn)

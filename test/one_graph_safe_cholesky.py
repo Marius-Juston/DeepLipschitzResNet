@@ -42,24 +42,28 @@ def safe_cholesky_cond(A: torch.Tensor, upper: bool = False, min_eps: float = 1e
         w_pos = torch.clamp(w, min=min_eps, max=max_eps)
         D = torch.diag_embed(w_pos)
         B_pos = V.matmul(D).matmul(V.mT)
+
         res2, _ = torch.linalg.cholesky_ex(B_pos, upper=upper)
-        return res2.to(A.dtype)
+
+        return res2.to(A.dtype).contiguous()
 
     def false_fn():
-        return res.clone()
+        return res.contiguous()
 
     return torch.cond(info.any(), true_fn, false_fn)
 
 
 if __name__ == '__main__':
-    A = torch.randn((3, 3))
+    A = torch.randn((3, 3), requires_grad=True) * 1e32
 
-    # safe_cholesky = torch.compile(safe_cholesky, fullgraph=True)
-    #
-    # try:
-    #     safe_cholesky(A)
-    # except:
-    #     traceback.print_exc()
+    safe_cholesky = torch.compile(safe_cholesky_cond, mode='max-autotune', fullgraph=True)
+
+    try:
+        G = safe_cholesky(A)
+
+        print(G)
+    except:
+        traceback.print_exc()
 
     res = torch._dynamo.explain(safe_cholesky_cond)(A)
 
