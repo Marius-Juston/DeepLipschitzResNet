@@ -179,25 +179,36 @@ class LastLipschitzLinearLayer(AbstractLipschitzLinearLayer):
 
 
 class LinearLipschitz(AbstractLipschitzLinearLayer):
+    sqrt_2: Tensor
+
     def __init__(self, in_features: int, out_features: int, activation=None, bias: bool = True,
                  constant_sq: float = 1.0,
                  enable_alpha=True,
                  device=None, dtype=None):
         super().__init__(in_features, out_features, bias, constant_sq, enable_alpha, device, dtype)
+        self.register_buffer('sqrt_2', torch.tensor(2, device=device, dtype=dtype).sqrt())
+
         self.activation = activation
 
-    def forward(self, input: Tensor, prev_d_sqrt: Tensor) -> Tuple[Tensor, Tensor]:
+    def forward(self, input: Tensor, prev_omega_r: Tensor, prev_alpha: Tensor, pre_constant: Tensor) -> Tuple[Tensor, Tensor]:
         _, W, _ = self.scale_w()
 
-        W = self.constant * torch.linalg.solve_triangular(prev_d_sqrt.T, W, upper=False, left=False)
-        d_sqrt = self.constant * torch.linalg.cholesky(self.sum_weight(), upper=True)
+        W = torch.linalg.solve_triangular(prev_omega_r, W, upper=False, left=False)
+
+        scale = prev_alpha.sqrt() * pre_constant * self.constant
+
+        W = scale * W
+
+        omega = self.sum_weight()
+
+        omega_r = torch.linalg.cholesky(omega, upper=False)
 
         out = torch.nn.functional.linear(input, W, self.bias)
 
         if self.activation:
             out = self.activation(out)
 
-        return out, d_sqrt
+        return out, omega_r
 
 
 # Taken from https://docs.pytorch.org/docs/stable/generated/torch.nn.utils.parametrizations.spectral_norm.html
