@@ -11,8 +11,6 @@ from os.path import join, exists
 import numpy as np
 import torch
 import torch.backends.cudnn as cudnn
-from torch import nn
-from torch.distributed.elastic.multiprocessing.errors import record
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.tensorboard import SummaryWriter
 
@@ -39,16 +37,29 @@ class Trainer:
 
     def _load_state(self):
         # load last checkpoint
-        checkpoints = glob.glob(join(self.train_dir, 'checkpoints', 'model.ckpt-*.pth'))
+        checkpoint_directory = join(self.train_dir, 'checkpoints')
+
+        checkpoints = glob.glob(join(checkpoint_directory, 'model.ckpt-*.pth'))
+
+        if len(checkpoints) == 0:
+            logging.warning('No checkpoints found in directory {}'.format(checkpoint_directory))
+            return
+
         get_model_id = lambda x: int(x.strip('.pth').strip('model.ckpt-'))
         checkpoints = sorted(
             [ckpt.split('/')[-1] for ckpt in checkpoints], key=get_model_id)
         path_last_ckpt = join(self.train_dir, 'checkpoints', checkpoints[-1])
-        self.checkpoint = torch.load(path_last_ckpt, map_location=self.model.device)
+        self.checkpoint = torch.load(path_last_ckpt, map_location=self.model.device, weights_only=False)
         self.model.load_state_dict(self.checkpoint['model_state_dict'])
         self.optimizer.load_state_dict(self.checkpoint['optimizer_state_dict'])
         self.saved_ckpts.add(self.checkpoint['epoch'])
-        epoch = self.checkpoint['epoch']
+        self.start_epoch = self.checkpoint['epoch']
+        self.start_global_step = self.checkpoint['global_step']
+        self.config = self.checkpoint['config']
+
+        if callable(getattr(self.scheduler, 'state_dict', None)):
+            self.scheduler.load_state_dict(self.checkpoint['scheduler'])
+
         if self.local_rank == 0:
             logging.info('Loading checkpoint {}'.format(checkpoints[-1]))
 
@@ -69,12 +80,13 @@ class Trainer:
                 'model_state_dict': self.model.state_dict(),
                 'optimizer_state_dict': self.optimizer.state_dict(),
                 # 'scheduler': self.scheduler.state_dict(),
+                'config': self.config
             }
 
             if callable(getattr(self.scheduler, 'state_dict', None)):
                 state['scheduler'] = self.scheduler.state_dict()
 
-            logging.debug("Saving checkpoint '{}'.".format(ckpt_name))
+            logging.info("Saving checkpoint '{}'.".format(ckpt_name))
             torch.save(state, ckpt_path)
 
     @local_only
@@ -97,7 +109,6 @@ class Trainer:
     def print_module_parameters(self, model):
         print_module_parameters(model)
 
-    @record
     def __call__(self):
         """Performs training and evaluation
         """
@@ -173,9 +184,9 @@ class Trainer:
         # ###############
         self.validation_reader = Reader(self.config, self.batch_size, self.is_distributed, is_training=False)
 
-        validator_data_loader, validator_sampler = self.validation_reader.load_dataset()
+        self.validator_data_loader, self.validator_sampler = self.validation_reader.load_dataset()
         if self.is_distributed:
-            n_validation_files = validator_sampler.num_samples
+            n_validation_files = self.validator_sampler.num_samples
         else:
             n_validation_files = self.validation_reader.n_test_files
         # ###############
@@ -195,17 +206,17 @@ class Trainer:
         if self.config.compile:
             self.model = torch.compile(self.model, mode='max-autotune')
 
-        self.model = DDP(self.model, device_ids=[self.local_rank])
+        self.model = DDP(self.model, device_ids=[self.local_rank], output_device=self.local_rank)
 
         # define set for saved ckpt
         self.saved_ckpts = {0}
 
-        data_loader, sampler = self.reader.load_dataset()
-        if sampler is not None:
-            assert sampler.num_replicas == self.world_size
+        self.data_loader, self.sampler = self.reader.load_dataset()
+        if self.sampler is not None:
+            assert self.sampler.num_replicas == self.world_size
 
         if self.is_distributed:
-            n_files = sampler.num_samples
+            n_files = self.sampler.num_samples
         else:
             n_files = self.reader.n_train_files
 
@@ -226,14 +237,27 @@ class Trainer:
             logging.info("Number of test files on worker: {}".format(n_validation_files))
             logging.info("Start training")
 
+        self.start_epoch = 0
+        self.global_step = 0
+
+    def load(self):
+        checkpoints_path = join(self.train_dir, 'checkpoints')
+
+        if not os.path.exists(checkpoints_path):
+            logging.warning(f'The checkpoint path {checkpoints_path} does not exist. Not loading model')
+        else:
+            logging.warning(f'Loading from path {checkpoints_path}.')
+            self._load_state()
+
+    def train(self):
         # training loop
-        start_epoch, global_step = 0, 0
+        start_epoch, global_step = self.start_epoch, self.global_step
         self.best_checkpoint = None
         self.best_accuracy = 0
         for epoch_id in range(start_epoch, self.config.epochs):
             if self.is_distributed:
-                sampler.set_epoch(epoch_id)
-            for n_batch, data in enumerate(data_loader):
+                self.sampler.set_epoch(epoch_id)
+            for n_batch, data in enumerate(self.data_loader):
                 if global_step == self.start_approx and self.is_master:
                     start_time = time.time()
                 epoch = (int(global_step) * self.global_batch_size) / self.reader.n_train_files
@@ -243,7 +267,7 @@ class Trainer:
                     self._print_approximated_train_time(start_time)
                 global_step += 1
             if epoch_id % self.config.validate_every == 0:
-                self.validate(validator_data_loader, validator_sampler, epoch_id)
+                self.validate(self.validator_data_loader, self.validator_sampler, epoch_id)
 
         self._save_ckpt(global_step, epoch_id, final=True)
         logging.info("Done training -- epoch limit reached.")

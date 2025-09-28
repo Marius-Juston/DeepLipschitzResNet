@@ -3,6 +3,7 @@ import traceback
 
 import torch
 from torch.distributed import destroy_process_group
+from torch.distributed.elastic.multiprocessing.errors import record
 
 torch.set_float32_matmul_precision('high')
 torch.backends.cudnn.benchmark = True
@@ -31,15 +32,16 @@ def set_seed(seed):
     torch.manual_seed(seed)
 
 
+@record
 def main(config):
     set_seed(config.seed)
 
     try:
-
-        folder = config.train_dir.split('/')[-1]
         if config.mode == 'train':
             trainer = Trainer(config)
             trainer()
+            trainer.load()
+            trainer.train()
         elif config.mode in ['certified', 'attack']:
             evaluate = Evaluator(config)
             evaluate()
