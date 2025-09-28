@@ -208,8 +208,6 @@ def safe_cholesky(A: torch.Tensor, upper=False, eps=1e-4):
     res, info = torch.linalg.cholesky_ex(A, upper=upper)
 
     if info.any():
-        logging.warning(f"Cholesky failed: {info}\n{'\n'.join(traceback.format_stack())}")
-
         A64 = A.to(torch.float64)
 
         A_sym = (A64 + A64.mT) / 2
