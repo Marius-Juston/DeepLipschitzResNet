@@ -204,28 +204,21 @@ class PositiveSq(torch.nn.Module):
         return (A - self.eps).sqrt()
 
 
-def safe_cholesky(A: torch.Tensor, upper=False, eps=1e-4):
+def safe_cholesky(A: torch.Tensor, upper: bool = False, min_eps: float = 1e-4, max_eps: float = 1e5) -> torch.Tensor:
     res, info = torch.linalg.cholesky_ex(A, upper=upper)
 
-    if info.any():
+    def true_fn():
         A64 = A.to(torch.float64)
 
-        A_sym = (A64 + A64.mT) / 2
+        A_sym = (A64 + A64.mT) / 2.0
         w, V = torch.linalg.eigh(A_sym)
-
-        w_clamped = torch.clamp(w, min=eps)
-
-        D = torch.diag_embed(w_clamped)
-
+        w_pos = torch.clamp(w, min=min_eps, max=max_eps)
+        D = torch.diag_embed(w_pos)
         B_pos = V.matmul(D).matmul(V.mT)
+        res2, _ = torch.linalg.cholesky_ex(B_pos, upper=upper)
+        return res2.to(A.dtype)
 
-        res, info = torch.linalg.cholesky_ex(B_pos, upper=upper)
+    def false_fn():
+        return res.clone()
 
-        if info.any():
-            logging.error(f"Chokesy failed: {info}")
-
-            raise ValueError(f"Unable to perform Cholesky.\n{'\n'.join(traceback.format_stack())}")
-
-        return res.to(A.dtype)
-
-    return res
+    return torch.cond(info.any(), true_fn, false_fn)
