@@ -275,3 +275,21 @@ class LastLipschitzConvLayer(AbstractLipschitzConvLayer):
         output = self.circular_convolution(input, H, W, Wf_norm, H_fft, Wf_fft)
 
         return output, Wf_norm
+
+
+class FirstSequentialLipschitzConvLayer(AbstractLipschitzConvLayer):
+    def process(self, Wf: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
+        _, W, _ = self.scale_w(Wf)
+
+        scale = self.constant
+        div_scale = self.constant_sq * self.alpha
+
+        W = scale * W
+
+        omega = self.sum_weight(Wf)
+
+        d_inv = omega / div_scale
+
+        omega_r = torch.linalg.cholesky(omega, upper=False)
+
+        return W, d_inv, omega_r

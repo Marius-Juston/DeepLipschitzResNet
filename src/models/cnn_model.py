@@ -7,7 +7,8 @@ from torch import nn
 from torch.nn import ModuleList, ReLU
 from torch.nn.common_types import _size_2_t
 
-from models.cnn_layers import InnerWeightLipschitzConvLayer, LastLipschitzConvLayer, FirstLipschitzConvLayer
+from models.cnn_layers import InnerWeightLipschitzConvLayer, LastLipschitzConvLayer, FirstLipschitzConvLayer, \
+    FirstSequentialLipschitzConvLayer
 from utils import safe_cholesky
 
 
@@ -146,6 +147,102 @@ class DeepLipschitzConvResNet(nn.Module):
         second, b_wf = self.compute_b(current_input, sigma_lower, a_wf, prev_alpha, prev_omega_r)
 
         return first + second
+
+
+class DeepLipschitzConvSequential(nn.Module):
+    layers: ModuleList
+
+    def __init__(self, in_channels: int,
+                 out_channels: int,
+                 layers_widths: Sequence[int],
+                 kernel_size: _size_2_t = 3,
+                 stride: _size_2_t = 1,
+                 padding: Union[str, _size_2_t] = 0,
+                 dilation: _size_2_t = 1,
+                 groups: int = 1,
+                 activation: Union[nn.Module, List[nn.Module]] = None,
+                 lipschitz_constant: float = 1.0,
+                 enable_alpha: bool = True,
+                 use_safe_cholesky: bool = False,
+                 device: Union[str, torch.device] = 'cuda',
+                 dtype: Optional[torch.dtype] = None) -> None:
+        super().__init__()
+
+        super().__init__()
+        assert len(layers_widths) >= 1, "This deep network assumes that the number of layers is greater "
+        assert in_channels > 0, "The input width needs to be larger than 0"
+        assert out_channels > 0, "The output width needs to be larger than 0"
+
+        self.cholesky_function = safe_cholesky if use_safe_cholesky else torch.linalg.cholesky
+        self.enable_alpha = enable_alpha
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+
+        self.layer_widths = list(layers_widths)
+        self.kernel_size = kernel_size
+        self.stride = stride
+        self.padding = padding
+        self.dilation = dilation
+        self.groups = groups
+
+        self.device = device
+        self.dtype = dtype
+        self.factory_kwargs = {"device": device, "dtype": dtype}
+
+        self.lipschitz_constant = lipschitz_constant
+        self.lipschitz_constant_sq = lipschitz_constant * lipschitz_constant
+
+        self.activation = ReLU() if activation is None else activation
+
+        self.generate_layers()
+
+    def reset_parameters(self) -> None:
+        for layer in self.layers:
+            layer.reset_parameters()
+
+    def generate_layers(self) -> None:
+        layer = []
+
+        prev = self.in_channels
+
+        for i, out_features in enumerate(self.layer_widths):
+            activation = self.activation
+            constant = 2.0
+
+            if i == 0:
+                class_ = FirstSequentialLipschitzConvLayer
+            else:
+                class_ = InnerWeightLipschitzConvLayer
+
+            layer.append(
+                class_(prev, out_features,
+                       kernel_size=self.kernel_size,
+                       enable_alpha=self.enable_alpha,
+                       constant_sq=constant,
+                       stride=self.stride,
+                       padding=self.padding,
+                       dilation=self.dilation,
+                       activation=activation,
+                       groups=self.groups, **self.factory_kwargs))
+            prev = out_features
+
+        layer.append(
+            InnerWeightLipschitzConvLayer(prev, self.out_channels, constant_sq=1.0, activation=None,
+                                          **self.factory_kwargs))
+
+        self.layers = ModuleList(layer)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        current_input = x
+
+        for i, layer in enumerate(self.layers):
+            if i == 0:
+                current_input, a_wf, d_inv, prev_alpha, prev_omega_r, prev_constant = layer(current_input)
+            else:
+                current_input, Wf_norm, d_inv, prev_alpha, omega_r, prev_constant = layer(current_input, prev_alpha,
+                                                                                          prev_omega_r, prev_constant)
+
+        return current_input
 
 
 class BatchedConvSpectralNorm(nn.Module):
