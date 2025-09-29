@@ -1,9 +1,12 @@
+import logging
 import random
 import traceback
 
 import torch
 from torch.distributed import destroy_process_group
 from torch.distributed.elastic.multiprocessing.errors import record
+
+from training.utils import get_notifications
 
 torch.set_float32_matmul_precision('high')
 torch.backends.cudnn.benchmark = True
@@ -36,9 +39,11 @@ def set_seed(seed):
 def main(config):
     set_seed(config.seed)
 
+    discord_bot = get_notifications(config.discord)
+
     try:
         if config.mode == 'train':
-            trainer = Trainer(config)
+            trainer = Trainer(config, discord_bot)
             trainer()
             trainer.load()
             trainer.train()
@@ -46,9 +51,15 @@ def main(config):
             evaluate = Evaluator(config)
             evaluate()
     except Exception as e:
-        traceback.print_exc()
+        error = traceback.format_exc()
+
+        logging.error(error)
+
+        discord_bot.notify(error, code=True)
     finally:
         destroy_process_group()
+        discord_bot.stop()
+
 
 def model_choice(config):
     if config.model_name == 'small':
@@ -83,7 +94,12 @@ if __name__ == '__main__':
     parser.add_argument("--linear_conv", type=bool, default=True, action=argparse.BooleanOptionalAction,
                         help="Use linear Lipschitz layers rather ResNet layers for better stability")
 
-    parser.add_argument("--shift_data", type=bool, default=True, help="Shift dataset with mean.")
+    parser.add_argument("--discord", type=bool, default=True, action=argparse.BooleanOptionalAction,
+                        help="Enable discord notifications functionality")
+    parser.add_argument("--discord_new_best", type=bool, default=True, action=argparse.BooleanOptionalAction,
+                        help="Enable notifications for new best accuracy")
+    parser.add_argument("--discord_epoch_frequency", type=int, default=10,
+                        help="Enable notifications that n % frequency epochs have been achieved")
 
     parser.add_argument("--shift_data", type=bool, default=True, action=argparse.BooleanOptionalAction,
                         help="Shift dataset with mean.")
@@ -96,8 +112,7 @@ if __name__ == '__main__':
     parser.add_argument("--margin", type=float, default=0.7, help="Define margin")
     parser.add_argument("--offset", type=float, default=np.sqrt(2) * 3 / 2)
     parser.add_argument("--temperature", type=float, default=0.25)
-    parser.add_argument("--optimizer", type=str, default='adamw')
-    parser.add_argument("--lr", type=float, default=0.01)
+    parser.add_argument("--optimizer", type=str, default='adam')
     parser.add_argument("--scheduler", type=str, default="none")
     parser.add_argument("--lr", type=float, default=1e-4)
     parser.add_argument("--beta1", type=float, default=0.5)

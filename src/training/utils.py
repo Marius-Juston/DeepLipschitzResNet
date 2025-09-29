@@ -16,6 +16,8 @@ from prettytable import PrettyTable
 from torch.distributed import init_process_group
 from torch.optim import lr_scheduler
 
+from training.notification import init_discord_bot
+
 
 def get_epochs_from_ckpt(filename):
     regex = "(?<=ckpt-)[0-9]+"
@@ -256,3 +258,24 @@ def print_module_parameters(model):
     for i, module in enumerate(model.model):
         logging.info("Module {}: {}".format(i, module.__class__.__name__))
         print_num_parameters(module)
+
+
+class EmptyNotification:
+    def notify(self, *args, **kwargs):
+        pass
+
+    def start(self, *args, **kwargs):
+        pass
+
+    def stop(self, *args, **kwargs):
+        pass
+
+
+def get_notifications(enable):
+    try:
+        if enable:
+            return init_discord_bot()
+        else:
+            return EmptyNotification()
+    except ImportError:
+        return EmptyNotification()

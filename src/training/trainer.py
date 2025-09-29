@@ -32,8 +32,12 @@ def local_only(func):
 class Trainer:
     """A Trainer to train a PyTorch."""
 
-    def __init__(self, config):
+    def __init__(self, config, notification=None):
+        self.notification = notification
         self.config = config
+
+    def stop(self):
+        self.notification.stop()
 
     def _load_state(self):
         # load last checkpoint
@@ -149,6 +153,15 @@ class Trainer:
             logging.info(f"NCCL Version {torch.cuda.nccl.version()}")
             logging.info(f"Hostname: {socket.gethostname()}.")
 
+        # if self.local_rank == 0:
+        logging.info("Starting notification system")
+        self.notification.start(timeout=30)
+        logging.info('Started discord system')
+        # else:
+        #     self.notification.disable()
+        #     self.notification = EmptyNotification()
+        #     logging.info('Disabling discord system')
+
         # ditributed settings
         self.world_size = 1
         self.is_distributed = False
@@ -253,6 +266,9 @@ class Trainer:
     def train(self):
         # training loop
         start_epoch, global_step = self.start_epoch, self.start_global_step
+
+        self.local_notification(f"Starting training step: {self.start_global_step} epoch: {self.start_epoch}")
+
         self.best_checkpoint = None
         self.best_accuracy = 0
         for epoch_id in range(start_epoch, self.config.epochs):
@@ -268,10 +284,17 @@ class Trainer:
                     self._print_approximated_train_time(start_time)
                 global_step += 1
             if epoch_id % self.config.validate_every == 0:
-                self.validate(self.validator_data_loader, self.validator_sampler, epoch_id)
+                latest_accuracy = self.validate(self.validator_data_loader, self.validator_sampler, epoch_id)
+            if epoch_id % self.config.discord_epoch_frequency == 0:
+                self.local_notification(f"Reached epoch {epoch_id}: {latest_accuracy}")
 
+        self.local_notification("Finished training")
         self._save_ckpt(global_step, epoch_id, final=True)
         logging.info("Done training -- epoch limit reached.")
+
+    @local_only
+    def local_notification(self, message, code=False):
+        self.notification.notify(message, code=code)
 
     @torch.no_grad()
     def validate(self, dataloader, sampler, epoch):
@@ -331,13 +354,16 @@ class Trainer:
         return grad_norm
 
     def _print_approximated_train_time(self, start_time):
-        total_steps = self.reader.n_train_files * self.config.epochs / self.global_batch_size
+        total_steps = self.reader.n_train_files * self.config.epochs / self.global_batch_size - self.start_global_step
         total_seconds = total_steps * ((time.time() - start_time) / (self.end_approx - self.start_approx))
         n_days = total_seconds // 86400
         n_hours = (total_seconds % 86400) / 3600
-        logging.info(
-            'Approximated training time: {:.0f} days and {:.1f} hours'.format(
-                n_days, n_hours))
+        approx_training_time = 'Approximated training time: {:.0f} days and {:.1f} hours'.format(
+            n_days, n_hours)
+
+        logging.info(approx_training_time)
+
+        self.local_notification(approx_training_time)
 
     def _to_print(self, step):
         frequency = self.config.frequency_log_steps
@@ -372,6 +398,9 @@ class Trainer:
         loss = self.criterion(outputs, labels)
 
         if not torch.isfinite(loss).all():
+            self._save_ckpt(step, epoch, failure=True)
+
+            self.notification.notify("Training loss is no longer finite, something went wrong.")
             logging.info("Loss is no longer finite, check problem")
             raise RuntimeError('Loss is infinite', loss)
 

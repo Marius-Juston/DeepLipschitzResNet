@@ -103,7 +103,7 @@ class MyClient(discord.Client):
 
         self.ready_event.set()
 
-    async def _notify_async(self, message: str):
+    async def _notify_async(self, message: str, code=False, char_limit=1900):
         logging.info(f"Starting async notify task to {len(self.users_list)} users")
 
         for user_id, guild_id, channel_id in self.users_list:
@@ -123,7 +123,15 @@ class MyClient(discord.Client):
             # sending may raise exceptions, handle them
             try:
                 logging.warning(f"Sending message")
-                await channel.send(f'<@{user_id}> {message}')
+                message = f'```\n{message}\n```' if code else message
+
+                prefix = f'<@{user_id}> '
+
+                message_length = min(-1, -char_limit + len(prefix))
+
+                message = f'{prefix}{message[message_length:]}'
+
+                await channel.send(message, delete_after=30.0)
                 logging.debug(f"Sent notify to user {user_id} in channel {channel_id}")
             except discord.Forbidden:
                 logging.warning(f"Forbidden to send to channel {channel_id} - removing subscription entry")
@@ -136,13 +144,13 @@ class MyClient(discord.Client):
             except Exception:
                 logging.exception(f"Failed to send message to {channel_id}")
 
-    def notify(self, message: str):
+    def notify(self, message: str, code: bool = False):
         if not hasattr(self, "loop") or self.loop is None:
             raise RuntimeError(
                 "Bot loop is not available yet; start the bot and wait for ready_event before calling notify()")
 
         # schedule the async method to run inside the bot’s event loop
-        fut = asyncio.run_coroutine_threadsafe(self._notify_async(message), self.loop)
+        fut = asyncio.run_coroutine_threadsafe(self._notify_async(message, code=code), self.loop)
         return fut
 
 
@@ -153,11 +161,12 @@ class Notification:
         self.intents = intents or Intents.default()
         self.intents.message_content = True
         self.intents.members = True
-
-        self.client = MyClient(intents=self.intents, ready_event=self.ready)
-        self.thread = Thread(target=self._run_client, daemon=True)
+        self.disabled = False
 
     def _run_client(self):
+        if self.disabled:
+            return
+
         # This will create and run the event loop inside the thread.
         # client.run blocks until the bot is closed.
         try:
@@ -165,27 +174,44 @@ class Notification:
         except Exception:
             logging.exception("discord.Client.run() exited with an exception")
 
-    def start(self, timeout: Optional[float] = 30.0):
+    def start(self, timeout: Optional[float] = 5.0):
         """
         Start the client in a background thread and wait for readiness.
         `timeout` optional; if None will wait forever.
         """
+        if self.disabled:
+            return
+
+        self.client = MyClient(intents=self.intents, ready_event=self.ready)
+        self.thread = Thread(target=self._run_client, daemon=True)
+
         logging.info("Starting Discord client thread...")
         self.thread.start()
         started = self.ready.wait(timeout=timeout)
         if not started:
             raise TimeoutError("Bot did not signal ready within timeout")
+
         logging.info("Discord client is ready.")
 
-    def notify(self, message: str, wait: bool = False, timeout: Optional[float] = None):
+    def notify(self, message: str, wait: bool = False, code=False, timeout: Optional[float] = None):
         """
         Synchronous notify wrapper.
         If wait=True, block until the send finishes (or timeout).
         Returns the concurrent.futures.Future if wait=False, else returns the result of future.result().
         """
-        future = self.client.notify(message)
+        if self.disabled:
+            return None
+
+        started = self.ready.wait(timeout=timeout)
+        if not started:
+            raise TimeoutError("Bot did not signal ready within timeout")
+
+        future = self.client.notify(message, code=code)
         if wait:
             return future.result(timeout=timeout)
+
+        logging.info("Message has been sent, non blocking")
+
         return future
 
     def stop(self, timeout: Optional[float] = 10.0):
@@ -202,6 +228,9 @@ class Notification:
         # join thread (it should exit once loop is closed)
         self.thread.join(timeout=timeout)
 
+    def disable(self):
+        self.disabled = True
+
 
 def init_discord_bot():
     #  Loads the secrets configuration data from the .env file
@@ -213,9 +242,8 @@ def init_discord_bot():
         raise SystemExit("BOT_TOKEN not found in .env")
 
     manager = Notification(token)
-    manager.start(timeout=30)
 
-    logging.info("Discord bot initialized")
+    return manager
 
 
 if __name__ == '__main__':
