@@ -61,6 +61,7 @@ def main(config):
         discord_bot.stop()
 
 
+
 def model_choice(config):
     if config.model_name == 'small':
         config = override_args(config, 20, 64, 7, 45, 1024)
@@ -78,7 +79,6 @@ def model_choice(config):
 
 
 if __name__ == '__main__':
-
     parser = argparse.ArgumentParser(description='Train or Evaluate Lipschitz Networks.')
 
     # parameters training or eval
