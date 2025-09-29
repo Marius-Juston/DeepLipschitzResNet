@@ -52,7 +52,7 @@ class AbstractLipschitzConvLayer(nn.Conv2d, ABC):
 
     def __init__(self, in_channels: int,
                  out_channels: int,
-                 kernel_size: _size_2_t,
+                 kernel_size: _size_2_t = 3,
                  constant_sq: float = 1.0,
                  enable_alpha: bool = True,
                  stride: _size_2_t = 1,
