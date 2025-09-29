@@ -61,6 +61,7 @@ class AbstractLipschitzConvLayer(nn.Conv2d, ABC):
                  groups: int = 1,
                  bias: bool = True,
                  padding_mode: str = "zeros",
+                 activation: Optional[nn.Module] = None,
                  device=None,
                  dtype=None, ):
         super().__init__(in_channels=in_channels,
@@ -76,6 +77,7 @@ class AbstractLipschitzConvLayer(nn.Conv2d, ABC):
                          dtype=dtype)
         factory_kwargs = {"device": device, "dtype": dtype}
 
+        self.activation = activation
         self.register_buffer(
             "identity", torch.eye(in_channels, **factory_kwargs)
         )
@@ -211,6 +213,9 @@ class AbstractLipschitzConvLayer(nn.Conv2d, ABC):
         output = self.circular_convolution(input, H, W, Wf_norm, H_fft, Wf_fft)
 
         return output, Wf_norm, d_inv
+        if self.activation:
+            output = self.activation(output)
+
 
 
 class FirstLipschitzConvLayer(AbstractLipschitzConvLayer):

@@ -88,6 +88,7 @@ class DeepLipschitzConvResNet(nn.Module):
                                               stride=self.stride,
                                               padding=self.padding,
                                               dilation=self.dilation,
+                                              activation=self.activation,
                                               groups=self.groups, **self.factory_kwargs))
             prev = out_features
 
@@ -142,8 +143,6 @@ class DeepLipschitzConvResNet(nn.Module):
                 sigma_lower = torch.linalg.cholesky(sigma_lower @ sigma_lower.mT + T @ T.mT, upper=False)
 
             gamma = T @ c_wf.mT
-
-            current_input = self.activation(current_input)
 
             prev_layer = layer
 
