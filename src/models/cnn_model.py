@@ -29,6 +29,7 @@ class DeepLipschitzConvResNet(nn.Module):
             activation: Union[nn.Module, List[nn.Module]] = None,
             lipschitz_constant: float = 1.0,
             enable_alpha: bool = True,
+            use_safe_cholesky: bool = False,
             device: Union[str, torch.device] = 'cuda',
             dtype: Optional[torch.dtype] = None
     ):
@@ -37,6 +38,7 @@ class DeepLipschitzConvResNet(nn.Module):
         assert in_channels > 0, "The input width needs to be larger than 0"
         assert out_channels > 0, "The output width needs to be larger than 0"
 
+        self.cholesky_function = torch.linalg.cholesky if use_safe_cholesky else safe_cholesky
         self.enable_alpha = enable_alpha
         self.in_channels = in_channels
         self.out_channels = out_channels
@@ -112,7 +114,7 @@ class DeepLipschitzConvResNet(nn.Module):
 
         scaling = self.B.identity_out + torch.einsum("fir,fjs,frk,fsk->fij", a_wf, a_wf, sigma_lower, sigma_lower)
 
-        R_sigma = safe_cholesky(scaling, upper=True)
+        R_sigma = self.cholesky_function(scaling, upper=True)
 
         second, b_wf = self.B(x, R_sigma, last_layer)
 
@@ -137,7 +139,7 @@ class DeepLipschitzConvResNet(nn.Module):
             if sigma_lower is None:
                 sigma_lower = T
             else:
-                sigma_lower = safe_cholesky(sigma_lower @ sigma_lower.mT + T @ T.mT, upper=False)
+                sigma_lower = torch.linalg.cholesky(sigma_lower @ sigma_lower.mT + T @ T.mT, upper=False)
 
             gamma = T @ c_wf.mT
 

@@ -106,6 +106,7 @@ if __name__ == '__main__':
     parser.add_argument("--logging_verbosity", type=str, default='INFO', help="Level of verbosity of the logs")
     parser.add_argument("--save_checkpoint_epochs", type=int, default=5, help="Save checkpoint every epoch.")
     parser.add_argument("--compile", type=bool, default=True, help="Compile model")
+    parser.add_argument("--safe_cholesky", type=bool, default=False, help="Enable safe cholesky computation for the compute_b function")
 
     # specific parameters for eval
     parser.add_argument("--attack", type=str, choices=['pgd', 'autoattack'], help="Choose the attack.")

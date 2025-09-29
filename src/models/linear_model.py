@@ -17,6 +17,7 @@ class DeepLipschitzLinearResNet(nn.Module):
     def __init__(self, in_features: int, out_features: int, layers_widths: Sequence[int],
                  activation: Union[Module, List[Module]] = None, lipschitz_constant: float = 1.0,
                  enable_alpha: bool = True,
+                 use_safe_cholesky: bool = False,
                  device: Union[str, torch.device] = 'cuda', dtype=None) -> None:
         super().__init__()
 
@@ -24,6 +25,7 @@ class DeepLipschitzLinearResNet(nn.Module):
         assert in_features > 0, "The input width needs to be larger than 0"
         assert out_features > 0, "The output width needs to be larger than 0"
 
+        self.cholesky_function = torch.linalg.cholesky if use_safe_cholesky else safe_cholesky
         self.enable_alpha = enable_alpha
         self.lipschitz_constant = lipschitz_constant
         self.lipschitz_constant_sq = lipschitz_constant * lipschitz_constant
@@ -87,7 +89,7 @@ class DeepLipschitzLinearResNet(nn.Module):
 
         scaling = self.B.identity_out + left @ left.T
 
-        R_sigma = safe_cholesky(scaling, upper=True)
+        R_sigma = self.cholesky_function(scaling, upper=True)
 
         second, b_weight = self.B(x, R_sigma, last_layer)
 
@@ -133,7 +135,7 @@ class DeepLipschitzLinearResNet(nn.Module):
                 sigma_lower = T
             else:
                 # Instead of using custom CholeskyRankK update this is computationally much faster
-                sigma_lower = safe_cholesky(sigma_lower @ sigma_lower.T + T @ T.T, upper=False)
+                sigma_lower = torch.linalg.cholesky(sigma_lower @ sigma_lower.T + T @ T.T, upper=False)
                 # sigma_lower = cholesky_rank_k(sigma_lower, T)
 
             gamma = T @ c_weight.T

@@ -56,7 +56,9 @@ class LipschitzNetwork(nn.Module):
         inner_conv_layers = [self.conv_inner_dim] * self.n_interior_conv
 
         for _ in range(self.n_conv):
-            self.model.append(DeepLipschitzConvResNet(self.cin, self.cin, inner_conv_layers, device=device))
+            self.model.append(
+                DeepLipschitzConvResNet(self.cin, self.cin, inner_conv_layers, use_safe_cholesky=config.safe_cholesky,
+                                        device=device))
 
         self.model.append(nn.AvgPool2d(4, divisor_override=4))
 
@@ -72,11 +74,13 @@ class LipschitzNetwork(nn.Module):
 
         for _ in range(self.n_dense):
             self.model.append(
-                DeepLipschitzLinearResNet(in_channels, self.dense_next_layer, inner_linear_layers, device=device))
+                DeepLipschitzLinearResNet(in_channels, self.dense_next_layer, inner_linear_layers,
+                                          use_safe_cholesky=config.safe_cholesky, device=device))
 
             in_channels = self.dense_next_layer
 
-        self.model.append(DeepLipschitzLinearResNet(in_channels, self.n_classes, inner_linear_layers, device=device))
+        self.model.append(DeepLipschitzLinearResNet(in_channels, self.n_classes, inner_linear_layers,
+                                                    use_safe_cholesky=config.safe_cholesky, device=device))
 
         self.model = nn.Sequential(*self.model)
 
