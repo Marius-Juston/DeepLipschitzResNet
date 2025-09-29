@@ -238,7 +238,7 @@ class Trainer:
             logging.info("Start training")
 
         self.start_epoch = 0
-        self.global_step = 0
+        self.start_global_step = 0
 
     def load(self):
         checkpoints_path = join(self.train_dir, 'checkpoints')
@@ -251,7 +251,7 @@ class Trainer:
 
     def train(self):
         # training loop
-        start_epoch, global_step = self.start_epoch, self.global_step
+        start_epoch, global_step = self.start_epoch, self.start_global_step
         self.best_checkpoint = None
         self.best_accuracy = 0
         for epoch_id in range(start_epoch, self.config.epochs):
