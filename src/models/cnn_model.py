@@ -107,7 +107,7 @@ class DeepLipschitzConvResNet(nn.Module):
             **self.factory_kwargs
         )
 
-    def compute_b(self, x: Tensor, sigma_lower, a_wf, last_layer: InnerWeightLipschitzConvLayer) -> Tuple[
+    def compute_b(self, x: Tensor, sigma_lower, a_wf, prev_alpha: Tensor, prev_omega_r: Tensor) -> Tuple[
         Tensor, Tensor]:
 
         # left = a_wf @ sigma_lower
@@ -117,36 +117,33 @@ class DeepLipschitzConvResNet(nn.Module):
 
         R_sigma = self.cholesky_function(scaling, upper=True)
 
-        second, b_wf = self.B(x, R_sigma, last_layer)
+        second, b_wf = self.B(x, R_sigma, prev_alpha, prev_omega_r)
 
         return second, b_wf
 
     # @torch.compiler.disable
     def forward(self, x: Tensor) -> Tensor:
-        first, a_wf, d_inv = self.A(x)
+        first, a_wf, d_inv, prev_alpha, prev_omega_r, prev_constant = self.A(x)
 
         gamma = torch.eye(d_inv.shape[1], device=d_inv.device, dtype=d_inv.dtype).expand(d_inv.shape[0], -1, -1)
         sigma_lower = None
 
         current_input = x
 
-        prev_layer = self.A
-
         for layer in self.layers:
             T = gamma @ d_inv
 
-            current_input, c_wf, d_inv = layer(current_input, prev_layer)
+            current_input, c_wf, d_inv, prev_alpha, prev_omega_r, prev_constant = layer(current_input, prev_alpha,
+                                                                                        prev_omega_r, prev_constant)
 
             if sigma_lower is None:
                 sigma_lower = T
             else:
-                sigma_lower = torch.linalg.cholesky(sigma_lower @ sigma_lower.mT + T @ T.mT, upper=False)
+                sigma_lower = self.cholesky_function(sigma_lower @ sigma_lower.mT + T @ T.mT, upper=False)
 
             gamma = T @ c_wf.mT
 
-            prev_layer = layer
-
-        second, b_wf = self.compute_b(current_input, sigma_lower, a_wf, self.layers[-1])
+        second, b_wf = self.compute_b(current_input, sigma_lower, a_wf, prev_alpha, prev_omega_r)
 
         return first + second
 
