@@ -22,6 +22,7 @@ from torch.profiler import (
 def last_folder(base_folder):
     return max(map(int, os.listdir(base_folder)), default=0)
 
+
 def ensure_dir(d):
     os.makedirs(d, exist_ok=True)
     return d

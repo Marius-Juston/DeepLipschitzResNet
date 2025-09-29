@@ -69,7 +69,7 @@ tensorboard --logdir=.
 ```
 ### For WSL2
 ```bash
-nsorboard --host localhost --port 8888 --logdir=.
+tensorboard --host localhost --port 8888 --logdir=.
 ```
 
 ## Reference
