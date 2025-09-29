@@ -74,6 +74,11 @@ def setup_logging(config, rank):
 
 def setup_distributed_training():
     torch.cuda.set_device(int(os.environ["LOCAL_RANK"]))
+
+    if "MASTER_ADDR" not in os.environ or 'MASTER_PORT' not in os.environ:
+        os.environ["MASTER_ADDR"] = "localhost"
+        os.environ["MASTER_PORT"] = "12355"
+
     init_process_group(backend="nccl")
 
 

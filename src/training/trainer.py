@@ -162,10 +162,10 @@ class Trainer:
         # Setup logging
         utils.setup_logging(self.config, self.rank)
 
-        logging.info(self.rank)
-        logging.info(self.local_rank)
-        logging.info(self.num_nodes)
-        logging.info(self.num_tasks)
+        logging.info(f"Rank: {self.rank}")
+        logging.info(f"Local rank: {self.local_rank}")
+        logging.info(f"Num nodes: {self.num_nodes}")
+        logging.info(f"Num tasks: {self.num_tasks}")
 
         self.message = utils.MessageBuilder()
         # print self.config parameters
@@ -190,7 +190,9 @@ class Trainer:
 
         # ditributed settings
         self.world_size = 1
-        self.is_distributed = False
+        self.is_distributed = True
+        self.world_size = self.num_nodes * self.ngpus
+
         if self.num_nodes > 1 or self.num_tasks > 1:
             self.is_distributed = True
             self.world_size = self.num_nodes * self.ngpus
@@ -300,16 +302,18 @@ class Trainer:
 
         self.best_checkpoint = None
         self.best_accuracy = 0
+        latest_accuracy = 0
+
         for epoch_id in range(start_epoch, self.config.epochs):
             if self.is_distributed:
                 self.sampler.set_epoch(epoch_id)
             for n_batch, data in enumerate(self.data_loader):
-                if global_step == self.start_approx and self.is_master:
+                if global_step == start_approx_step and self.is_master:
                     start_time = time.time()
                 epoch = (int(global_step) * self.global_batch_size) / self.reader.n_train_files
                 self.one_step_training(data, epoch, global_step)
                 self._save_ckpt(global_step, epoch_id)
-                if global_step == self.end_approx and self.is_master:
+                if global_step == end_approx_step and self.is_master:
                     self._print_approximated_train_time(start_time)
                 global_step += 1
             if epoch_id % self.config.validate_every == 0:
