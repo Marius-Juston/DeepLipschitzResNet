@@ -25,7 +25,7 @@ class DeepLipschitzLinearResNet(nn.Module):
         assert in_features > 0, "The input width needs to be larger than 0"
         assert out_features > 0, "The output width needs to be larger than 0"
 
-        self.cholesky_function = torch.linalg.cholesky if use_safe_cholesky else safe_cholesky
+        self.cholesky_function = safe_cholesky if use_safe_cholesky else torch.linalg.cholesky
         self.enable_alpha = enable_alpha
         self.lipschitz_constant = lipschitz_constant
         self.lipschitz_constant_sq = lipschitz_constant * lipschitz_constant

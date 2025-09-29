@@ -38,7 +38,7 @@ class DeepLipschitzConvResNet(nn.Module):
         assert in_channels > 0, "The input width needs to be larger than 0"
         assert out_channels > 0, "The output width needs to be larger than 0"
 
-        self.cholesky_function = torch.linalg.cholesky if use_safe_cholesky else safe_cholesky
+        self.cholesky_function = safe_cholesky if use_safe_cholesky else torch.linalg.cholesky
         self.enable_alpha = enable_alpha
         self.in_channels = in_channels
         self.out_channels = out_channels
