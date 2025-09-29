@@ -98,11 +98,12 @@ class Trainer:
 
         self.hparams_dict = {
 
-            "n_conv": self.config.n_conv, "n_interior_conv": self.config.n_interior_conv,
-            "n_dense": self.config.n_dense, "n_interior_dense": self.config.n_interior_dense,
+            "n_conv": self.config.n_conv,
+            "n_dense": self.config.n_dense,
             "cin": self.config.w,
-            "conv_inner_dim": self.config.conv_inner_dim, "dense_inner_dim": self.config.dense_inner_dim,
-            "n_classes": self.reader.n_classes, "dense_next_layer": self.config.dense_next_layer
+            "conv_inner_dim": self.config.conv_inner_dim,
+            "dense_inner_dim": self.config.dense_inner_dim,
+            "n_classes": self.reader.n_classes,
         }
 
     @local_only
