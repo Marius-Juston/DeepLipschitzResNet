@@ -11,7 +11,6 @@ from os.path import join, exists
 import numpy as np
 import torch
 import torch.backends.cudnn as cudnn
-from torch.distributed.elastic.multiprocessing.errors import record
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.tensorboard import SummaryWriter
 
@@ -33,30 +32,73 @@ def local_only(func):
 class Trainer:
     """A Trainer to train a PyTorch."""
 
-    def __init__(self, config):
+    def __init__(self, config, notification=None):
+        self.notification = notification
         self.config = config
+
+    def stop(self):
+        self.notification.stop()
 
     def _load_state(self):
         # load last checkpoint
-        checkpoints = glob.glob(join(self.train_dir, 'checkpoints', 'model.ckpt-*.pth'))
+        checkpoint_directory = join(self.train_dir, 'checkpoints')
+
+        checkpoints = glob.glob(join(checkpoint_directory, 'model.ckpt-*.pth'))
+
+        if len(checkpoints) == 0:
+            logging.warning('No checkpoints found in directory {}'.format(checkpoint_directory))
+            return
+
         get_model_id = lambda x: int(x.strip('.pth').strip('model.ckpt-'))
         checkpoints = sorted(
             [ckpt.split('/')[-1] for ckpt in checkpoints], key=get_model_id)
         path_last_ckpt = join(self.train_dir, 'checkpoints', checkpoints[-1])
-        self.checkpoint = torch.load(path_last_ckpt, map_location=self.model.device)
-        self.model.load_state_dict(self.checkpoint['model_state_dict'])
+        self.checkpoint = torch.load(path_last_ckpt, map_location=self.model.device, weights_only=False)
+
+        new_config = self.checkpoint['config']
+
+        if new_config.compile != self.config.compile:
+            new_config.compile = self.config.compile
+
+            if not self.config.compile:
+                module = self.checkpoint['model_state_dict']
+
+                module = {
+                    k.replace('_orig_mod.', ''): v for k, v in module.items()
+                }
+            else:
+                module = self.checkpoint['model_state_dict']
+
+                module = {
+                    k.replace('module.', 'module._orig_mod.'): v for k, v in module.items()
+                }
+
+            new_config.compile = self.config.compile
+        else:
+            module = self.checkpoint['model_state_dict']
+
+        self.model.load_state_dict(module)
+
         self.optimizer.load_state_dict(self.checkpoint['optimizer_state_dict'])
         self.saved_ckpts.add(self.checkpoint['epoch'])
-        epoch = self.checkpoint['epoch']
+        self.start_epoch = self.checkpoint['epoch']
+        self.start_global_step = self.checkpoint['global_step']
+        # self.config = new_config
+
+        if callable(getattr(self.scheduler, 'state_dict', None)):
+            self.scheduler.load_state_dict(self.checkpoint['scheduler'])
+
         if self.local_rank == 0:
             logging.info('Loading checkpoint {}'.format(checkpoints[-1]))
 
-    def _save_ckpt(self, step, epoch, final=False, best=False):
+    def _save_ckpt(self, step, epoch, final=False, best=False, failure=False):
         """Save ckpt in train directory."""
         freq_ckpt_epochs = self.config.save_checkpoint_epochs
-        if ((epoch % freq_ckpt_epochs == 0 and self.is_master and epoch not in self.saved_ckpts)
-                or (final and self.is_master) or best):
-            prefix = "model" if not best else "best_model"
+        if failure or best or (epoch % freq_ckpt_epochs == 0 and self.is_master and epoch not in self.saved_ckpts) or (
+                final and self.is_master):
+            prefix = "best_model" if best else "model"
+            prefix = f'failure_{self.local_rank}' if failure else prefix
+
             ckpt_name = f"{prefix}.ckpt-{step}.pth"
             ckpt_path = join(self.train_dir, 'checkpoints', ckpt_name)
             if exists(ckpt_path) and not best: return
@@ -68,12 +110,13 @@ class Trainer:
                 'model_state_dict': self.model.state_dict(),
                 'optimizer_state_dict': self.optimizer.state_dict(),
                 # 'scheduler': self.scheduler.state_dict(),
+                'config': self.config
             }
 
             if callable(getattr(self.scheduler, 'state_dict', None)):
                 state['scheduler'] = self.scheduler.state_dict()
 
-            logging.debug("Saving checkpoint '{}'.".format(ckpt_name))
+            logging.info("Saving checkpoint '{}'.".format(ckpt_name))
             torch.save(state, ckpt_path)
 
     @local_only
@@ -85,18 +128,18 @@ class Trainer:
 
         self.hparams_dict = {
 
-            "n_conv": self.config.n_conv, "n_interior_conv": self.config.n_interior_conv,
-            "n_dense": self.config.n_dense, "n_interior_dense": self.config.n_interior_dense,
+            "n_conv": self.config.n_conv,
+            "n_dense": self.config.n_dense,
             "cin": self.config.w,
-            "conv_inner_dim": self.config.conv_inner_dim, "dense_inner_dim": self.config.dense_inner_dim,
-            "n_classes": self.reader.n_classes, "dense_next_layer": self.config.dense_next_layer
+            "conv_inner_dim": self.config.conv_inner_dim,
+            "dense_inner_dim": self.config.dense_inner_dim,
+            "n_classes": self.reader.n_classes,
         }
 
     @local_only
     def print_module_parameters(self, model):
         print_module_parameters(model)
 
-    @record
     def __call__(self):
         """Performs training and evaluation
         """
@@ -119,10 +162,10 @@ class Trainer:
         # Setup logging
         utils.setup_logging(self.config, self.rank)
 
-        logging.info(self.rank)
-        logging.info(self.local_rank)
-        logging.info(self.num_nodes)
-        logging.info(self.num_tasks)
+        logging.info(f"Rank: {self.rank}")
+        logging.info(f"Local rank: {self.local_rank}")
+        logging.info(f"Num nodes: {self.num_nodes}")
+        logging.info(f"Num tasks: {self.num_tasks}")
 
         self.message = utils.MessageBuilder()
         # print self.config parameters
@@ -136,9 +179,20 @@ class Trainer:
             logging.info(f"NCCL Version {torch.cuda.nccl.version()}")
             logging.info(f"Hostname: {socket.gethostname()}.")
 
+        # if self.local_rank == 0:
+        logging.info("Starting notification system")
+        self.notification.start(timeout=30)
+        logging.info('Started discord system')
+        # else:
+        #     self.notification.disable()
+        #     self.notification = EmptyNotification()
+        #     logging.info('Disabling discord system')
+
         # ditributed settings
         self.world_size = 1
-        self.is_distributed = False
+        self.is_distributed = True
+        self.world_size = self.num_nodes * self.ngpus
+
         if self.num_nodes > 1 or self.num_tasks > 1:
             self.is_distributed = True
             self.world_size = self.num_nodes * self.ngpus
@@ -171,9 +225,9 @@ class Trainer:
         # ###############
         self.validation_reader = Reader(self.config, self.batch_size, self.is_distributed, is_training=False)
 
-        validator_data_loader, validator_sampler = self.validation_reader.load_dataset()
+        self.validator_data_loader, self.validator_sampler = self.validation_reader.load_dataset()
         if self.is_distributed:
-            n_validation_files = validator_sampler.num_samples
+            n_validation_files = self.validator_sampler.num_samples
         else:
             n_validation_files = self.validation_reader.n_test_files
         # ###############
@@ -193,20 +247,17 @@ class Trainer:
         if self.config.compile:
             self.model = torch.compile(self.model, mode='max-autotune')
 
-        self.model = DDP(
-            self.model, device_ids=[self.local_rank])
-        if self.local_rank == 0:
-            logging.info('Model defined with DistributedDataParallel')
+        self.model = DDP(self.model, device_ids=[self.local_rank], output_device=self.local_rank)
 
         # define set for saved ckpt
         self.saved_ckpts = {0}
 
-        data_loader, sampler = self.reader.load_dataset()
-        if sampler is not None:
-            assert sampler.num_replicas == self.world_size
+        self.data_loader, self.sampler = self.reader.load_dataset()
+        if self.sampler is not None:
+            assert self.sampler.num_replicas == self.world_size
 
         if self.is_distributed:
-            n_files = sampler.num_samples
+            n_files = self.sampler.num_samples
         else:
             n_files = self.reader.n_train_files
 
@@ -227,30 +278,57 @@ class Trainer:
             logging.info("Number of test files on worker: {}".format(n_validation_files))
             logging.info("Start training")
 
+        self.start_epoch = 0
+        self.start_global_step = 0
+
+    def load(self):
+        checkpoints_path = join(self.train_dir, 'checkpoints')
+
+        if not os.path.exists(checkpoints_path):
+            logging.warning(f'The checkpoint path {checkpoints_path} does not exist. Not loading model')
+        else:
+            logging.warning(f'Loading from path {checkpoints_path}.')
+            self._load_state()
+
+    def train(self):
         # training loop
-        start_epoch, global_step = 0, 0
+        start_epoch, global_step = self.start_epoch, self.start_global_step
+
+        self.local_notification(f"Starting training step: {self.start_global_step} epoch: {self.start_epoch}")
+
+        start_approx_step = global_step + self.start_approx
+        end_approx_step = global_step + self.end_approx
+
         self.best_checkpoint = None
         self.best_accuracy = 0
+        latest_accuracy = 0
+
         for epoch_id in range(start_epoch, self.config.epochs):
             if self.is_distributed:
-                sampler.set_epoch(epoch_id)
-            for n_batch, data in enumerate(data_loader):
-                if global_step == self.start_approx and self.is_master:
+                self.sampler.set_epoch(epoch_id)
+            for n_batch, data in enumerate(self.data_loader):
+                if global_step == start_approx_step and self.is_master:
                     start_time = time.time()
                 epoch = (int(global_step) * self.global_batch_size) / self.reader.n_train_files
                 self.one_step_training(data, epoch, global_step)
                 self._save_ckpt(global_step, epoch_id)
-                if global_step == self.end_approx and self.is_master:
+                if global_step == end_approx_step and self.is_master:
                     self._print_approximated_train_time(start_time)
                 global_step += 1
             if epoch_id % self.config.validate_every == 0:
-                self.validate(validator_data_loader, validator_sampler, epoch_id)
+                latest_accuracy = self.validate(self.validator_data_loader, self.validator_sampler, epoch_id)
+            if epoch_id % self.config.discord_epoch_frequency == 0:
+                self.local_notification(f"Reached epoch {epoch_id}: {latest_accuracy}")
 
+        self.local_notification("Finished training")
         self._save_ckpt(global_step, epoch_id, final=True)
         logging.info("Done training -- epoch limit reached.")
 
+    @local_only
+    def local_notification(self, message, code=False):
+        self.notification.notify(message, code=code)
+
     @torch.no_grad()
-    @local_only  # local order
     def validate(self, dataloader, sampler, epoch):
         if self.is_distributed:
             sampler.set_epoch(epoch)
@@ -263,13 +341,16 @@ class Trainer:
 
         logging.info("Finished validation")
 
-        if accuracy > self.best_accuracy:
-            logging.info(f"New best validation accuracy: {accuracy}")
-            self.best_accuracy = accuracy
+        if self.local_rank == 0:
+            if accuracy > self.best_accuracy:
+                logging.info(f"New best validation accuracy: {accuracy}")
+                self.best_accuracy = accuracy
 
-            self.summary_writer.add_hparams(self.hparams_dict, {
-                'hparam/accuracy': accuracy
-            }, run_name=self.run_name, global_step=epoch)
+                self.summary_writer.add_hparams(self.hparams_dict, {
+                    'hparam/accuracy': accuracy
+                }, run_name=self.run_name, global_step=epoch)
+
+                self._save_ckpt(0, 0, best=True)
 
         self.model.train()
 
@@ -287,11 +368,13 @@ class Trainer:
             running_accuracy += predicted.eq(labels.data).sum().item()
             running_inputs += inputs.size(0)
         accuracy = running_accuracy / running_inputs
-        self.message.add('epoch', epoch, format='.0f')
-        self.message.add('accuracy', accuracy, format='.5f')
-        logging.info(self.message.get_message())
 
-        self.summary_writer.add_scalar(f'Validation/Accuracy', accuracy, global_step=epoch)
+        if self.local_rank == 0:
+            self.message.add('epoch', epoch, format='.0f')
+            self.message.add('accuracy', accuracy, format='.5f')
+            logging.info(self.message.get_message())
+
+            self.summary_writer.add_scalar(f'Validation/Accuracy', accuracy, global_step=epoch)
 
         return accuracy
 
@@ -305,13 +388,16 @@ class Trainer:
         return grad_norm
 
     def _print_approximated_train_time(self, start_time):
-        total_steps = self.reader.n_train_files * self.config.epochs / self.global_batch_size
+        total_steps = self.reader.n_train_files * self.config.epochs / self.global_batch_size - self.start_global_step
         total_seconds = total_steps * ((time.time() - start_time) / (self.end_approx - self.start_approx))
         n_days = total_seconds // 86400
         n_hours = (total_seconds % 86400) / 3600
-        logging.info(
-            'Approximated training time: {:.0f} days and {:.1f} hours'.format(
-                n_days, n_hours))
+        approx_training_time = 'Approximated training time: {:.0f} days and {:.1f} hours'.format(
+            n_days, n_hours)
+
+        logging.info(approx_training_time)
+
+        self.local_notification(approx_training_time)
 
     def _to_print(self, step):
         frequency = self.config.frequency_log_steps
@@ -342,29 +428,32 @@ class Trainer:
         images, labels = data
         images, labels = images.to(self.local_rank), labels.to(self.local_rank)
 
-        if step == 0 and self.local_rank == 0:
-            logging.info(f'images {images.shape}')
-            logging.info(f'labels {labels.shape}')
-
         outputs = self.model(images)
-        if step == 0 and self.local_rank == 0:
-            logging.info(f'outputs {outputs.shape}')
-
         loss = self.criterion(outputs, labels)
+
+        if not torch.isfinite(loss).all():
+            self._save_ckpt(step, epoch, failure=True)
+
+            self.notification.notify("Training loss is no longer finite, something went wrong.")
+            logging.info("Loss is no longer finite, check problem")
+            raise RuntimeError('Loss is infinite', loss)
+
         loss.backward()
         self.process_gradients(step)
         self.optimizer.step()
-        with self.warmup.dampening() if self.warmup else nullcontext():
-            self.scheduler.step(step)
+
+        if self.scheduler:
+            with self.warmup.dampening() if self.warmup else nullcontext():
+                self.scheduler.step(step)
 
         seconds_per_batch = time.time() - batch_start_time
         examples_per_second = self.batch_size / seconds_per_batch
         examples_per_second *= self.world_size
 
-        if not torch.isfinite(loss).all():
-            logging.info('Loss is NaN')
-
-            raise ValueError("The loss computation did yielded a NaN.")
+        if step == 0 and self.local_rank == 0:
+            logging.info(f'images {images.shape}')
+            logging.info(f'labels {labels.shape}')
+            logging.info(f'outputs {outputs.shape}')
 
         if self._to_print(step):
             lr = self.optimizer.param_groups[0]['lr']

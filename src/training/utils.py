@@ -16,6 +16,8 @@ from prettytable import PrettyTable
 from torch.distributed import init_process_group
 from torch.optim import lr_scheduler
 
+from training.notification import init_discord_bot
+
 
 def get_epochs_from_ckpt(filename):
     regex = "(?<=ckpt-)[0-9]+"
@@ -72,6 +74,11 @@ def setup_logging(config, rank):
 
 def setup_distributed_training():
     torch.cuda.set_device(int(os.environ["LOCAL_RANK"]))
+
+    if "MASTER_ADDR" not in os.environ or 'MASTER_PORT' not in os.environ:
+        os.environ["MASTER_ADDR"] = "localhost"
+        os.environ["MASTER_PORT"] = "12355"
+
     init_process_group(backend="nccl")
 
 
@@ -167,6 +174,8 @@ def get_scheduler(optimizer, config, num_steps):
             milestones = list(map(int, [1 / 10 * num_steps, 5 / 10 * num_steps, 8.5 / 10 * num_steps]))
         scheduler = lr_scheduler.MultiStepLR(
             optimizer, milestones=milestones, gamma=config.gamma)
+    elif config.scheduler == 'none':
+        scheduler = None
     else:
         ValueError("Scheduler not reconized")
     warmup_scheduler = None
@@ -254,3 +263,24 @@ def print_module_parameters(model):
     for i, module in enumerate(model.model):
         logging.info("Module {}: {}".format(i, module.__class__.__name__))
         print_num_parameters(module)
+
+
+class EmptyNotification:
+    def notify(self, *args, **kwargs):
+        pass
+
+    def start(self, *args, **kwargs):
+        pass
+
+    def stop(self, *args, **kwargs):
+        pass
+
+
+def get_notifications(enable):
+    try:
+        if enable:
+            return init_discord_bot()
+        else:
+            return EmptyNotification()
+    except ImportError:
+        return EmptyNotification()

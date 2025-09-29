@@ -52,7 +52,7 @@ class AbstractLipschitzConvLayer(nn.Conv2d, ABC):
 
     def __init__(self, in_channels: int,
                  out_channels: int,
-                 kernel_size: _size_2_t,
+                 kernel_size: _size_2_t = 3,
                  constant_sq: float = 1.0,
                  enable_alpha: bool = True,
                  stride: _size_2_t = 1,
@@ -61,6 +61,7 @@ class AbstractLipschitzConvLayer(nn.Conv2d, ABC):
                  groups: int = 1,
                  bias: bool = True,
                  padding_mode: str = "zeros",
+                 activation: Optional[nn.Module] = None,
                  device=None,
                  dtype=None, ):
         super().__init__(in_channels=in_channels,
@@ -76,6 +77,7 @@ class AbstractLipschitzConvLayer(nn.Conv2d, ABC):
                          dtype=dtype)
         factory_kwargs = {"device": device, "dtype": dtype}
 
+        self.activation = activation
         self.register_buffer(
             "identity", torch.eye(in_channels, **factory_kwargs)
         )
@@ -201,39 +203,42 @@ class AbstractLipschitzConvLayer(nn.Conv2d, ABC):
 
         return output
 
-    def forward(self, input: Tensor, *args) -> Tuple[Tensor, Tensor, Tensor]:
+    def forward(self, input: Tensor, *args) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor, Tensor]:
         B, C_in, H, W = input.shape
 
         Wf_orig, H_fft, Wf_fft = self.spectral_norm_frequency(H, W)
 
-        Wf_norm, d_inv = self.process(Wf_orig, *args)
+        Wf_norm, d_inv, omega_r = self.process(Wf_orig, *args)
 
         output = self.circular_convolution(input, H, W, Wf_norm, H_fft, Wf_fft)
 
-        return output, Wf_norm, d_inv
+        if self.activation:
+            output = self.activation(output)
+
+        return output, Wf_norm, d_inv, self.alpha, omega_r, self.constant
 
 
 class FirstLipschitzConvLayer(AbstractLipschitzConvLayer):
-    def process(self, Wf):
+    def process(self, Wf: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
         omega, W, R = self.scale_w(Wf)
 
         W = self.constant * W
 
         d_inv = omega / (self.constant_sq * self.alpha)
 
-        self.omega_r = torch.linalg.cholesky(omega, upper=False)
+        omega_r = torch.linalg.cholesky(omega, upper=False)
 
-        return W, d_inv
+        return W, d_inv, omega_r
 
 
 class InnerWeightLipschitzConvLayer(AbstractLipschitzConvLayer):
-    def process(self, Wf: Tensor, prev_layer: Union[FirstLipschitzConvLayer, "InnerWeightLipschitzConvLayer"]) -> \
-            Tuple[Tensor, Tensor]:
+    def process(self, Wf: Tensor, prev_alpha: Tensor, prev_omega_r: Tensor, prev_constant: Tensor) -> \
+            Tuple[Tensor, Tensor, Tensor]:
         _, W, _ = self.scale_w(Wf)
 
-        W = torch.linalg.solve_triangular(prev_layer.omega_r, W, upper=False, left=False)
+        W = torch.linalg.solve_triangular(prev_omega_r, W, upper=False, left=False)
 
-        scale = prev_layer.alpha.sqrt() * prev_layer.constant * self.constant
+        scale = prev_alpha.sqrt() * prev_constant * self.constant
         div_scale = self.constant_sq * self.alpha
 
         W = scale * W
@@ -242,9 +247,9 @@ class InnerWeightLipschitzConvLayer(AbstractLipschitzConvLayer):
 
         d_inv = omega / div_scale
 
-        self.omega_r = torch.linalg.cholesky(omega, upper=False)
+        omega_r = torch.linalg.cholesky(omega, upper=False)
 
-        return W, d_inv
+        return W, d_inv, omega_r
 
 
 class LastLipschitzConvLayer(AbstractLipschitzConvLayer):
@@ -256,17 +261,35 @@ class LastLipschitzConvLayer(AbstractLipschitzConvLayer):
 
         return W
 
-    def forward(self, input: Tensor, sigma_r: Tensor, prev_layer: InnerWeightLipschitzConvLayer) -> Tuple[
+    def forward(self, input: Tensor, sigma_r: Tensor, prev_alpha: Tensor, prev_omega_r: Tensor) -> Tuple[
         Tensor, Tensor]:
         B, C_in, H, W = input.shape
 
         Wf_orig, H_fft, Wf_fft = self.spectral_norm_frequency(H, W)
 
-        prev_alpha = prev_layer.alpha
-        prev_r = prev_layer.omega_r
+        prev_alpha = prev_alpha
+        prev_r = prev_omega_r
 
         Wf_norm = self.process(Wf_orig, sigma_r, prev_r, prev_alpha)
 
         output = self.circular_convolution(input, H, W, Wf_norm, H_fft, Wf_fft)
 
         return output, Wf_norm
+
+
+class FirstSequentialLipschitzConvLayer(AbstractLipschitzConvLayer):
+    def process(self, Wf: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
+        _, W, _ = self.scale_w(Wf)
+
+        scale = self.constant
+        div_scale = self.constant_sq * self.alpha
+
+        W = scale * W
+
+        omega = self.sum_weight(Wf)
+
+        d_inv = omega / div_scale
+
+        omega_r = torch.linalg.cholesky(omega, upper=False)
+
+        return W, d_inv, omega_r

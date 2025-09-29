@@ -1,7 +1,7 @@
 from typing import Union, List, Sequence
 
 import torch
-from torch import nn
+from torch import nn, Tensor
 from torch.nn import ModuleList, Module, ReLU
 
 from models.linear_layers import FirstLipschitzLinearLayer, LastLipschitzLinearLayer, InnerWeightLipschitzLinearLayer, \
@@ -17,6 +17,7 @@ class DeepLipschitzLinearResNet(nn.Module):
     def __init__(self, in_features: int, out_features: int, layers_widths: Sequence[int],
                  activation: Union[Module, List[Module]] = None, lipschitz_constant: float = 1.0,
                  enable_alpha: bool = True,
+                 use_safe_cholesky: bool = False,
                  device: Union[str, torch.device] = 'cuda', dtype=None) -> None:
         super().__init__()
 
@@ -24,6 +25,7 @@ class DeepLipschitzLinearResNet(nn.Module):
         assert in_features > 0, "The input width needs to be larger than 0"
         assert out_features > 0, "The output width needs to be larger than 0"
 
+        self.cholesky_function = safe_cholesky if use_safe_cholesky else torch.linalg.cholesky
         self.enable_alpha = enable_alpha
         self.lipschitz_constant = lipschitz_constant
         self.lipschitz_constant_sq = lipschitz_constant * lipschitz_constant
@@ -79,7 +81,7 @@ class DeepLipschitzLinearResNet(nn.Module):
 
         # self.spectral_norm = SpectralNorm(self.B.identity)
 
-    def compute_b(self, x, sigma_lower, a_weight, last_layer: InnerWeightLipschitzLinearLayer):
+    def compute_b(self, x: Tensor, sigma_lower: Tensor, a_weight: Tensor, prev_alpha: Tensor, prev_omega_r: Tensor):
         # inner_inverse = torch.cholesky_inverse(prev_r, upper=True)
         # max_singular = torch.sqrt(2 * self.spectral_norm(inner_inverse))
 
@@ -87,21 +89,19 @@ class DeepLipschitzLinearResNet(nn.Module):
 
         scaling = self.B.identity_out + left @ left.T
 
-        R_sigma = safe_cholesky(scaling, upper=True)
+        R_sigma = self.cholesky_function(scaling, upper=True)
 
-        second, b_weight = self.B(x, R_sigma, last_layer)
+        second, b_weight = self.B(x, R_sigma, prev_alpha, prev_omega_r)
 
         return second, b_weight
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        first, a_weight, d_inv = self.A(x)
+        first, a_weight, d_inv, prev_alpha, prev_omega_r, prev_constant = self.A(x)
 
         gamma = self.A.identity
         sigma_lower = None
 
         current_input = x
-
-        prev_layer = self.A
 
         # for i, layer in enumerate(self.layers):
         for layer in self.layers:
@@ -109,7 +109,8 @@ class DeepLipschitzLinearResNet(nn.Module):
 
             # d_inv_prev = d_inv
 
-            current_input, c_weight, d_inv = layer(current_input, prev_layer)
+            current_input, c_weight, d_inv, prev_alpha, prev_omega_r, prev_constant = layer(current_input, prev_alpha,
+                                                                                            prev_omega_r, prev_constant)
 
             # with torch.no_grad():
             #     R_inv = torch.linalg.solve_triangular(prev_layer.omega_r, layer.identity, upper=True)
@@ -140,9 +141,7 @@ class DeepLipschitzLinearResNet(nn.Module):
 
             current_input = self.activation(current_input)
 
-            prev_layer = layer
-
-        second, b_weight = self.compute_b(current_input, sigma_lower, a_weight, self.layers[-1])
+        second, b_weight = self.compute_b(current_input, sigma_lower, a_weight, prev_alpha, prev_omega_r)
 
         return first + second
 

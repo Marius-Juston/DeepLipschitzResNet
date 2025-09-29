@@ -243,3 +243,29 @@ class PositiveSq(torch.nn.Module):
 
     def right_inverse(self, A: torch.Tensor) -> torch.Tensor:
         return (A - self.eps).sqrt()
+
+
+def safe_cholesky(A: torch.Tensor, upper=False, eps=1e-4, max_tries=5):
+    res, info = torch.linalg.cholesky_ex(A, upper=upper)
+
+    if info.any():
+        A64 = A.to(torch.float64)
+
+        A_sym = (A64 + A64.mT) / 2
+
+        L, Q = torch.linalg.eigh(A_sym)
+
+        A_sym = torch.dist(Q @ torch.diag_embed(L).clamp(min=1e-4, max=1e3) @ Q.mT, A)
+
+        for i in range(0, max_tries):
+            try:
+                jitter = eps * (10 ** i)
+
+                return torch.linalg.cholesky(A_sym + jitter * torch.eye(A.size(-1), device=A.device, dtype=A.dtype),
+                                             upper=upper).to(A.dtype)
+            except RuntimeError:
+                logging.error(f"Chokesy failed (trial {i}: {eps}): {traceback.format_exc()}")
+
+        raise ValueError(f"Unable to perform Cholesky.\n{'\n'.join(traceback.format_stack())}")
+
+    return res

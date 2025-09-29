@@ -2,8 +2,8 @@ import numpy as np
 import torch.nn.functional as F
 from torch import nn
 
-from models.cnn_model import DeepLipschitzConvResNet
-from models.linear_model import DeepLipschitzLinearResNet
+from models.cnn_model import DeepLipschitzConvResNet, DeepLipschitzConvSequential
+from models.linear_model import DeepLipschitzSequential
 
 
 class PaddingChannels(nn.Module):
@@ -34,14 +34,11 @@ class LipschitzNetwork(nn.Module):
         super(LipschitzNetwork, self).__init__()
 
         self.n_conv: int = config.n_conv
-        self.n_interior_conv: int = config.n_interior_conv
         self.n_dense: int = config.n_dense
-        self.n_interior_dense: int = config.n_interior_dense
         self.cin: int = config.w
         self.conv_inner_dim: int = config.conv_inner_dim
         self.dense_inner_dim: int = config.dense_inner_dim
         self.n_classes: int = n_classes
-        self.dense_next_layer: int = config.dense_next_layer
 
         if config.dataset == 'tiny-imagenet':
             imsize = 64
@@ -53,10 +50,16 @@ class LipschitzNetwork(nn.Module):
             PaddingChannels(self.cin, 3, 'zero')
         )
 
-        inner_conv_layers = [self.conv_inner_dim] * self.n_interior_conv
+        inner_conv_layers = [self.conv_inner_dim] * self.n_conv
 
-        for _ in range(self.n_conv):
-            self.model.append(DeepLipschitzConvResNet(self.cin, self.cin, inner_conv_layers, device=device))
+        if config.linear_conv:
+            conv_model = DeepLipschitzConvSequential
+        else:
+            conv_model = DeepLipschitzConvResNet
+
+        self.model.append(
+            conv_model(self.cin, self.cin, inner_conv_layers, use_safe_cholesky=config.safe_cholesky,
+                       device=device))
 
         self.model.append(nn.AvgPool2d(4, divisor_override=4))
 
@@ -68,15 +71,13 @@ class LipschitzNetwork(nn.Module):
         else:
             raise ValueError("The dataset must be 'cifar10', 'cifar100' or 'tiny-imagenet'")
 
-        inner_linear_layers = [self.conv_inner_dim] * self.n_interior_conv
+        inner_linear_layers = [self.conv_inner_dim] * self.n_dense
+        #
+        # self.model.append(
+        #     DeepLipschitzLinearResNet(in_channels, self.n_classes, inner_linear_layers,
+        #                               use_safe_cholesky=config.safe_cholesky, device=device))
 
-        for _ in range(self.n_dense):
-            self.model.append(
-                DeepLipschitzLinearResNet(in_channels, self.dense_next_layer, inner_linear_layers, device=device))
-
-            in_channels = self.dense_next_layer
-
-        self.model.append(DeepLipschitzLinearResNet(in_channels, self.n_classes, inner_linear_layers, device=device))
+        self.model.append(DeepLipschitzSequential(in_channels, self.n_classes, inner_linear_layers, device=device))
 
         self.model = nn.Sequential(*self.model)
 

@@ -11,7 +11,7 @@ from matplotlib import pyplot as plt
 from torch.nn import Flatten
 
 from linear_train import print_num_parameters, train
-from models.cnn_model import DeepLipschitzConvResNet
+from models.cnn_model import DeepLipschitzConvSequential, DeepLipschitzConvResNet
 from models.linear_model import DeepLipschitzLinearResNet
 
 
@@ -32,14 +32,24 @@ def target_g1(X):
 
 
 class LipschitzNetwork(nn.Module):
-    def __init__(self, in_channels=1, hidden=32, device=None):
+    def __init__(self, in_channels=1, hidden=32, linear=True, device=None):
         super().__init__()
-        self.conv = nn.Sequential(
-            DeepLipschitzConvResNet(
-                in_channels=in_channels, out_channels=1, layers_widths=[hidden, hidden, hidden, hidden],
-                kernel_size=3, padding=1, device=device, dtype=torch.float32,
-            ), Flatten()
-        )
+
+        if linear:
+            self.conv = nn.Sequential(
+                DeepLipschitzConvSequential(
+                    in_channels=in_channels, out_channels=1, layers_widths=[hidden, hidden, hidden, hidden],
+                    kernel_size=3, padding=1, device=device, dtype=torch.float32,
+                ), Flatten()
+            )
+        else:
+            self.conv = nn.Sequential(
+                DeepLipschitzConvResNet(
+                    in_channels=in_channels, out_channels=1, layers_widths=[hidden, hidden, hidden, hidden],
+                    kernel_size=3, padding=1, device=device, dtype=torch.float32,
+                ), Flatten()
+            )
+
         self.fc = DeepLipschitzLinearResNet(256, 1, [hidden, hidden])
 
     def forward(self, x):
