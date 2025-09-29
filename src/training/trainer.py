@@ -54,12 +54,36 @@ class Trainer:
             [ckpt.split('/')[-1] for ckpt in checkpoints], key=get_model_id)
         path_last_ckpt = join(self.train_dir, 'checkpoints', checkpoints[-1])
         self.checkpoint = torch.load(path_last_ckpt, map_location=self.model.device, weights_only=False)
-        self.model.load_state_dict(self.checkpoint['model_state_dict'])
+
+        new_config = self.checkpoint['config']
+
+        if new_config.compile != self.config.compile:
+            new_config.compile = self.config.compile
+
+            if not self.config.compile:
+                module = self.checkpoint['model_state_dict']
+
+                module = {
+                    k.replace('_orig_mod.', ''): v for k, v in module.items()
+                }
+            else:
+                module = self.checkpoint['model_state_dict']
+
+                module = {
+                    k.replace('module.', 'module._orig_mod.'): v for k, v in module.items()
+                }
+
+            new_config.compile = self.config.compile
+        else:
+            module = self.checkpoint['model_state_dict']
+
+        self.model.load_state_dict(module)
+
         self.optimizer.load_state_dict(self.checkpoint['optimizer_state_dict'])
         self.saved_ckpts.add(self.checkpoint['epoch'])
         self.start_epoch = self.checkpoint['epoch']
         self.start_global_step = self.checkpoint['global_step']
-        self.config = self.checkpoint['config']
+        # self.config = new_config
 
         if callable(getattr(self.scheduler, 'state_dict', None)):
             self.scheduler.load_state_dict(self.checkpoint['scheduler'])
@@ -67,12 +91,14 @@ class Trainer:
         if self.local_rank == 0:
             logging.info('Loading checkpoint {}'.format(checkpoints[-1]))
 
-    def _save_ckpt(self, step, epoch, final=False, best=False):
+    def _save_ckpt(self, step, epoch, final=False, best=False, failure=False):
         """Save ckpt in train directory."""
         freq_ckpt_epochs = self.config.save_checkpoint_epochs
-        if ((epoch % freq_ckpt_epochs == 0 and self.is_master and epoch not in self.saved_ckpts)
-                or (final and self.is_master) or best):
-            prefix = "model" if not best else "best_model"
+        if failure or best or (epoch % freq_ckpt_epochs == 0 and self.is_master and epoch not in self.saved_ckpts) or (
+                final and self.is_master):
+            prefix = "best_model" if best else "model"
+            prefix = f'failure_{self.local_rank}' if failure else prefix
+
             ckpt_name = f"{prefix}.ckpt-{step}.pth"
             ckpt_path = join(self.train_dir, 'checkpoints', ckpt_name)
             if exists(ckpt_path) and not best: return
@@ -269,6 +295,9 @@ class Trainer:
 
         self.local_notification(f"Starting training step: {self.start_global_step} epoch: {self.start_epoch}")
 
+        start_approx_step = global_step + self.start_approx
+        end_approx_step = global_step + self.end_approx
+
         self.best_checkpoint = None
         self.best_accuracy = 0
         for epoch_id in range(start_epoch, self.config.epochs):
@@ -317,6 +346,8 @@ class Trainer:
                 self.summary_writer.add_hparams(self.hparams_dict, {
                     'hparam/accuracy': accuracy
                 }, run_name=self.run_name, global_step=epoch)
+
+                self._save_ckpt(0, 0, best=True)
 
         self.model.train()
 
