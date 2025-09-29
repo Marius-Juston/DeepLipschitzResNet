@@ -378,8 +378,10 @@ class Trainer:
         loss.backward()
         self.process_gradients(step)
         self.optimizer.step()
-        with self.warmup.dampening() if self.warmup else nullcontext():
-            self.scheduler.step(step)
+
+        if self.scheduler:
+            with self.warmup.dampening() if self.warmup else nullcontext():
+                self.scheduler.step(step)
 
         seconds_per_batch = time.time() - batch_start_time
         examples_per_second = self.batch_size / seconds_per_batch

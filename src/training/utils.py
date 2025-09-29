@@ -167,6 +167,8 @@ def get_scheduler(optimizer, config, num_steps):
             milestones = list(map(int, [1 / 10 * num_steps, 5 / 10 * num_steps, 8.5 / 10 * num_steps]))
         scheduler = lr_scheduler.MultiStepLR(
             optimizer, milestones=milestones, gamma=config.gamma)
+    elif config.scheduler == 'none':
+        scheduler = None
     else:
         ValueError("Scheduler not reconized")
     warmup_scheduler = None
@@ -236,7 +238,7 @@ class TriangularLRScheduler:
         self.optimizer.param_groups[0].update(lr=lr)
 
 
-def print_num_parameters(model : torch.nn.Module):
+def print_num_parameters(model: torch.nn.Module):
     table = PrettyTable(["Modules", "Parameters"])
     total_params = 0
     for name, parameter in model.named_parameters():
@@ -248,6 +250,7 @@ def print_num_parameters(model : torch.nn.Module):
     logging.info(table)
     logging.info(f"Total Trainable Params: {total_params}")
     return total_params
+
 
 def print_module_parameters(model):
     for i, module in enumerate(model.model):
