@@ -138,8 +138,9 @@ def main():
 
     print(model)
 
-    save_folder = '/home/mjuston2/Documents/DeepLipschitzResNet/runs/general_cnn_trainer_20250923_020626'
-    # save_folder = None
+    # save_folder = '/home/mjuston2/Documents/DeepLipschitzResNet/runs/general_cnn_trainer_20250923_020626'
+    # save_folder = '/home/mjuston2/Documents/DeepLipschitzResNet/runs/general_cnn_lipschitz_trainer_20250924_121210'
+    save_folder = None
 
     if save_folder is not None:
         data = torch.load(f"{save_folder}/best.pt", map_location=device)

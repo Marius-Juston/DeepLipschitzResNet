@@ -210,8 +210,7 @@ class Trainer:
         else:
             self.batch_size = self.config.batch_size
 
-        if self.is_distributed:
-            utils.setup_distributed_training()
+        utils.setup_distributed_training()
 
         self.global_batch_size = self.batch_size * self.world_size
         logging.info('World Size={} => Total batch size {}'.format(

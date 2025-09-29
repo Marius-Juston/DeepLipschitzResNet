@@ -134,7 +134,7 @@ class DeepLipschitzLinearResNet(nn.Module):
                 sigma_lower = T
             else:
                 # Instead of using custom CholeskyRankK update this is computationally much faster
-                sigma_lower = torch.linalg.cholesky(sigma_lower @ sigma_lower.T + T @ T.T, upper=False)
+                sigma_lower = safe_cholesky(sigma_lower @ sigma_lower.T + T @ T.T, upper=False)
                 # sigma_lower = cholesky_rank_k(sigma_lower, T)
 
             gamma = T @ c_weight.T
@@ -202,8 +202,15 @@ class DeepLipschitzSequential(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         current_input = x
         d_sqrt = self.lipschitz_constant * self.layers[0].identity
+        prev_alpha = torch.tensor(1.0, **self.factory_kwargs)
+        prev_const = torch.tensor(1.0, **self.factory_kwargs)
 
         for layer in self.layers:
-            current_input, d_sqrt = layer(current_input, d_sqrt)
+            layer: LinearLipschitz
+
+            current_input, d_sqrt = layer(current_input, d_sqrt, prev_alpha, prev_const)
+
+            prev_const = layer.constant
+            prev_alpha = layer.alpha
 
         return current_input
