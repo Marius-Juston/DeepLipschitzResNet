@@ -39,9 +39,11 @@ class Trainer:
     def stop(self):
         self.notification.stop()
 
-    def _load_state(self):
+    def _load_state(self, checkpoint_directory=None):
         # load last checkpoint
-        checkpoint_directory = join(self.train_dir, 'checkpoints')
+
+        if checkpoint_directory is None:
+            checkpoint_directory = join(self.train_dir, 'checkpoints', str(self.config.seed))
 
         checkpoints = glob.glob(join(checkpoint_directory, 'model.ckpt-*.pth'))
 
@@ -52,7 +54,7 @@ class Trainer:
         get_model_id = lambda x: int(x.strip('.pth').strip('model.ckpt-'))
         checkpoints = sorted(
             [ckpt.split('/')[-1] for ckpt in checkpoints], key=get_model_id)
-        path_last_ckpt = join(self.train_dir, 'checkpoints', checkpoints[-1])
+        path_last_ckpt = join(checkpoint_directory, checkpoints[-1])
         self.checkpoint = torch.load(path_last_ckpt, map_location=self.model.device, weights_only=False)
 
         new_config = self.checkpoint['config']
@@ -100,7 +102,7 @@ class Trainer:
             prefix = f'failure_{self.local_rank}' if failure else prefix
 
             ckpt_name = f"{prefix}.ckpt-{step}.pth"
-            ckpt_path = join(self.train_dir, 'checkpoints', ckpt_name)
+            ckpt_path = join(self.train_dir, 'checkpoints', str(self.config.seed), ckpt_name)
             if exists(ckpt_path) and not best: return
             self.saved_ckpts.add(epoch)
 
@@ -283,13 +285,13 @@ class Trainer:
         self.start_global_step = 0
 
     def load(self):
-        checkpoints_path = join(self.train_dir, 'checkpoints')
+        checkpoints_path = join(self.train_dir, 'checkpoints', str(self.config.seed))
 
         if not os.path.exists(checkpoints_path):
             logging.warning(f'The checkpoint path {checkpoints_path} does not exist. Not loading model')
         else:
             logging.warning(f'Loading from path {checkpoints_path}.')
-            self._load_state()
+            self._load_state(checkpoints_path)
 
     def train(self):
         # training loop

@@ -179,7 +179,7 @@ if __name__ == '__main__':
     elif config.mode == 'train' and config.train_dir is not None:
         config.train_dir = f'{path}/{config.train_dir}/{config.dataset}'
         os.makedirs(config.train_dir, exist_ok=True)
-        os.makedirs(f'{config.train_dir}/checkpoints', exist_ok=True)
+        os.makedirs(f'{config.train_dir}/checkpoints/{config.seed}', exist_ok=True)
     elif config.mode in eval_mode and config.train_dir is not None:
         config.train_dir = f'{path}/{config.train_dir}/{config.dataset}'
     elif config.mode in eval_mode and config.train_dir is None:
