@@ -55,8 +55,8 @@ def main(config):
 
         discord_bot.notify(traceback.format_exc(), code=True, temporary=False)
     finally:
-        destroy_process_group()
         discord_bot.stop()
+        destroy_process_group()
 
 
 def model_choice(config):
