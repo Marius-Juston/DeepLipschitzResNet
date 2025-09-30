@@ -59,6 +59,12 @@ To install the prerelease:
 pip3 install --pre -U torch torchvision --index-url https://download.pytorch.org/whl/nightly/cu128
 ```
 
+# Evaluation
+
+To evaluate the network all the weights and training Tensorboard plots are available in https://huggingface.co/SuperComputer/LDLT
+
+You can download the specific weights used for the training in the paper and validate the results yourself as well as the training run.
+
 ## Tensorboard
 
 ### For remote server
