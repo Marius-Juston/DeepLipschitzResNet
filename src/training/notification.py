@@ -103,7 +103,7 @@ class MyClient(discord.Client):
 
         self.ready_event.set()
 
-    async def _notify_async(self, message: str, code=False, char_limit=1900):
+    async def _notify_async(self, message: str, code=False, temporary=True, char_limit=1900):
         logging.info(f"Starting async notify task to {len(self.users_list)} users")
 
         for user_id, guild_id, channel_id in self.users_list:
@@ -131,7 +131,7 @@ class MyClient(discord.Client):
 
                 message = f'{prefix}{message[message_length:]}'
 
-                await channel.send(message, delete_after=30.0)
+                await channel.send(message, delete_after=30.0 if temporary else None)
                 logging.debug(f"Sent notify to user {user_id} in channel {channel_id}")
             except discord.Forbidden:
                 logging.warning(f"Forbidden to send to channel {channel_id} - removing subscription entry")
@@ -144,13 +144,13 @@ class MyClient(discord.Client):
             except Exception:
                 logging.exception(f"Failed to send message to {channel_id}")
 
-    def notify(self, message: str, code: bool = False):
+    def notify(self, message: str, code: bool = False, temporary=True):
         if not hasattr(self, "loop") or self.loop is None:
             raise RuntimeError(
                 "Bot loop is not available yet; start the bot and wait for ready_event before calling notify()")
 
         # schedule the async method to run inside the bot’s event loop
-        fut = asyncio.run_coroutine_threadsafe(self._notify_async(message, code=code), self.loop)
+        fut = asyncio.run_coroutine_threadsafe(self._notify_async(message, code=code, temporary=temporary), self.loop)
         return fut
 
 
@@ -193,7 +193,7 @@ class Notification:
 
         logging.info("Discord client is ready.")
 
-    def notify(self, message: str, wait: bool = False, code=False, timeout: Optional[float] = None):
+    def notify(self, message: str, wait: bool = False, code=False, temporary=True, timeout: Optional[float] = None):
         """
         Synchronous notify wrapper.
         If wait=True, block until the send finishes (or timeout).
@@ -202,17 +202,22 @@ class Notification:
         if self.disabled:
             return None
 
-        started = self.ready.wait(timeout=timeout)
-        if not started:
-            raise TimeoutError("Bot did not signal ready within timeout")
+        try:
 
-        future = self.client.notify(message, code=code)
-        if wait:
-            return future.result(timeout=timeout)
+            started = self.ready.wait(timeout=timeout)
+            if not started:
+                raise TimeoutError("Bot did not signal ready within timeout")
 
-        logging.info("Message has been sent, non blocking")
+            future = self.client.notify(message, code=code, temporary=temporary)
+            if wait:
+                return future.result(timeout=timeout)
 
-        return future
+            logging.info("Message has been sent, non blocking")
+
+            return future
+        except Exception as e:
+            logging.exception(e)
+            return None
 
     def stop(self, timeout: Optional[float] = 10.0):
         """

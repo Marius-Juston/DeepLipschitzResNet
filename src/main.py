@@ -51,11 +51,9 @@ def main(config):
             evaluate = Evaluator(config)
             evaluate()
     except Exception as e:
-        error = traceback.format_exc()
+        logging.exception(e)
 
-        logging.error(error)
-
-        discord_bot.notify(error, code=True)
+        discord_bot.notify(traceback.format_exc(), code=True, temporary=False)
     finally:
         destroy_process_group()
         discord_bot.stop()

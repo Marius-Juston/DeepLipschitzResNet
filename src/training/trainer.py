@@ -296,7 +296,7 @@ class Trainer:
         # training loop
         start_epoch, global_step = self.start_epoch, self.start_global_step
 
-        self.local_notification(f"Starting training step: {self.start_global_step} epoch: {self.start_epoch}")
+        self.local_notification(f"Starting training step: {self.start_global_step} epoch: {self.start_epoch}", temporary=False)
 
         start_approx_step = global_step + self.start_approx
         end_approx_step = global_step + self.end_approx
@@ -322,13 +322,13 @@ class Trainer:
             if epoch_id % self.config.discord_epoch_frequency == 0:
                 self.local_notification(f"Reached epoch {epoch_id}: {latest_accuracy}")
 
-        self.local_notification("Finished training")
         self._save_ckpt(global_step, epoch_id, final=True)
+        self.local_notification("Finished training", temporary=False)
         logging.info("Done training -- epoch limit reached.")
 
     @local_only
-    def local_notification(self, message, code=False):
-        self.notification.notify(message, code=code)
+    def local_notification(self, message, code=False, temporary=True):
+        self.notification.notify(message, code=code, temporary=temporary)
 
     @torch.no_grad()
     def validate(self, dataloader, sampler, epoch):
@@ -346,6 +346,7 @@ class Trainer:
         if self.local_rank == 0:
             if accuracy > self.best_accuracy:
                 logging.info(f"New best validation accuracy: {accuracy}")
+                self.local_notification(f"New best validation accuracy: {accuracy}")
                 self.best_accuracy = accuracy
 
                 self.summary_writer.add_hparams(self.hparams_dict, {
