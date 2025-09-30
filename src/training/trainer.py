@@ -329,7 +329,7 @@ class Trainer:
                 self.local_notification(f"Reached epoch {epoch_id}: {latest_accuracy}")
 
         self._save_ckpt(global_step, epoch_id, final=True)
-        self.local_notification("Finished training", temporary=False)
+        self.local_notification(f"Finished training. Best accuracy ({self.best_checkpoint}) {self.best_accuracy}", temporary=False)
         logging.info("Done training -- epoch limit reached.")
 
     @local_only
@@ -351,9 +351,10 @@ class Trainer:
 
         if self.local_rank == 0:
             if accuracy > self.best_accuracy:
-                logging.info(f"New best validation accuracy ({epoch}): {accuracy}")
-                self.local_notification(f"New best validation accuracy ({epoch}): {accuracy}")
+                logging.info(f"New best validation accuracy ({epoch}, {global_step}): {accuracy}")
+                self.local_notification(f"New best validation accuracy ({epoch}, {global_step}): {accuracy}")
                 self.best_accuracy = accuracy
+                self.best_checkpoint = global_step
 
                 self.summary_writer.add_hparams(self.hparams_dict, {
                     'hparam/accuracy': accuracy
