@@ -101,7 +101,11 @@ class Trainer:
             prefix = "best_model" if best else "model"
             prefix = f'failure_{self.local_rank}' if failure else prefix
 
-            ckpt_name = f"{prefix}.ckpt-{step}.pth"
+            if best:
+                ckpt_name = f"{prefix}.pth"
+            else:
+                ckpt_name = f"{prefix}.ckpt-{step}.pth"
+
             ckpt_path = join(self.train_dir, 'checkpoints', str(self.config.seed), ckpt_name)
             if exists(ckpt_path) and not best: return
             self.saved_ckpts.add(epoch)
@@ -318,7 +322,7 @@ class Trainer:
                     self._print_approximated_train_time(start_time)
                 global_step += 1
             if epoch_id % self.config.validate_every == 0:
-                latest_accuracy = self.validate(self.validator_data_loader, self.validator_sampler, epoch_id)
+                latest_accuracy = self.validate(self.validator_data_loader, self.validator_sampler, global_step, epoch_id)
             if epoch_id % self.config.discord_epoch_frequency == 0:
                 self.local_notification(f"Reached epoch {epoch_id}: {latest_accuracy}")
 
@@ -331,7 +335,7 @@ class Trainer:
         self.notification.notify(message, code=code, temporary=temporary)
 
     @torch.no_grad()
-    def validate(self, dataloader, sampler, epoch):
+    def validate(self, dataloader, sampler, global_step, epoch):
         if self.is_distributed:
             sampler.set_epoch(epoch)
 
@@ -345,15 +349,15 @@ class Trainer:
 
         if self.local_rank == 0:
             if accuracy > self.best_accuracy:
-                logging.info(f"New best validation accuracy: {accuracy}")
-                self.local_notification(f"New best validation accuracy: {accuracy}")
+                logging.info(f"New best validation accuracy ({epoch}): {accuracy}")
+                self.local_notification(f"New best validation accuracy ({epoch}): {accuracy}")
                 self.best_accuracy = accuracy
 
                 self.summary_writer.add_hparams(self.hparams_dict, {
                     'hparam/accuracy': accuracy
                 }, run_name=self.run_name, global_step=epoch)
 
-                self._save_ckpt(0, 0, best=True)
+                self._save_ckpt(global_step, epoch, best=True)
 
         self.model.train()
 
