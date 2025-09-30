@@ -51,15 +51,12 @@ def main(config):
             evaluate = Evaluator(config)
             evaluate()
     except Exception as e:
-        error = traceback.format_exc()
+        logging.exception(e)
 
-        logging.error(error)
-
-        discord_bot.notify(error, code=True)
+        discord_bot.notify(traceback.format_exc(), code=True, temporary=False)
     finally:
         destroy_process_group()
         discord_bot.stop()
-
 
 
 def model_choice(config):
@@ -179,7 +176,7 @@ if __name__ == '__main__':
     elif config.mode == 'train' and config.train_dir is not None:
         config.train_dir = f'{path}/{config.train_dir}/{config.dataset}'
         os.makedirs(config.train_dir, exist_ok=True)
-        os.makedirs(f'{config.train_dir}/checkpoints', exist_ok=True)
+        os.makedirs(f'{config.train_dir}/checkpoints/{config.seed}', exist_ok=True)
     elif config.mode in eval_mode and config.train_dir is not None:
         config.train_dir = f'{path}/{config.train_dir}/{config.dataset}'
     elif config.mode in eval_mode and config.train_dir is None:

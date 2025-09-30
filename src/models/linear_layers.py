@@ -190,7 +190,8 @@ class LinearLipschitz(AbstractLipschitzLinearLayer):
 
         self.activation = activation
 
-    def forward(self, input: Tensor, prev_omega_r: Tensor, prev_alpha: Tensor, pre_constant: Tensor) -> Tuple[Tensor, Tensor]:
+    def forward(self, input: Tensor, prev_omega_r: Tensor, prev_alpha: Tensor, pre_constant: Tensor) -> Tuple[
+        Tensor, Tensor]:
         _, W, _ = self.scale_w()
 
         W = torch.linalg.solve_triangular(prev_omega_r, W, upper=False, left=False)

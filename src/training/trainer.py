@@ -39,9 +39,11 @@ class Trainer:
     def stop(self):
         self.notification.stop()
 
-    def _load_state(self):
+    def _load_state(self, checkpoint_directory=None):
         # load last checkpoint
-        checkpoint_directory = join(self.train_dir, 'checkpoints')
+
+        if checkpoint_directory is None:
+            checkpoint_directory = join(self.train_dir, 'checkpoints', str(self.config.seed))
 
         checkpoints = glob.glob(join(checkpoint_directory, 'model.ckpt-*.pth'))
 
@@ -52,7 +54,7 @@ class Trainer:
         get_model_id = lambda x: int(x.strip('.pth').strip('model.ckpt-'))
         checkpoints = sorted(
             [ckpt.split('/')[-1] for ckpt in checkpoints], key=get_model_id)
-        path_last_ckpt = join(self.train_dir, 'checkpoints', checkpoints[-1])
+        path_last_ckpt = join(checkpoint_directory, checkpoints[-1])
         self.checkpoint = torch.load(path_last_ckpt, map_location=self.model.device, weights_only=False)
 
         new_config = self.checkpoint['config']
@@ -99,8 +101,12 @@ class Trainer:
             prefix = "best_model" if best else "model"
             prefix = f'failure_{self.local_rank}' if failure else prefix
 
-            ckpt_name = f"{prefix}.ckpt-{step}.pth"
-            ckpt_path = join(self.train_dir, 'checkpoints', ckpt_name)
+            if best:
+                ckpt_name = f"{prefix}.pth"
+            else:
+                ckpt_name = f"{prefix}.ckpt-{step}.pth"
+
+            ckpt_path = join(self.train_dir, 'checkpoints', str(self.config.seed), ckpt_name)
             if exists(ckpt_path) and not best: return
             self.saved_ckpts.add(epoch)
 
@@ -282,19 +288,20 @@ class Trainer:
         self.start_global_step = 0
 
     def load(self):
-        checkpoints_path = join(self.train_dir, 'checkpoints')
+        checkpoints_path = join(self.train_dir, 'checkpoints', str(self.config.seed))
 
         if not os.path.exists(checkpoints_path):
             logging.warning(f'The checkpoint path {checkpoints_path} does not exist. Not loading model')
         else:
             logging.warning(f'Loading from path {checkpoints_path}.')
-            self._load_state()
+            self._load_state(checkpoints_path)
 
     def train(self):
         # training loop
         start_epoch, global_step = self.start_epoch, self.start_global_step
 
-        self.local_notification(f"Starting training step: {self.start_global_step} epoch: {self.start_epoch}")
+        self.local_notification(f"Starting training step: {self.start_global_step} epoch: {self.start_epoch}",
+                                temporary=False)
 
         start_approx_step = global_step + self.start_approx
         end_approx_step = global_step + self.end_approx
@@ -316,20 +323,21 @@ class Trainer:
                     self._print_approximated_train_time(start_time)
                 global_step += 1
             if epoch_id % self.config.validate_every == 0:
-                latest_accuracy = self.validate(self.validator_data_loader, self.validator_sampler, epoch_id)
+                latest_accuracy = self.validate(self.validator_data_loader, self.validator_sampler, global_step,
+                                                epoch_id)
             if epoch_id % self.config.discord_epoch_frequency == 0:
                 self.local_notification(f"Reached epoch {epoch_id}: {latest_accuracy}")
 
-        self.local_notification("Finished training")
         self._save_ckpt(global_step, epoch_id, final=True)
+        self.local_notification(f"Finished training. Best accuracy ({self.best_checkpoint}) {self.best_accuracy}", temporary=False)
         logging.info("Done training -- epoch limit reached.")
 
     @local_only
-    def local_notification(self, message, code=False):
-        self.notification.notify(message, code=code)
+    def local_notification(self, message, code=False, temporary=True):
+        self.notification.notify(message, code=code, temporary=temporary)
 
     @torch.no_grad()
-    def validate(self, dataloader, sampler, epoch):
+    def validate(self, dataloader, sampler, global_step, epoch):
         if self.is_distributed:
             sampler.set_epoch(epoch)
 
@@ -343,14 +351,16 @@ class Trainer:
 
         if self.local_rank == 0:
             if accuracy > self.best_accuracy:
-                logging.info(f"New best validation accuracy: {accuracy}")
+                logging.info(f"New best validation accuracy ({epoch}, {global_step}): {accuracy}")
+                self.local_notification(f"New best validation accuracy ({epoch}, {global_step}): {accuracy}")
                 self.best_accuracy = accuracy
+                self.best_checkpoint = global_step
 
                 self.summary_writer.add_hparams(self.hparams_dict, {
                     'hparam/accuracy': accuracy
                 }, run_name=self.run_name, global_step=epoch)
 
-                self._save_ckpt(0, 0, best=True)
+                self._save_ckpt(global_step, epoch, best=True)
 
         self.model.train()
 

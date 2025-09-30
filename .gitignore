@@ -1,3 +1,13 @@
+# Training loops
+runs/
+test/figs
+trained_models/
+data/
+
+# Discord bot
+.env
+users.json
+
 outcmaes/
 all-logs/
 plot*/
