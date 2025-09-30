@@ -133,7 +133,7 @@ if __name__ == '__main__':
                         help="Enable safe cholesky computation for the compute_b function")
 
     # specific parameters for eval
-    parser.add_argument("--attack", type=str, choices=['pgd', 'autoattack'], help="Choose the attack.")
+    parser.add_argument("--attack", type=str, default='pgd', choices=['pgd', 'autoattack'], help="Choose the attack.")
     parser.add_argument("--eps", type=float, default=36)
 
     # parameters of the architectures
