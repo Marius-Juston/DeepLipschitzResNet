@@ -16,6 +16,14 @@ torchrun --standalone --nproc_per_node=4 src/main.py --dataset cifar10 --model-n
 torchrun --standalone --nproc_per_node=1 src/main.py --dataset cifar10 --model-name small --train_dir small_model --mode certified 2>&1 | tee output.txt
 ```
 
+or running
+```bash
+./train.sh                 # defaults to CIFAR10
+./train.sh cifar10         # train using CIFAR10
+./train.sh cifar100        # train using CIFAR100
+./train.sh tiny-imagenet   # train using tiny-imagenet
+```
+
 ```bash
  /home/mjuston2/anaconda3/envs/DeepLipschitzResNet/bin/python -m torch.distributed.run --standalone --nnodes=1 --nproc_per_node=gpu main.py --dataset cifar10 --model-name small --train_dir small_model
 ```
