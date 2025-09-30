@@ -13,7 +13,15 @@ train & evaluation
 torchrun --standalone --nproc_per_node=4 src/main.py --dataset cifar10 --model-name small --train_dir small_model 2>&1 | tee output.txt
 
 # Evaluation
-python3 main.py --mode certified --dataset cifar10 --model-name small --train_dir small_model
+torchrun --standalone --nproc_per_node=1 src/main.py --dataset cifar10 --model-name small --train_dir small_model --mode certified 2>&1 | tee output.txt
+```
+
+or running
+```bash
+./train.sh                 # defaults to CIFAR10
+./train.sh cifar10         # train using CIFAR10
+./train.sh cifar100        # train using CIFAR100
+./train.sh tiny-imagenet   # train using tiny-imagenet
 ```
 
 ```bash
@@ -58,6 +66,12 @@ To install the prerelease:
 ```bash
 pip3 install --pre -U torch torchvision --index-url https://download.pytorch.org/whl/nightly/cu128
 ```
+
+# Evaluation
+
+To evaluate the network all the weights and training Tensorboard plots are available in https://huggingface.co/SuperComputer/LDLT
+
+You can download the specific weights used for the training in the paper and validate the results yourself as well as the training run.
 
 ## Tensorboard
 

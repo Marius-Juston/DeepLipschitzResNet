@@ -1,4 +1,4 @@
-from typing import Union, List, Sequence
+from typing import Union, List, Sequence, Tuple
 
 import torch
 from torch import nn, Tensor
@@ -208,9 +208,26 @@ class DeepLipschitzSequential(nn.Module):
         for layer in self.layers:
             layer: LinearLipschitz
 
-            current_input, d_sqrt = layer(current_input, d_sqrt, prev_alpha, prev_const)
+            current_input, d_sqrt, _ = layer(current_input, d_sqrt, prev_alpha, prev_const)
 
             prev_const = layer.constant
             prev_alpha = layer.alpha
 
         return current_input
+
+    def last_weight(self) -> Tuple[torch.Tensor, torch.Tensor]:
+        x = torch.zeros((1, self.in_features), **self.factory_kwargs)
+
+        d_sqrt = self.lipschitz_constant * self.layers[0].identity
+        prev_alpha = torch.tensor(1.0, **self.factory_kwargs)
+        prev_const = torch.tensor(1.0, **self.factory_kwargs)
+
+        for layer in self.layers:
+            layer: LinearLipschitz
+
+            x, d_sqrt, W = layer(x, d_sqrt, prev_alpha, prev_const)
+
+            prev_const = layer.constant
+            prev_alpha = layer.alpha
+
+        return W

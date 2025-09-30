@@ -55,8 +55,8 @@ def main(config):
 
         discord_bot.notify(traceback.format_exc(), code=True, temporary=False)
     finally:
-        destroy_process_group()
         discord_bot.stop()
+        destroy_process_group()
 
 
 def model_choice(config):
@@ -82,7 +82,7 @@ if __name__ == '__main__':
     parser.add_argument("--mode", type=str, default="train", choices=['train', 'certified', 'attack'])
     parser.add_argument("--train_dir", type=str, help="Name of the training directory.")
     parser.add_argument("--data_dir", type=str, help="Name of the data directory.")
-    parser.add_argument("--dataset", type=str, default='cifar10', help="Dataset to use")
+    parser.add_argument("--dataset", type=str, default='cifar10', choices=['cifar10', 'cifar100', 'tiny-imagenet'], help="Dataset to use")
     parser.add_argument("--num_workers", type=int, default=20,
                         help="how many subprocesses to use for data loading. 0 means that the data will be loaded in the main process")
     parser.add_argument("--prefetch_factor_scale", type=int, default=2,
@@ -133,7 +133,7 @@ if __name__ == '__main__':
                         help="Enable safe cholesky computation for the compute_b function")
 
     # specific parameters for eval
-    parser.add_argument("--attack", type=str, choices=['pgd', 'autoattack'], help="Choose the attack.")
+    parser.add_argument("--attack", type=str, default='pgd', choices=['pgd', 'autoattack'], help="Choose the attack.")
     parser.add_argument("--eps", type=float, default=36)
 
     # parameters of the architectures

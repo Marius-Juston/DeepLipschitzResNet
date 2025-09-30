@@ -151,8 +151,3 @@ readers_config = {
     'cifar100': CIFAR100Reader,
     'tiny-imagenet': TinyImageNetReader
 }
-
-readers_config = {
-    'cifar10': CIFAR10Reader,
-    'cifar100': CIFAR100Reader,
-}

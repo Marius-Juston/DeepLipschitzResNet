@@ -162,6 +162,7 @@ class Notification:
         self.intents.message_content = True
         self.intents.members = True
         self.disabled = False
+        self.started = False
 
     def _run_client(self):
         if self.disabled:
@@ -192,6 +193,7 @@ class Notification:
             raise TimeoutError("Bot did not signal ready within timeout")
 
         logging.info("Discord client is ready.")
+        self.started = True
 
     def notify(self, message: str, wait: bool = False, code=False, temporary=True, timeout: Optional[float] = None):
         """
@@ -224,6 +226,9 @@ class Notification:
         Stop the bot cleanly.
         Submit client.close() to the bot loop and join the thread.
         """
+        if not self.started:
+            return
+
         if hasattr(self.client, "loop") and self.client.loop is not None:
             fut = asyncio.run_coroutine_threadsafe(self.client.close(), self.client.loop)
             try:

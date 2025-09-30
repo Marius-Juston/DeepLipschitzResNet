@@ -191,7 +191,7 @@ class LinearLipschitz(AbstractLipschitzLinearLayer):
         self.activation = activation
 
     def forward(self, input: Tensor, prev_omega_r: Tensor, prev_alpha: Tensor, pre_constant: Tensor) -> Tuple[
-        Tensor, Tensor]:
+        Tensor, Tensor, Tensor]:
         _, W, _ = self.scale_w()
 
         W = torch.linalg.solve_triangular(prev_omega_r, W, upper=False, left=False)
@@ -209,7 +209,7 @@ class LinearLipschitz(AbstractLipschitzLinearLayer):
         if self.activation:
             out = self.activation(out)
 
-        return out, omega_r
+        return out, omega_r, W
 
 
 # Taken from https://docs.pytorch.org/docs/stable/generated/torch.nn.utils.parametrizations.spectral_norm.html
