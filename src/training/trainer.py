@@ -300,7 +300,8 @@ class Trainer:
         # training loop
         start_epoch, global_step = self.start_epoch, self.start_global_step
 
-        self.local_notification(f"Starting training step: {self.start_global_step} epoch: {self.start_epoch}", temporary=False)
+        self.local_notification(f"Starting training step: {self.start_global_step} epoch: {self.start_epoch}",
+                                temporary=False)
 
         start_approx_step = global_step + self.start_approx
         end_approx_step = global_step + self.end_approx
@@ -322,7 +323,8 @@ class Trainer:
                     self._print_approximated_train_time(start_time)
                 global_step += 1
             if epoch_id % self.config.validate_every == 0:
-                latest_accuracy = self.validate(self.validator_data_loader, self.validator_sampler, global_step, epoch_id)
+                latest_accuracy = self.validate(self.validator_data_loader, self.validator_sampler, global_step,
+                                                epoch_id)
             if epoch_id % self.config.discord_epoch_frequency == 0:
                 self.local_notification(f"Reached epoch {epoch_id}: {latest_accuracy}")
 
