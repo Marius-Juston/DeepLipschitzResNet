@@ -4,7 +4,7 @@ This repository is the implementation of the paper https://arxiv.org/abs/2502.21
 
 # Experiments
 
-Experiments done with Pytorch 1.10
+Experiments were done with PyTorch 2.8,
 
 train & evaluation
 # training
