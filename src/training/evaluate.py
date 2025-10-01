@@ -150,7 +150,7 @@ class Evaluator:
                     normalized_weight[indices[idx, -1]] - normalized_weight[indices[idx, 0:-1]], dim=1, p=2)
             margins, _ = torch.sort(margins, 1)
             certified = margins[:, 0] > eps_float * lip_cst
-            running_accuracy += predicted.eq(labels.data).cpu().sum().numpy()
+            running_accuracy += predicted.eq(labels.data).sum().item()
             running_certified += torch.sum(correct & certified).item()
             running_inputs += inputs.size(0)
 
