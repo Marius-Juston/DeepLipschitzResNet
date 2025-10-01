@@ -61,7 +61,7 @@ def main(config):
 
 def model_choice(config):
     if config.model_name == 'small':
-        config = override_args(config, 20, 64, 7, 45, 1024)
+        config = override_args(config, 20, 64, 7, 45, 64)
     elif config.model_name == 'medium':
         config = override_args(config, 30, 64, 10, 60, 1024)
     elif config.model_name == 'large':

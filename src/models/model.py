@@ -71,7 +71,7 @@ class LipschitzNetwork(nn.Module):
         else:
             raise ValueError("The dataset must be 'cifar10', 'cifar100' or 'tiny-imagenet'")
 
-        inner_linear_layers = [self.conv_inner_dim] * self.n_dense
+        inner_linear_layers = [self.dense_inner_dim] * self.n_dense
         #
         # self.model.append(
         #     DeepLipschitzLinearResNet(in_channels, self.n_classes, inner_linear_layers,
