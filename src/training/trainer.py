@@ -368,16 +368,23 @@ class Trainer:
 
     @torch.no_grad()
     def eval_certified_run(self, dataloader, epoch):
-        running_accuracy = 0
-        running_inputs = 0
+        running_correct = torch.tensor(0.0, device=f'cuda:{self.local_rank}')
+        running_total = torch.tensor(0.0, device=f'cuda:{self.local_rank}')
+
         for batch_n, data in enumerate(dataloader):
             inputs, labels = data
             inputs, labels = inputs.to(self.local_rank), labels.to(self.local_rank)
             outputs = self.model(inputs)
             predicted = outputs.argmax(axis=1)
-            running_accuracy += predicted.eq(labels.data).sum().item()
-            running_inputs += inputs.size(0)
-        accuracy = running_accuracy / running_inputs
+
+            running_correct += predicted.eq(labels).sum()
+            running_total += torch.tensor(labels.size(0), device=f'cuda:{self.local_rank}')
+
+        # Synchronize across all GPUs
+        torch.distributed.all_reduce(running_correct, op=torch.distributed.ReduceOp.SUM)
+        torch.distributed.all_reduce(running_total, op=torch.distributed.ReduceOp.SUM)
+
+        accuracy = (running_correct / running_total).item()
 
         if self.local_rank == 0:
             self.message.add('epoch', epoch, format='.0f')
