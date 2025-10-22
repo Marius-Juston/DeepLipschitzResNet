@@ -16,10 +16,15 @@ torchrun --standalone --nproc_per_node=4 src/main.py --dataset cifar10 --model-n
 torchrun --standalone --nproc_per_node=1 src/main.py --dataset cifar10 --model-name small --train_dir small_model --mode certified 2>&1 | tee output.txt
 ```
 
+
+```bash
+torchrun --standalone --nproc_per_node=4 src/main.py --dataset cifar100 --optimizer admaw --model-name medium --train_dir medium_model 2>&1 | tee output.txt
+```
+
 or running
 ```bash
-./train.sh                 # defaults to CIFAR10
-./train.sh cifar10         # train using CIFAR10
+./train_cifar10.sh         # train using CIFAR10
+./train_cifar100.sh # train using CIFAR10
 ./train.sh cifar100        # train using CIFAR100
 ./train.sh tiny-imagenet   # train using tiny-imagenet
 ```
