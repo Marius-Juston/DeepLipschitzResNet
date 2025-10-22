@@ -31,6 +31,7 @@ class DeepLipschitzConvResNet(nn.Module):
             lipschitz_constant: float = 1.0,
             enable_alpha: bool = True,
             use_safe_cholesky: bool = False,
+            wrong_normalization: bool = False,
             device: Union[str, torch.device] = 'cuda',
             dtype: Optional[torch.dtype] = None
     ):
@@ -164,11 +165,17 @@ class DeepLipschitzConvSequential(nn.Module):
                  lipschitz_constant: float = 1.0,
                  enable_alpha: bool = True,
                  use_safe_cholesky: bool = False,
+                 wrong_normalization: bool = False,
+                 dropout: bool = False,
+                 use_averaging: bool = False,
                  device: Union[str, torch.device] = 'cuda',
                  dtype: Optional[torch.dtype] = None) -> None:
         super().__init__()
 
         super().__init__()
+        self.use_averaging = use_averaging
+        self.dropout = dropout
+        self.wrong_normalization = wrong_normalization
         assert len(layers_widths) >= 1, "This deep network assumes that the number of layers is greater "
         assert in_channels > 0, "The input width needs to be larger than 0"
         assert out_channels > 0, "The output width needs to be larger than 0"
@@ -214,20 +221,37 @@ class DeepLipschitzConvSequential(nn.Module):
             else:
                 class_ = InnerWeightLipschitzConvLayer
 
+            if isinstance(out_features, Sequence):
+                out_channels, kernel_size = out_features
+                padding = kernel_size // 2
+            else:
+                out_channels = out_features
+                kernel_size = self.kernel_size
+                padding = self.padding
+
             layer.append(
-                class_(prev, out_features,
-                       kernel_size=self.kernel_size,
+                class_(prev, out_channels,
+                       kernel_size=kernel_size,
                        enable_alpha=self.enable_alpha,
                        constant_sq=constant,
                        stride=self.stride,
-                       padding=self.padding,
+                       padding=padding,
                        dilation=self.dilation,
                        activation=activation,
                        groups=self.groups, **self.factory_kwargs))
-            prev = out_features
+
+            if self.use_averaging and i % 2 == 0:
+                layer.append(nn.AvgPool2d(2, divisor_override=2))
+
+
+            if self.dropout:
+                layer.append(nn.Dropout())
+
+            prev = out_channels
 
         layer.append(
-            InnerWeightLipschitzConvLayer(prev, self.out_channels, constant_sq=1.0, activation=None,
+            InnerWeightLipschitzConvLayer(prev, self.out_channels, kernel_size=self.kernel_size, constant_sq=1.0,
+                                          activation=None,
                                           **self.factory_kwargs))
 
         self.layers = ModuleList(layer)
@@ -235,12 +259,25 @@ class DeepLipschitzConvSequential(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         current_input = x
 
-        for i, layer in enumerate(self.layers):
-            if i == 0:
-                current_input, a_wf, d_inv, prev_alpha, prev_omega_r, prev_constant = layer(current_input)
+        first = True
+
+        for layer in self.layers:
+            if isinstance(layer, nn.Dropout) or isinstance(layer, nn.AvgPool2d):
+                current_input = layer(current_input)
             else:
-                current_input, Wf_norm, d_inv, prev_alpha, omega_r, prev_constant = layer(current_input, prev_alpha,
-                                                                                          prev_omega_r, prev_constant)
+                if first:
+                    current_input, _, d_inv, prev_alpha, prev_omega_r, prev_constant = layer(current_input)
+                    first = False
+                else:
+                    current_input, _, d_inv, prev_alpha, prev_omega_r_temp, prev_constant = layer(current_input,
+                                                                                                  prev_alpha,
+                                                                                                  prev_omega_r,
+                                                                                                  prev_constant)
+
+                    if not self.wrong_normalization:
+                        prev_omega_r = prev_omega_r_temp
+
+            # current_input, _, d_inv, prev_alpha, prev_omega_r, prev_constant = layer(current_input)
 
         return current_input
 
