@@ -14,7 +14,7 @@ import torch.backends.cudnn as cudnn
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.tensorboard import SummaryWriter
 
-from models.model import LipschitzNetwork
+from models.model import LipschitzNetwork, is_complex_config
 from training import utils
 from training.data.readers import readers_config
 from training.utils import print_module_parameters
@@ -135,15 +135,21 @@ class Trainer:
 
         self.summary_writer = SummaryWriter(log_dir=save_folder)
 
-        self.hparams_dict = {
-
-            "n_conv": self.config.n_conv,
-            "n_dense": self.config.n_dense,
-            "cin": self.config.w,
-            "conv_inner_dim": self.config.conv_inner_dim,
-            "dense_inner_dim": self.config.dense_inner_dim,
-            "n_classes": self.reader.n_classes,
-        }
+        if is_complex_config(self.config):
+            self.hparams_dict = {
+                "n_classes": self.reader.n_classes,
+                "n_conv": str(self.config.n_conv),
+                "n_dense": str(self.config.n_dense)
+            }
+        else:
+            self.hparams_dict = {
+                "n_conv": self.config.n_conv,
+                "n_dense": self.config.n_dense,
+                "cin": self.config.w,
+                "conv_inner_dim": self.config.conv_inner_dim,
+                "dense_inner_dim": self.config.dense_inner_dim,
+                "n_classes": self.reader.n_classes,
+            }
 
     @local_only
     def print_module_parameters(self, model):
