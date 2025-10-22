@@ -1,9 +1,21 @@
+import logging
+from argparse import Namespace
+from typing import Sequence, Tuple, Optional
+
 import numpy as np
+import torch.nn
 import torch.nn.functional as F
 from torch import nn
 
+from models.batch_norm import LipschitzBatchNorm
 from models.cnn_model import DeepLipschitzConvResNet, DeepLipschitzConvSequential
 from models.linear_model import DeepLipschitzSequential
+
+ACTIVATION_FUNCTIONS = {
+    "relu": nn.ReLU,
+    "elu": nn.ELU,
+    "selu": nn.SELU,
+}
 
 
 class PaddingChannels(nn.Module):
@@ -25,61 +37,155 @@ class PaddingChannels(nn.Module):
             return F.pad(x, (0, 0, 0, 0, 0, self.pad_channels), mode="constant", value=0)
         elif self.mode == "clone":
             return x.repeat(1, self.repeat_num, 1, 1) / self.repeat_norm
-        return None
+
+
+def is_complex_config(config: Namespace):
+    if (isinstance(config.n_conv, Sequence) and
+            isinstance(config.n_conv, Sequence) and
+            config.dense_inner_dim is None and
+            config.conv_inner_dim is None):
+        return True
+    elif (isinstance(config.n_conv, int) and
+          isinstance(config.n_dense, int) and
+          isinstance(config.dense_inner_dim, int)
+          and isinstance(config.conv_inner_dim, int)):
+        return False
+    else:
+        raise RuntimeError(
+            "The config is not properly setup for the Lipschitz network configuration, it must either be the complex or the simple setup")
 
 
 class LipschitzNetwork(nn.Module):
+    def generate_simple(self, config: Namespace):
+        n_conv: int = config.n_conv
+        n_dense: int = config.n_dense
+        cin: int = config.w
+        conv_inner_dim: int = config.conv_inner_dim
+        dense_inner_dim: int = config.dense_inner_dim
+        n_classes: int = self.n_classes
+        batch_norm: bool = config.batch_norm
+        dropout: bool = config.dropout
 
-    def __init__(self, config, n_classes, device=None):
-        super(LipschitzNetwork, self).__init__()
-
-        self.n_conv: int = config.n_conv
-        self.n_dense: int = config.n_dense
-        self.cin: int = config.w
-        self.conv_inner_dim: int = config.conv_inner_dim
-        self.dense_inner_dim: int = config.dense_inner_dim
-        self.n_classes: int = n_classes
-
-        if config.dataset == 'tiny-imagenet':
-            imsize = 64
-        else:
-            imsize = 32
-
-        self.model = []
-        self.model.append(
-            PaddingChannels(self.cin, 3, 'zero')
+        model = []
+        model.append(
+            PaddingChannels(cin, 3, 'zero')
         )
 
-        inner_conv_layers = [self.conv_inner_dim] * self.n_conv
+        inner_conv_layers = [conv_inner_dim] * n_conv
 
-        if config.linear_conv:
-            conv_model = DeepLipschitzConvSequential
+        if hasattr(config, "activation") and config.activation in ACTIVATION_FUNCTIONS:
+            activation = ACTIVATION_FUNCTIONS[config.activation]()
         else:
-            conv_model = DeepLipschitzConvResNet
+            activation = torch.nn.ReLU()
 
-        self.model.append(
-            conv_model(self.cin, self.cin, inner_conv_layers, use_safe_cholesky=config.safe_cholesky,
-                       device=device))
+        if batch_norm:
+            model.append(LipschitzBatchNorm(cin, scale=True, device=self.device))
 
-        self.model.append(nn.AvgPool2d(4, divisor_override=4))
+        model.append(
+            self.conv_model(cin, cin, inner_conv_layers, use_safe_cholesky=config.safe_cholesky,
+                            wrong_normalization=config.wrong_normalization,
+                            activation=activation,
+                            dropout=dropout,
+                            device=self.device))
 
-        self.model.append(nn.Flatten())
+        model.append(nn.AvgPool2d(4, divisor_override=4))
+
+        model.append(nn.Flatten())
+
+        inner_linear_layers = [dense_inner_dim] * n_dense
+
         if config.dataset in ['cifar10', 'cifar100']:
-            in_channels = self.cin * 8 * 8
+            in_channels = cin * 8 * 8
         elif config.dataset == 'tiny-imagenet':
-            in_channels = self.cin * 16 * 16
+            in_channels = cin * 16 * 16
         else:
             raise ValueError("The dataset must be 'cifar10', 'cifar100' or 'tiny-imagenet'")
 
-        inner_linear_layers = [self.dense_inner_dim] * self.n_dense
-        #
-        # self.model.append(
-        #     DeepLipschitzLinearResNet(in_channels, self.n_classes, inner_linear_layers,
-        #                               use_safe_cholesky=config.safe_cholesky, device=device))
+        if batch_norm:
+            model.append(LipschitzBatchNorm(in_channels, scale=True, device=self.device))
 
-        self.model.append(DeepLipschitzSequential(in_channels, self.n_classes, inner_linear_layers, device=device))
+        model.append(
+            DeepLipschitzSequential(in_channels, n_classes, inner_linear_layers, activation=activation, dropout=dropout,
+                                    device=self.device))
 
-        self.model = nn.Sequential(*self.model)
+        return model
+
+    def generate_complex(self, config):
+        n_conv: Sequence[Tuple[int, int, int]] = config.n_conv
+        n_dense: Sequence[Tuple[int, int]] = config.n_dense
+
+        model = []
+
+        cin = 3
+
+        inner_conv_layers = []
+
+        last_channel_size = cin
+
+        for n, channels, kernel in n_conv:
+            for _ in range(n):
+                inner_conv_layers.append([channels, kernel])
+
+            last_channel_size = channels
+
+        logging.info(f"Setting up model with conv config: {inner_conv_layers}")
+        logging.info(f"Cin: {cin}")
+        logging.info(f"Last channels: {last_channel_size}")
+
+        if hasattr(config, "activation") and config.activation in ACTIVATION_FUNCTIONS:
+            activation = ACTIVATION_FUNCTIONS[config.activation]()
+        else:
+            activation = torch.nn.ReLU()
+
+        model.append(
+            self.conv_model(cin, last_channel_size, inner_conv_layers, use_safe_cholesky=config.safe_cholesky,
+                            device=self.device, activation=activation, use_averaging=config.averaging))
+
+        model.append(nn.AvgPool2d(4, divisor_override=4))
+
+        model.append(nn.Flatten())
+
+        inner_dense_layers = []
+
+        for n, outputs in n_dense:
+            for _ in range(n):
+                inner_dense_layers.append(outputs)
+
+        if config.dataset in ['cifar10', 'cifar100']:
+            in_channels = cin * 8 * 8
+        elif config.dataset == 'tiny-imagenet':
+            in_channels = cin * 16 * 16
+        else:
+            raise ValueError("The dataset must be 'cifar10', 'cifar100' or 'tiny-imagenet'")
+
+        in_channels = 16384  # hardcoded for this current task should not be hard-coded
+
+        model.append(DeepLipschitzSequential(in_channels, self.n_classes, inner_dense_layers, device=self.device,
+                                             activation=activation))
+
+        return model
+
+    def __init__(self, config: Namespace, n_classes: int, device: Optional[str] = None):
+        super(LipschitzNetwork, self).__init__()
+
+        self.device = device
+        self.n_classes = n_classes
+        self.config = config
+
+        if config.linear_conv:
+            self.conv_model = DeepLipschitzConvSequential
+        else:
+            self.conv_model = DeepLipschitzConvResNet
+        logging.info(f"Using model ({config.linear_conv}): {self.conv_model.__name__}")
+
+        if is_complex_config(config):
+            logging.info("Using complex configuration for model setup")
+            model = self.generate_complex(config)
+        else:
+            logging.info("Using simple configuration for model setup")
+            model = self.generate_simple(config)
+
+        self.model = nn.Sequential(*model)
 
     def forward(self, x):
         return self.model(x)
