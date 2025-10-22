@@ -1,8 +1,10 @@
+import math
 from typing import Tuple
 
 import torch
 import torch.nn.functional as F
 from torch import nn, Tensor
+from torch.nn import init
 from torch.nn.parameter import Parameter
 from torch.nn.utils import parametrize
 
@@ -52,6 +54,16 @@ class AbstractLipschitzLinearLayer(nn.Linear):
             parametrize.register_parametrization(self, "alpha", PositiveExp(**factory_kwargs))
         else:
             self.register_buffer('alpha', initial_alpha)
+
+    def reset_parameters(self) -> None:
+        # Setting a=sqrt(5) in kaiming_uniform is the same as initializing with
+        # uniform(-1/sqrt(in_features), 1/sqrt(in_features)). For details, see
+        # https://github.com/pytorch/pytorch/issues/57109
+        init.kaiming_uniform_(self.weight, a=math.sqrt(5) * 10)
+        if self.bias is not None:
+            fan_in, _ = init._calculate_fan_in_and_fan_out(self.weight)
+            bound = 1 / math.sqrt(fan_in) if fan_in > 0 else 0
+            init.uniform_(self.bias, -bound, bound)
 
     def scale_w(self):
         omega = self.sum_weight(transpose=True)

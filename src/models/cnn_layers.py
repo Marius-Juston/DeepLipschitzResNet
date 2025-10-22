@@ -1,10 +1,11 @@
+import math
 from abc import abstractmethod, ABC
 from typing import Optional, Tuple, Union
 
 import torch
 import torch.nn.functional as F
 from torch import nn, Tensor
-from torch.nn import Parameter
+from torch.nn import Parameter, init
 from torch.nn.common_types import _size_2_t
 from torch.nn.modules.utils import _pair
 from torch.nn.utils import parametrize
@@ -101,6 +102,17 @@ class AbstractLipschitzConvLayer(nn.Conv2d, ABC):
             parametrize.register_parametrization(self, "alpha", PositiveExp(**factory_kwargs))
         else:
             self.register_buffer('alpha', initial_alpha)
+
+    def reset_parameters(self) -> None:
+        # Setting a=sqrt(5) in kaiming_uniform is the same as initializing with
+        # uniform(-1/sqrt(k), 1/sqrt(k)), where k = weight.size(1) * prod(*kernel_size)
+        # For more details see: https://github.com/pytorch/pytorch/issues/15314#issuecomment-477448573
+        init.kaiming_uniform_(self.weight, a=math.sqrt(5) * 10)
+        if self.bias is not None:
+            fan_in, _ = init._calculate_fan_in_and_fan_out(self.weight)
+            if fan_in != 0:
+                bound = 1 / math.sqrt(fan_in)
+                init.uniform_(self.bias, -bound, bound)
 
     def sum_weight(self, Wf, transpose: bool = False):
         if transpose:
