@@ -5,6 +5,7 @@ import os
 import pprint
 import socket
 import time
+from argparse import Namespace
 from contextlib import nullcontext
 from os.path import join, exists
 
@@ -150,6 +151,15 @@ class Trainer:
                 "dense_inner_dim": self.config.dense_inner_dim,
                 "n_classes": self.reader.n_classes,
             }
+
+        self.hparams_dict['lr'] = self.config.lr
+        self.hparams_dict['loss'] = self.config.loss
+        self.hparams_dict['scheduler'] = self.config.scheduler
+        self.hparams_dict['optimizer'] = self.config.optimizer
+        self.hparams_dict['batch_size'] = self.config.batch_size
+        self.hparams_dict['batch_norm'] = self.config.batch_norm
+        self.hparams_dict['dropout'] = self.config.dropout
+        self.hparams_dict['seed'] = self.config.seed
 
     @local_only
     def print_module_parameters(self, model):
