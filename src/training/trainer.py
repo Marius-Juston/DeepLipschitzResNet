@@ -85,7 +85,10 @@ class Trainer:
         self.saved_ckpts.add(self.checkpoint['epoch'])
         self.start_epoch = self.checkpoint['epoch']
         self.start_global_step = self.checkpoint['global_step']
-        # self.config = new_config
+
+        # Update the default values with the new config configuration
+        self.config: Namespace
+        self.config.__dict__.update(new_config.__dict__)
 
         if callable(getattr(self.scheduler, 'state_dict', None)):
             self.scheduler.load_state_dict(self.checkpoint['scheduler'])
