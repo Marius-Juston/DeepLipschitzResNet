@@ -1,5 +1,7 @@
 import logging
 import traceback
+import types
+import warnings
 from typing import Tuple, Optional, Any
 
 import torch
@@ -269,3 +271,64 @@ def safe_cholesky(A: torch.Tensor, upper=False, eps=1e-4, max_tries=5):
         raise ValueError(f"Unable to perform Cholesky.\n{'\n'.join(traceback.format_stack())}")
 
     return res
+
+
+@torch.no_grad()
+def weight_grad_norm_normalization_(
+        parameters,
+        norm_type: float = 2.0,
+        error_if_nonfinite: bool = False,
+        foreach: Optional[bool] = None,
+):
+    r"""Clip the gradient norm of an iterable of parameters.
+
+    The norm is computed over the norms of the individual gradients of all parameters,
+    as if the norms of the individual gradients were concatenated into a single vector.
+    Gradients are modified in-place.
+
+    This function is equivalent to :func:`torch.nn.utils.get_total_norm` followed by
+    :func:`torch.nn.utils.clip_grads_with_norm_` with the ``total_norm`` returned by ``get_total_norm``.
+
+    Args:
+        parameters (Iterable[Tensor] or Tensor): an iterable of Tensors or a
+            single Tensor that will have gradients normalized
+        max_norm (float): max norm of the gradients
+        norm_type (float, optional): type of the used p-norm. Can be ``'inf'`` for
+            infinity norm. Default: 2.0
+        error_if_nonfinite (bool, optional): if True, an error is thrown if the total
+            norm of the gradients from :attr:`parameters` is ``nan``,
+            ``inf``, or ``-inf``. Default: False
+        foreach (bool, optional): use the faster foreach-based implementation.
+            If ``None``, use the foreach implementation for CUDA and CPU native tensors and silently
+            fall back to the slow implementation for other device types.
+            Default: ``None``
+
+    Returns:
+        Total norm of the parameter gradients (viewed as a single vector).
+    """
+    if isinstance(parameters, torch.Tensor):
+        parameters = [parameters]
+    else:
+        is_generator = isinstance(parameters, types.GeneratorType)
+        # prevent generators from being exhausted
+        parameters = list(parameters)
+        if is_generator and len(parameters) == 0:
+            warnings.warn(
+                "`parameters` is an empty generator, no gradient clipping will occur.",
+                stacklevel=3,
+            )
+
+    output_norms = []
+
+    for p in parameters:
+        if p.numel() == 1:
+            continue
+
+        if p.grad is not None:
+            total_norm = torch.nn.utils.get_total_norm(p.grad, norm_type, error_if_nonfinite, foreach)
+
+            p.grad.div_(total_norm)
+
+            output_norms.append(total_norm.item())
+
+    return output_norms
