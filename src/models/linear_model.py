@@ -151,9 +151,11 @@ class DeepLipschitzSequential(nn.Module):
 
     def __init__(self, in_features: int, out_features: int, layers_widths: Sequence[int],
                  activation: Union[Module, List[Module]] = None, lipschitz_constant: float = 1.0,
+                 dropout=False,
                  device: Union[str, torch.device] = 'cuda', dtype=None) -> None:
         super().__init__()
 
+        self.dropout = dropout
         assert len(layers_widths) >= 1, "This deep network assumes that the number of layers is greater "
         assert in_features > 0, "The input width needs to be larger than 0"
         assert out_features > 0, "The output width needs to be larger than 0"
@@ -192,6 +194,10 @@ class DeepLipschitzSequential(nn.Module):
 
             layer.append(
                 LinearLipschitz(prev, out_features, constant_sq=constant, activation=activation, **self.factory_kwargs))
+
+            if self.dropout:
+                layer.append(nn.Dropout())
+
             prev = out_features
 
         layer.append(
@@ -206,12 +212,15 @@ class DeepLipschitzSequential(nn.Module):
         prev_const = torch.tensor(1.0, **self.factory_kwargs)
 
         for layer in self.layers:
-            layer: LinearLipschitz
+            if isinstance(layer, nn.Dropout):
+                current_input = layer(current_input)
+            else:
+                layer: LinearLipschitz
 
-            current_input, d_sqrt, _ = layer(current_input, d_sqrt, prev_alpha, prev_const)
+                current_input, d_sqrt, _ = layer(current_input, d_sqrt, prev_alpha, prev_const)
 
-            prev_const = layer.constant
-            prev_alpha = layer.alpha
+                prev_const = layer.constant
+                prev_alpha = layer.alpha
 
         return current_input
 
@@ -223,11 +232,13 @@ class DeepLipschitzSequential(nn.Module):
         prev_const = torch.tensor(1.0, **self.factory_kwargs)
 
         for layer in self.layers:
-            layer: LinearLipschitz
+            if isinstance(layer, nn.Dropout):
+                x = layer(x)
+            else:
+                layer: LinearLipschitz
+                x, d_sqrt, W = layer(x, d_sqrt, prev_alpha, prev_const)
 
-            x, d_sqrt, W = layer(x, d_sqrt, prev_alpha, prev_const)
-
-            prev_const = layer.constant
-            prev_alpha = layer.alpha
+                prev_const = layer.constant
+                prev_alpha = layer.alpha
 
         return W
