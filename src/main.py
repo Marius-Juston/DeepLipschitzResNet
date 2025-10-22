@@ -6,6 +6,7 @@ import torch
 from torch.distributed import destroy_process_group
 from torch.distributed.elastic.multiprocessing.errors import record
 
+from models.model import ACTIVATION_FUNCTIONS
 from training.utils import get_notifications
 
 torch.set_float32_matmul_precision('high')
@@ -62,8 +63,34 @@ def main(config):
 def model_choice(config):
     if config.model_name == 'small':
         config = override_args(config, 20, 64, 7, 45, 64)
+    if config.model_name == 'small_t':
+        config = override_args(config,
+                               [
+                                   [4, 64, 3],
+                                   [4, 128, 3],
+                                   [4, 256, 3],
+                               ], None,
+                               [
+                                   [3, 256],
+                                   [3, 1024],
+                               ], None, None)
     elif config.model_name == 'medium':
-        config = override_args(config, 30, 64, 10, 60, 1024)
+        config = override_args(config,
+                               [
+                                   [1, 512, 3],
+                                   [4, 128, 3],
+                                   [6, 96, 3],
+                                   [10, 64, 3],
+                               ], None,
+                               [
+                                   [2, 2048],
+                                   [2, 1024],
+                               ], None, None)
+        # config = override_args(config, 20, 96, 7, 45, 256) # No batch norm, best
+        # config = override_args(config, 15, 96, 3, 45, 2048) # best loss
+        # config = override_args(config, 20, 128, 7, 45, 1024)
+        # config = override_args(config, 15, 96, 3, 45, 4048)
+        config = override_args(config, 10, 128, 3, 45, 4048)
     elif config.model_name == 'large':
         config = override_args(config, 50, 64, 10, 90, 1024)
     elif config.model_name == 'xlarge':
@@ -82,9 +109,11 @@ if __name__ == '__main__':
     parser.add_argument("--mode", type=str, default="train", choices=['train', 'certified', 'attack'])
     parser.add_argument("--train_dir", type=str, help="Name of the training directory.")
     parser.add_argument("--data_dir", type=str, help="Name of the data directory.")
-    parser.add_argument("--dataset", type=str, default='cifar10', choices=['cifar10', 'cifar100', 'tiny-imagenet'], help="Dataset to use")
+    parser.add_argument("--dataset", type=str, default='cifar10',
+                        choices=['cifar10', 'cifar100', 'tiny-imagenet'], help="Dataset to use")
     parser.add_argument("--num_workers", type=int, default=20,
-                        help="how many subprocesses to use for data loading. 0 means that the data will be loaded in the main process")
+                        help="how many subprocesses to use for data loading. 0 means that the data will be loaded in "
+                             "the main process")
     parser.add_argument("--prefetch_factor_scale", type=int, default=2,
                         help="Number of batches loaded in advance by each worker: batch_size * prefetch_factor_scale")
 
@@ -93,8 +122,8 @@ if __name__ == '__main__':
 
     parser.add_argument("--discord", type=bool, default=True, action=argparse.BooleanOptionalAction,
                         help="Enable discord notifications functionality")
-    parser.add_argument("--discord_new_best", type=bool, default=True, action=argparse.BooleanOptionalAction,
-                        help="Enable notifications for new best accuracy")
+    parser.add_argument("--discord_new_best", type=bool, default=True,
+                        action=argparse.BooleanOptionalAction, help="Enable notifications for new best accuracy")
     parser.add_argument("--discord_epoch_frequency", type=int, default=10,
                         help="Enable notifications that n % frequency epochs have been achieved")
 
@@ -110,7 +139,7 @@ if __name__ == '__main__':
     parser.add_argument("--offset", type=float, default=np.sqrt(2) * 3 / 2)
     parser.add_argument("--temperature", type=float, default=0.25)
     parser.add_argument("--optimizer", type=str, default='adam')
-    parser.add_argument("--scheduler", type=str, default="none")
+    parser.add_argument("--scheduler", type=str, default="none", choices=['cosine', 'none', 'interp', 'multi_step_lr'])
     parser.add_argument("--lr", type=float, default=1e-4)
     parser.add_argument("--beta1", type=float, default=0.5)
     parser.add_argument("--beta2", type=float, default=0.9)
@@ -120,11 +149,16 @@ if __name__ == '__main__':
     parser.add_argument("--decay", type=str, help="Milestones for MultiStepLR")
     parser.add_argument("--gamma", type=float, help="Gamma for MultiStepLR")
     parser.add_argument("--gradient_clip_by_norm", type=float, default=1.0)
+    parser.add_argument("--gradient_layer_normalization", type=bool, default=False,
+                        action=argparse.BooleanOptionalAction,
+                        help='Gradient weight normalization per weight parameter instead of total gradients')
     parser.add_argument("--gradient_clip_by_value", type=float, default=None)
     parser.add_argument("--batch_size", type=int, default=64)
     parser.add_argument("--seed", type=int, help="Make the training deterministic.", default=42)
     parser.add_argument("--print_grad_norm", action='store_true', help="Print of the norm of the gradients")
     parser.add_argument("--frequency_log_steps", type=int, default=10, help="Print log for every step.")
+    parser.add_argument("--frequency_model_log_steps", type=int, default=500,
+                        help="Print model parameters information for every step.")
     parser.add_argument("--logging_verbosity", type=str, default='INFO', help="Level of verbosity of the logs")
     parser.add_argument("--save_checkpoint_epochs", type=int, default=5, help="Save checkpoint every epoch.")
     parser.add_argument("--compile", type=bool, default=True, action=argparse.BooleanOptionalAction,
@@ -143,6 +177,30 @@ if __name__ == '__main__':
     parser.add_argument("--dense_inner_dim", type=int, default=-1)
     parser.add_argument("--n_conv", type=int, default=30, help="The depth of the Stable Resnet")
     parser.add_argument("--n_dense", type=int, default=5, help="The number of linear layers.")
+
+    parser.add_argument("--wrong_normalization", type=bool, default=False, action=argparse.BooleanOptionalAction,
+                        help="As stated in the paper, the normalization parameter was initially wrongly implemented "
+                             "for the convolutional network which no longer necessarily made the system be 1-Lipschitz")
+
+    parser.add_argument("--log_wandb", type=bool, default=True, action=argparse.BooleanOptionalAction,
+                        help="Log using WanDB")
+
+    parser.add_argument("--log_tensorboard_grad", type=bool, default=True, action=argparse.BooleanOptionalAction,
+                        help="Log the gradient of the parameters with tensorboard")
+    parser.add_argument("--log_tensorboard_vals", type=bool, default=True, action=argparse.BooleanOptionalAction,
+                        help="Log the values of the parameters with tensorboard")
+
+    parser.add_argument("--activation", type=str, default='relu', choices=list(ACTIVATION_FUNCTIONS.keys()),
+                        help="List of activation functions to use")
+
+    parser.add_argument("--batch_norm", type=bool, default=False, action=argparse.BooleanOptionalAction,
+                        help="Add Lipschitz batch normalization")
+
+    parser.add_argument("--dropout", type=bool, default=False, action=argparse.BooleanOptionalAction,
+                        help="Add dropout layers")
+
+    parser.add_argument("--averaging", type=bool, default=False, action=argparse.BooleanOptionalAction,
+                        help="Add dropout layers")
 
     # parse all arguments
     config = parser.parse_args()
