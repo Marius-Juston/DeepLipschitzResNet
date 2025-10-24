@@ -9,4 +9,3 @@ if __name__ == '__main__':
         repo_type="model",
         ignore_patterns=["**/*.txt", '**/*.logs', '**/model.ckpt*.pth'],  # Ignore all text logs
     )
-

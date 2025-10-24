@@ -1,7 +1,5 @@
 import torch
 
-from models.model import LipschitzNetwork
-
 if __name__ == '__main__':
     for i in range(42, 45):
         path = f'./trained_models/small_model/cifar10/checkpoints/{i}/best_model.pth'
@@ -27,8 +25,6 @@ if __name__ == '__main__':
         # current_input, _, d_inv, prev_alpha, prev_omega_r, prev_constant = model.model[1].layers[0](x)
         #
         # print(len(model_state))
-
-
 
         data['config'].gradient_layer_normalization = False
         data['config'].wrong_normalization = True
