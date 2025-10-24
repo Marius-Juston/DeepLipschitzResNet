@@ -104,10 +104,16 @@ def main_real(A: torch.Tensor, B: torch.Tensor, Cs: List[torch.Tensor], Ls: List
     return M
 
 
-def extract_lmi_constants_deep_resnet_new(model):
-    x = torch.zeros((1, model.in_features), device=model.device, dtype=model.dtype)
+def extract_lmi_constants_deep_resnet_new(model: DeepLipschitzLinearResNet):
+    x = torch.zeros((1, model.in_features), **model.factory_kwargs)
 
-    first, a_weight, d_inv = model.A(x)
+    first, a_weight, d_inv, prev_alpha, prev_omega_r, prev_constant = model.A(x)
+
+    gamma = model.A.identity
+    sigma_lower = None
+
+    current_input = x
+
 
     Cs = []
     Ls = []
@@ -116,35 +122,27 @@ def extract_lmi_constants_deep_resnet_new(model):
         a_weight.shape[1],
     ]
 
-    gamma = model.A.identity
-    sigma_lower = None
-
-    current_input = x
-
-    prev_layer = model.A
-
     for layer in model.layers:
         T = gamma @ d_inv
 
-        current_input, c_weight, d_inv = layer(current_input, prev_layer)
+        current_input, c_weight, d_inv, prev_alpha, prev_omega_r, prev_constant = layer(current_input, prev_alpha,
+                                                                                        prev_omega_r, prev_constant)
 
         if sigma_lower is None:
             sigma_lower = T
         else:
-            sigma_lower = torch.linalg.cholesky(sigma_lower @ sigma_lower.T + T @ T.T, upper=False)
+            sigma_lower = utils.safe_cholesky(sigma_lower @ sigma_lower.T + T @ T.T, upper=False)
 
         gamma = T @ c_weight.T
 
         current_input = model.activation(current_input)
-
-        prev_layer = layer
 
         Cs.append(c_weight)
         Ls.append(layer.identity_out)
         Lms.append([1, 0])
         dimensions.append(c_weight.shape[0])
 
-    second, b_weight = model.compute_b(current_input, sigma_lower, a_weight, model.layers[-1])
+    second, b_weight = model.compute_b(current_input, sigma_lower, a_weight, prev_alpha, prev_omega_r)
 
     return a_weight, b_weight, Cs, Ls, Lms, dimensions
 
@@ -463,8 +461,8 @@ def get_maximum_model(model_func, *args, device=None):
 
     return model
 
-def plot_information(M, a_weight, Cs, b_weight, dimensions, figs_folder, suffix=''):
 
+def plot_information(M, a_weight, Cs, b_weight, dimensions, figs_folder, suffix=''):
     plot_ldlt_decomposition(M, dimensions, os.path.join(figs_folder, f"ldlt_decomposition{suffix}"))
 
     eigenvalues, eigenvectors = torch.linalg.eigh(M)
