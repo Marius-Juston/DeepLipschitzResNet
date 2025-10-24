@@ -10,9 +10,11 @@ from matplotlib.image import AxesImage
 from matplotlib.patches import Rectangle, ConnectionPatch
 from matplotlib.ticker import MaxNLocator
 from mpl_toolkits.axes_grid1 import make_axes_locatable
+from torch import nn
 
 import utils
-from models.linear_model import DeepLipschitzLinearResNet
+from models.linear_layers import LinearLipschitz
+from models.linear_model import DeepLipschitzLinearResNet, DeepLipschitzSequential
 
 DEFAULT_DPI = 600
 
@@ -114,7 +116,6 @@ def extract_lmi_constants_deep_resnet_new(model: DeepLipschitzLinearResNet):
 
     current_input = x
 
-
     Cs = []
     Ls = []
     Lms = []
@@ -147,8 +148,48 @@ def extract_lmi_constants_deep_resnet_new(model: DeepLipschitzLinearResNet):
     return a_weight, b_weight, Cs, Ls, Lms, dimensions
 
 
+def extract_lmi_constants_deep_linear(model: DeepLipschitzSequential):
+    x = torch.zeros((1, model.in_features), **model.factory_kwargs)
+
+    current_input = x
+    b_weight = torch.eye(model.out_features, **model.factory_kwargs)
+    a_weight = torch.zeros((model.out_features, model.in_features), **model.factory_kwargs)
+
+    d_sqrt = model.lipschitz_constant * model.layers[0].identity
+    prev_alpha = torch.tensor(1.0, **model.factory_kwargs)
+    prev_const = torch.tensor(1.0, **model.factory_kwargs)
+
+    Cs = []
+    Ls = []
+    Lms = []
+    dimensions = [
+        model.out_features,
+    ]
+
+    for layer in model.layers:
+        if isinstance(layer, nn.Dropout):
+            current_input = layer(current_input)
+        else:
+            layer: LinearLipschitz
+
+            current_input, d_sqrt, c_weight = layer(current_input, d_sqrt, prev_alpha, prev_const)
+
+            prev_const = layer.constant
+            prev_alpha = layer.alpha
+
+            Cs.append(c_weight)
+            Ls.append(layer.identity_out)
+            Lms.append([1, 0])
+            dimensions.append(c_weight.shape[0])
+
+    return a_weight, b_weight, Cs, Ls, Lms, dimensions
+
+
 def extract_lmi_constants(model):
-    return extract_lmi_constants_deep_resnet_new(model)
+    if isinstance(model, DeepLipschitzLinearResNet):
+        return extract_lmi_constants_deep_resnet_new(model)
+    else:
+        return extract_lmi_constants_deep_linear(model)
 
 
 def plot_matrix(M: torch.Tensor, fig_name: str = None, dpi: int = DEFAULT_DPI, mask: bool = True,
