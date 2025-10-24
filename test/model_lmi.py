@@ -205,7 +205,11 @@ def plot_matrix(M: torch.Tensor, fig_name: str = None, dpi: int = DEFAULT_DPI, m
     vmin, vmax = min, max
 
     if normalize:
-        normalized = (M - min) / (max - min) * 255
+        if vmin == vmin:
+            normalized = M / vmax  * 255
+        else:
+            normalized = (M - min) / (max - min) * 255
+
         normalized = normalized.round()
         vmin = 0
         vmax = 255
@@ -539,7 +543,9 @@ def plot_information(M, a_weight, Cs, b_weight, dimensions, figs_folder, suffix=
 def main():
     torch.manual_seed(0)
 
-    figs_folder = 'figs/linear'
+    model_fnc = DeepLipschitzLinearResNet
+
+    figs_folder = f'figs/linear/{'resnet' if model_fnc == DeepLipschitzLinearResNet else 'fnn'}'
     os.makedirs(figs_folder, exist_ok=True)
 
     input_features = 1
@@ -548,12 +554,11 @@ def main():
 
     factory_kwargs = dict(device=device, dtype=torch.float32)
 
-    model_fnc = DeepLipschitzLinearResNet
-
     weights = (64, 64, 64, 64, 64)
 
-    model_artifacting(model_fnc, weights, fig_name=os.path.join(figs_folder, "b_artifacting_grid"),
-                      factory_kwargs=factory_kwargs)
+    if model_fnc == DeepLipschitzLinearResNet:
+        model_artifacting(model_fnc, weights, fig_name=os.path.join(figs_folder, "b_artifacting_grid"),
+                          factory_kwargs=factory_kwargs)
 
     # test_sqrt(device)
 
