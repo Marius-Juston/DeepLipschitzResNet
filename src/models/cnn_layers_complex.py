@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from typing import Optional, Sequence, Tuple, Union
+from typing import Optional, Sequence, Union, List, Tuple
 
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
-from torch import nn, Tensor
+from torch import Tensor
 from torch.nn.common_types import _size_2_t
 from torch.nn.modules.utils import _pair
 from torch.nn.utils import parametrize
@@ -84,6 +85,15 @@ class _AbstractLipConvSeqSpatial(nn.Conv2d):
                  constant_sq: float = 1.0,
                  enable_alpha: bool = True,
                  device=None, dtype=None) -> None:
+
+        if isinstance(stride, tuple):  # make scalar
+            assert all(s == 1 for s in stride), "Normalized conv requires stride=1; downsample with AvgPool."
+        else:
+            assert stride == 1, "Normalized conv requires stride=1; downsample with AvgPool."
+        if isinstance(dilation, tuple):
+            assert all(d == 1 for d in dilation), "Normalized conv requires dilation=1."
+        else:
+            assert dilation == 1, "Normalized conv requires dilation=1."
 
         if groups != 1:
             raise NotImplementedError("groups>1 not yet supported in normalized complex formulation.")
@@ -185,26 +195,45 @@ class InnerSequentialLipConv(_AbstractLipConvSeqSpatial):
     @torch.compiler.disable(reason='Using complex matrix multiplication.')
     def forward(self,
                 x: Tensor,
-                prev_alpha: Tensor,
-                prev_L_lower: Tensor,
-                prev_c: Tensor) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor, Tensor]:
+                prev_alpha: Optional[Tensor],
+                prev_L_lower: Optional[Tensor],
+                prev_c: Optional[Tensor]) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor, Tensor]:
+
         B, _, H, W = x.shape
-        Wf, Hf, Wff = self._weight_fft(H, W)  # (F,o,i)
+        Wf, Hf, Wff = self._weight_fft(H, W)  # (F,o,i) complex
+        F = Wf.shape[0]
+
+        # Right-normalize columns by R_f from Omega_in
         Omega_in = self._Omega_in(Wf)  # (F,i,i)
-        R = safe_cholesky(Omega_in, upper=True)  # (F,i,i)
+        R = safe_cholesky(Omega_in, upper=True)
+        Wn = torch.linalg.solve_triangular(R, Wf, upper=True, left=False)  # (F,o,i)
 
-        # Normalize columns and project through previous output basis:
-        Wn = torch.linalg.solve_triangular(R, Wf, upper=True, left=False)  # (F,o,i) : Wf R^{-1}
-        Wn = torch.linalg.solve_triangular(prev_L_lower, Wn, upper=False, left=False)  # (F,o,i) : Wn L_prev^{-1}
+        # Decide whether we can project through L_prev
+        use_projection = (
+                prev_L_lower is not None
+                and prev_alpha is not None
+                and prev_c is not None
+                and prev_L_lower.shape[0] == F
+                and prev_L_lower.shape[1] == self.in_channels
+                and prev_L_lower.shape[2] == self.in_channels
+        )
 
-        scale = torch.sqrt(prev_alpha) * prev_c * self.c
+        if use_projection:
+            # Project through previous output basis (same F, no size change)
+            Wn = torch.linalg.solve_triangular(prev_L_lower, Wn, upper=False, left=False)
+            scale = torch.sqrt(prev_alpha) * prev_c * self.c
+        else:
+            # RESET: size changed (e.g., AvgPool or stride>1) or state absent
+            scale = self.c
+
         Wn = scale * Wn
 
-        # Update for next layer:
+        # Update out-side Gram and its inverse factorization for the next layer (at current resolution)
         Omega_out = self._Omega_out(Wf)  # (F,o,o)
-        Dinv = Omega_out / (self.c2 * self.alpha)  # (F,o,o)
+        Dinv = Omega_out / (self.c2 * self.alpha)
         L_lower = safe_cholesky(Omega_out, upper=False)
 
+        # Map normalized weights back to spatial and apply conv2d
         y = self._conv2d_with_spatial_weight(x, Wn, Hf, Wff, H, W)
         if self.activation is not None:
             y = self.activation(y)
@@ -212,11 +241,112 @@ class InnerSequentialLipConv(_AbstractLipConvSeqSpatial):
         return y, Wn, Dinv, self.alpha, L_lower, self.c
 
 
+class LipschitzBatchNorm2d(nn.Module):
+    """
+    BatchNorm whose forward is always *samplewise affine* with slope s_c = s_max*tanh(rho_c),
+    using running statistics. This keeps the forward ℓ2-Lipschitz constant ≤ s_max.
+    We still update running stats (EMA) in training for adaptation.
+    """
+
+    def __init__(self, num_features: int,
+                 eps: float = 1e-5, momentum: float = 0.1,
+                 s_max: float = 1.0,
+                 affine_bias: bool = True,
+                 track_running_stats: bool = True,
+                 device=None, dtype=None):
+        super().__init__()
+        self.num_features = num_features
+        self.eps = eps
+        self.momentum = momentum
+        self.s_max = float(s_max)
+        self.track_running_stats = track_running_stats
+
+        factory = dict(device=device, dtype=dtype)
+        # trainable per-channel slope (reparam via tanh)
+        self.rho = nn.Parameter(torch.zeros(num_features, **factory))
+        # trainable bias
+        self.bias = nn.Parameter(torch.zeros(num_features, **factory)) if affine_bias else None
+
+        if track_running_stats:
+            self.register_buffer("running_mean", torch.zeros(num_features, **factory))
+            self.register_buffer("running_var", torch.ones(num_features, **factory))
+            self.register_buffer("num_batches_tracked", torch.tensor(0, dtype=torch.long, device=device))
+        else:
+            self.running_mean = None
+            self.running_var = None
+            self.num_batches_tracked = None
+
+    @torch.no_grad()
+    def _update_running(self, x: torch.Tensor):
+        if not self.track_running_stats or not self.training:
+            return
+        self.num_batches_tracked += 1
+        momentum = self.momentum
+        # per-channel moments over N,H,W
+        mean = x.mean(dim=(0, 2, 3))
+        var = x.var(dim=(0, 2, 3), unbiased=False)
+        self.running_mean.mul_(1 - momentum).add_(momentum * mean)
+        self.running_var.mul_(1 - momentum).add_(momentum * var)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # Update running stats from the batch (no gradient)
+        self._update_running(x)
+
+        # Use *running* stats for the forward to keep it samplewise affine
+        if self.track_running_stats:
+            mean = self.running_mean
+            var = self.running_var
+        else:
+            # Fallback: use per-batch stats but still keep samplewise affine
+            mean = x.mean(dim=(0, 2, 3))
+            var = x.var(dim=(0, 2, 3), unbiased=False)
+
+        s = self.s_max * torch.tanh(self.rho)  # per-channel slope bound in [-s_max, s_max]
+        inv_std = torch.rsqrt(var + self.eps)  # 1/sqrt(var+eps)
+        # Compute *gamma* so that effective slope s = gamma / sqrt(var + eps)
+        gamma = s * (1.0 / inv_std)
+        beta = self.bias if self.bias is not None else 0.0
+
+        # Affine map per channel (samplewise)
+        y = (x - mean[None, :, None, None]) * (gamma[None, :, None, None] * inv_std[None, :, None, None]) + beta
+        # Note: gamma*inv_std simplifies to s, but writing it this way makes the logic explicit
+        # and keeps gradients flowing to rho through s.
+
+        return y
+
+    def lipschitz(self) -> float:
+        # Exact ℓ2 Lipschitz of this layer (samplewise) is max|s_c| ≤ s_max
+        with torch.no_grad():
+            return float((self.s_max * torch.tanh(self.rho)).abs().max().item())
+
+
+class LipschitzAvgPool2d(nn.Module):
+    """AvgPool2d; ℓ2-Lipschitz ≤ 1 (see notes)."""
+
+    def __init__(self, kernel_size, stride=None, padding=0, ceil_mode=False, count_include_pad=True):
+        super().__init__()
+        self.kernel_size = kernel_size
+        self.stride = stride or kernel_size
+        self.padding = padding
+        self.ceil_mode = ceil_mode
+        self.count_include_pad = count_include_pad
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return F.avg_pool2d(x, self.kernel_size, self.stride, self.padding,
+                            self.ceil_mode, self.count_include_pad)
+
+    def lipschitz(self) -> float:
+        return 1.0
+
+
 class DeepLipschitzConvSequentialSpatial(nn.Module):
     """
-    A full sequential network:
-      [FirstSequentialLipConv] + [InnerSequentialLipConv x (L-1)],
-    with the last inner layer having c^2 = 1 and no activation.
+    Sequential Lipschitz CNN (spatial convs), with optional BN (samplewise, bounded)
+    and AvgPool (≤1 Lipschitz). Ordering per block: Conv -> BN (opt) -> ReLU (opt) -> Pool (opt).
+    The first and inner convs implement LDLᵀ-style normalization in the complex domain,
+    then convert to spatial kernels for convolution.
+
+    NOTE: BN uses running stats in forward; this preserves samplewise Lipschitz bounds.
     """
 
     def __init__(self,
@@ -225,59 +355,100 @@ class DeepLipschitzConvSequentialSpatial(nn.Module):
                  layers_widths: Sequence[int],
                  kernel_size: _size_2_t = 3,
                  stride: _size_2_t = 1,
-                 padding: Union[str, _size_2_t] = 0,
+                 padding: Union[str, _size_2_t] = 1,
                  dilation: _size_2_t = 1,
                  activation: Optional[nn.Module] = nn.ReLU(),
                  lipschitz_constant: float = 1.0,
                  enable_alpha: bool = True,
+                 use_bn: bool = True,
+                 bn_smax: float = 1.0,
+                 use_pool: bool = False,
+                 pool_kernel: int = 2,
+                 pool_stride: Optional[int] = None,
                  device: Union[str, torch.device] = "cuda",
                  dtype: Optional[torch.dtype] = None) -> None:
         super().__init__()
-        assert len(layers_widths) >= 1, "Need at least one hidden layer."
+        assert len(layers_widths) >= 1
 
-        self.factory = dict(device=device, dtype=dtype)
+        self.activation = activation
+        self.use_bn = use_bn
+        self.use_pool = use_pool
+
+        factory = dict(device=device, dtype=dtype)
         c2_first = float(lipschitz_constant) ** 2
 
-        self.layers = nn.ModuleList()
+        # --- Build conv stack (no activation inside convs) ---
+        convs: List[nn.Module] = []
+        bns: List[nn.Module] = []
+        pools: List[nn.Module] = []
 
-        # First layer: from in_channels -> layers_widths[0]
-        self.layers.append(
+        # First layer
+        convs.append(
             FirstSequentialLipConv(in_channels, layers_widths[0],
-                                   kernel_size=kernel_size, stride=stride,
-                                   padding=padding, dilation=dilation,
-                                   activation=activation,
-                                   constant_sq=c2_first, enable_alpha=enable_alpha,
-                                   **self.factory)
+                                   kernel_size=kernel_size, stride=stride, padding=padding, dilation=dilation,
+                                   activation=None, constant_sq=c2_first, enable_alpha=enable_alpha, **factory)
         )
+        if use_bn:
+            bns.append(LipschitzBatchNorm2d(layers_widths[0], s_max=bn_smax, **factory))
+        if use_pool:
+            pools.append(LipschitzAvgPool2d(pool_kernel, stride=pool_stride))
 
-        # Middle layers
+        # Middle layers (constant_sq = 2)
         for i in range(1, len(layers_widths)):
-            self.layers.append(
+            convs.append(
                 InnerSequentialLipConv(layers_widths[i - 1], layers_widths[i],
-                                       kernel_size=kernel_size, stride=stride,
-                                       padding=padding, dilation=dilation,
-                                       activation=activation,
-                                       constant_sq=2.0, enable_alpha=enable_alpha,
-                                       **self.factory)
+                                       kernel_size=kernel_size, stride=stride, padding=padding, dilation=dilation,
+                                       activation=None, constant_sq=2.0, enable_alpha=enable_alpha, **factory)
             )
+            if use_bn:
+                bns.append(LipschitzBatchNorm2d(layers_widths[i], s_max=bn_smax, **factory))
+            if use_pool:
+                pools.append(LipschitzAvgPool2d(pool_kernel, stride=pool_stride))
 
-        # Last layer: hidden -> out_channels, c^2 = 1, no activation
-        self.layers.append(
+        # Final conv to out_channels (constant_sq = 1, no activation)
+        convs.append(
             InnerSequentialLipConv(layers_widths[-1], out_channels,
-                                   kernel_size=kernel_size, stride=stride,
-                                   padding=padding, dilation=dilation,
-                                   activation=None,
-                                   constant_sq=1.0, enable_alpha=enable_alpha,
-                                   **self.factory)
+                                   kernel_size=kernel_size, stride=stride, padding=padding, dilation=dilation,
+                                   activation=None, constant_sq=1.0, enable_alpha=enable_alpha, **factory)
         )
+        # Optionally a last BN with s_max ≤ 1 (safe). No ReLU afterward unless you want it.
+        if use_bn:
+            bns.append(LipschitzBatchNorm2d(out_channels, s_max=bn_smax, **factory))
+        # Pool after last layer is typically unusual; keep it off by default.
+        # (add if you really need it)
+
+        self.convs = nn.ModuleList(convs)
+        self.bns = nn.ModuleList(bns)
+        self.pools = nn.ModuleList(pools)
 
     def forward(self, x: Tensor) -> Tensor:
-        # carry the recursion state (alpha, L_lower, c) across layers
-        y, Wn, Dinv, alpha, L_lower, c = self.layers[0](x)
-        prev_alpha, prev_L_lower, prev_c = alpha, L_lower, c
+        # State carried across convs for LDLᵀ recursion
+        y, Wn, Dinv, alpha, L_lower, c = self.convs[0](x)  # no activation inside
+        idx_bn, idx_pool = 0, 0
 
-        for layer in self.layers[1:]:
-            y, Wn, Dinv, alpha, L_lower, c = layer(y, prev_alpha, prev_L_lower, prev_c)
-            prev_alpha, prev_L_lower, prev_c = alpha, L_lower, c
+        if self.use_bn and idx_bn < len(self.bns):
+            y = self.bns[idx_bn](y)
+            idx_bn += 1
+        if self.activation is not None:
+            y = self.activation(y)
+        if self.use_pool and idx_pool < len(self.pools):
+            y = self.pools[idx_pool](y)
+            idx_pool += 1
+
+        # Inner and final
+        for conv_idx in range(1, len(self.convs)):
+            y, Wn, Dinv, alpha, L_lower, c = self.convs[conv_idx](y, alpha, L_lower, c)
+
+            # For the very last conv (to out_channels), you might skip BN/activation/pool
+            is_last = (conv_idx == len(self.convs) - 1)
+
+            if self.use_bn and idx_bn < len(self.bns):
+                y = self.bns[idx_bn](y)
+                idx_bn += 1
+            if not is_last and self.activation is not None:
+                y = self.activation(y)
+            if self.use_pool and idx_pool < len(self.pools) and not is_last:
+                y = self.pools[idx_pool](y)
+                idx_pool += 1
 
         return y
