@@ -148,7 +148,7 @@ def run_experiment(device='cpu'):
 
     model = LipschitzNetwork(device=device)
 
-    # model = torch.compile(model, mode='max-autotune')
+    model = torch.compile(model, mode='max-autotune')
 
     print(model)
     print(print_num_parameters(model))

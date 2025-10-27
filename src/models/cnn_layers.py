@@ -294,14 +294,11 @@ class FirstSequentialLipschitzConvLayer(AbstractLipschitzConvLayer):
     def process(self, Wf: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
         _, W, _ = self.scale_w(Wf)
 
-        scale = self.constant
-        div_scale = self.constant_sq * self.alpha
-
-        W = scale * W
+        W = self.constant * W
 
         omega = self.sum_weight(Wf)
 
-        d_inv = omega / div_scale
+        d_inv = omega / (self.constant_sq * self.alpha)
 
         omega_r = torch.linalg.cholesky(omega, upper=False)
 
