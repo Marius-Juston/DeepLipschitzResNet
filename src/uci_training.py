@@ -365,22 +365,34 @@ def _run_task(pack) -> Tuple[str, Dict[str, Any]]:
             )
 
             log_dir = run_root / f"fold_{k}"
-            res = train_one_fold(
-                X, y,
-                train_idx=train_idx,
-                test_idx=test_idx,
-                val_idx=val_idx,
-                algorithm=algorithm_name,
-                seed=fold_seed,
-                device=device,
-                log_dir=log_dir,
-                hparams=hparams,
-                max_epochs=args.max_epochs,
-                patience=args.patience,
-                batch_size=args.batch_size,
-                num_workers=min(16, max(4, (os.cpu_count() // max(1, args.gpus)) // 4)),
-                lr=args.lr,
-            )
+
+            results_json = log_dir / f"result.json"
+
+            if os.path.exists(results_json):
+                logger.info(f"Skipping the training for {algorithm_name}:{dataset_name}:{k} and loading from {str(results_json)}")
+                with open(results_json, "r") as f:
+                    res = json.load(f)
+            else:
+                res = train_one_fold(
+                    X, y,
+                    train_idx=train_idx,
+                    test_idx=test_idx,
+                    val_idx=val_idx,
+                    algorithm=algorithm_name,
+                    seed=fold_seed,
+                    device=device,
+                    log_dir=log_dir,
+                    hparams=hparams,
+                    max_epochs=args.max_epochs,
+                    patience=args.patience,
+                    batch_size=args.batch_size,
+                    num_workers=min(16, max(4, (os.cpu_count() // max(1, args.gpus)) // 4)),
+                    lr=args.lr,
+                )
+
+                with open(results_json, "w") as f:
+                    json.dump(res, f)
+
             # Attach identifiers for aggregation
             res.update({'fold': k})
             fold_results.append(res)
