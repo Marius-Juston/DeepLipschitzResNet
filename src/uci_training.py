@@ -138,6 +138,7 @@ def train_one_fold(
         train_idx: np.ndarray,
         test_idx: np.ndarray,
         val_idx: np.ndarray,
+        algorithm: str,
         seed: int,
         device: torch.device,
         log_dir: Path,
@@ -175,7 +176,11 @@ def train_one_fold(
     n_classes = int(y.max()) + 1
     d_in = X.shape[1]
     width = suggested_width(d_in, n_classes)
-    model = MLP(d_in, n_classes, width=width, depth=4, dropout=0.2).to(device)
+
+    if algorithm == 'mlp':
+        model = MLP(d_in, n_classes, width=width, depth=4, dropout=0.2).to(device)
+    else:
+        raise ValueError("Please provide a valid algorithm name 'mlp'")
 
     class_w = class_weights_from_indices(y, train_idx).to(device)
     criterion = nn.CrossEntropyLoss(weight=class_w)
@@ -314,7 +319,7 @@ def _run_task(pack) -> Tuple[str, Dict[str, Any]]:
     pack = (dataset_dir, dataset_name, repeat_id, gpu_id, out_dir, base_seed, args_dict)
     Returns ("ok", result) or ("error", errdict).
     """
-    dataset_dir, dataset_name, gpu_id, out_dir, base_seed, args = pack
+    dataset_dir, dataset_name, algorithm_name, gpu_id, out_dir, base_seed, args = pack
     try:
         # Pin this task to a specific GPU
         os.environ["CUDA_VISIBLE_DEVICES"] = str(gpu_id)
@@ -347,6 +352,7 @@ def _run_task(pack) -> Tuple[str, Dict[str, Any]]:
             fold_seed = int(base_seed + k)
             hparams = dict(
                 dataset=dataset_name,
+                algorithm=algorithm_name,
                 fold=k,
                 seed=fold_seed,
                 d_in=int(d_in),
@@ -364,6 +370,7 @@ def _run_task(pack) -> Tuple[str, Dict[str, Any]]:
                 train_idx=train_idx,
                 test_idx=test_idx,
                 val_idx=val_idx,
+                algorithm=algorithm_name,
                 seed=fold_seed,
                 device=device,
                 log_dir=log_dir,
@@ -381,6 +388,7 @@ def _run_task(pack) -> Tuple[str, Dict[str, Any]]:
         test_accs = [fr["test_acc"] for fr in fold_results]
         result = {
             "dataset": dataset_name,
+            "algorithm": algorithm_name,
             "n_folds": K,
             "fold_results": fold_results,
             "mean_test_acc": float(np.mean(test_accs)) if len(test_accs) else float("nan"),
@@ -394,12 +402,26 @@ def _run_task(pack) -> Tuple[str, Dict[str, Any]]:
         tb = traceback.format_exc()
         err = {
             "dataset": dataset_name,
+            "algorithm": algorithm_name,
             "traceback": tb,
         }
         return "error", err
 
 
 # ------------- Orchestrator ------------- #
+
+def wilcoxon_prep(alg_summary: Dict[str, Dict[str, Any]], out_dir: Path):
+    # Wilcoxon-friendly flattened table
+    wilcoxon_ready = []
+    for alg_name, alg in alg_summary.items():
+        for ds_name, ds_entry in alg["datasets"].items():
+            mean_val = ds_entry["mean_test_acc"]
+            if mean_val is not None:
+                wilcoxon_ready.append({"dataset": ds_name, "algorithm": alg_name, "mean_accuracy": mean_val})
+
+    with open(out_dir / "wilcoxon_prep.json", "w") as f:
+        json.dump(wilcoxon_ready, f)
+
 
 def schedule_and_run(datasets: List[Path], args: argparse.Namespace, out_dir: Path) -> Dict[str, Any]:
     """
@@ -411,10 +433,11 @@ def schedule_and_run(datasets: List[Path], args: argparse.Namespace, out_dir: Pa
 
     # Build task list with round-robin GPU assignment
     tasks = []
-    for d in sorted(datasets, key=lambda p: p.name.lower()):
-        name = d.name
-        gid = (len(tasks)) % ngpus
-        tasks.append((d, name, gid, str(out_dir), base_seed, args))
+    for alg in args.algorithms:
+        for d in sorted(datasets, key=lambda p: p.name.lower()):
+            name = d.name
+            gid = (len(tasks)) % ngpus
+            tasks.append((d, name, alg, gid, str(out_dir / alg), base_seed, args))
 
     total = len(tasks)
     logger.info(f"Launching Pool with {ngpus} workers over {total} tasks...")
@@ -423,13 +446,23 @@ def schedule_and_run(datasets: List[Path], args: argparse.Namespace, out_dir: Pa
     ctx = get_context("spawn")
 
     # Aggregate summary JSON
-    summary = {
-        "metadata": args.__dict__,
-        "datasets": {},
-        "overall": {}
-    }
 
-    summary['metadata'].update({'gpus': ngpus, 'n_tasks': total, 'run_dir': os.getcwd()})
+    json_save_paths = dict()
+    alg_summary = dict()
+    for alg in args.algorithms:
+        json_save_paths[alg] = out_dir / alg / f"summary.json"
+
+        summary = {
+            "metadata": args.__dict__,
+            "datasets": {},
+            "overall": {}
+        }
+
+        summary['metadata'].update({'gpus': ngpus, 'n_tasks': total, 'run_dir': os.getcwd()})
+
+        alg_summary[alg] = summary.copy()
+
+    del summary
 
     with ctx.Pool(processes=ngpus) as pool:
         # Iterate as results come in
@@ -437,25 +470,23 @@ def schedule_and_run(datasets: List[Path], args: argparse.Namespace, out_dir: Pa
             if status == "ok":
                 results.append(payload)
 
-                summary['datasets'].update({payload['dataset']: payload})
+                alg = payload['algorithm']
 
-                with open(out_dir / "summary.json", "w") as f:
-                    json.dump(summary, f, indent=4)
+                alg_summary[alg]['datasets'].update({payload['dataset']: payload})
+
+                with open(json_save_paths[alg], 'w') as f:
+                    json.dump(alg_summary[alg], f, indent=4)
+
             else:
-                logger.error(f"[{status}] for dataset {payload['dataset']}: {payload.get('traceback')}")
+                logger.error(
+                    f"[{status}] for dataset {payload['dataset']} using {payload['algorithm']}: {payload.get('traceback')}")
 
             if i % 5 == 0 or i == total:
                 logger.info(f"[Progress] {i}/{total} tasks complete.")
 
-    # Wilcoxon-friendly flattened table
-    wilcoxon_ready = []
-    for ds_name, ds_entry in summary["datasets"].items():
-        mean_val = ds_entry["mean_test_acc"]
-        if mean_val is not None:
-            wilcoxon_ready.append({"dataset": ds_name, "mean_accuracy": mean_val})
-    summary["wilcoxon_table"] = wilcoxon_ready
+    logger.info(f"\nWrote summary JSONs to: {json_save_paths}")
 
-    return summary
+    return alg_summary
 
 
 def parse_args():
@@ -474,6 +505,9 @@ def parse_args():
                    help="Logging verbosity.")
     p.add_argument("--datasets", nargs="*", default=None,
                    help="Optional explicit list of dataset names to run (match folder names under data_root).")
+
+    p.add_argument("--algorithms", type=str, nargs='+', default=['mlp'])
+
     return p.parse_args()
 
 
@@ -537,10 +571,8 @@ def main():
 
     summary = schedule_and_run(all_ds, args, out_dir)
 
-    json_path = out_dir / "results_summary.json"
-    with open(json_path, "w") as f:
-        json.dump(summary, f, indent=2)
-    logger.info(f"\nWrote summary JSON to: {json_path}")
+    wilcoxon_prep(summary, out_dir)
+
     logger.info(f"TensorBoard logs under: {out_dir / 'runs'}")
     logger.info(f"To view: tensorboard --logdir {str(out_dir / "runs")}")
 
