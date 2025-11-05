@@ -173,16 +173,20 @@ def eval_certified(model, loader, dtype=None, device=None):
         predicted = outputs.argmax(axis=1)
         correct = predicted == labels.argmax(axis=1)
         margins, indices = torch.sort(outputs, 1)
-        margins = torch.diff(margins)
 
-        margins /= torch.norm(normalized_weight[indices[:, None, -1]] - normalized_weight[indices[:, 0:-1]], dim=-1,
-                              p=2)
+        top_idx = indices[:, -1]
+        other_idx = indices[:, :-1]
 
-        # for idx in range(margins.shape[0]):
-        #     margins[idx] /= torch.norm(
-        #         normalized_weight[indices[idx, -1]] - normalized_weight[indices[idx, 0:-1]], dim=1, p=2)
-        margins, _ = torch.sort(margins, 1)
-        certified = margins[:, 0, None] > eps_float * lip_cst
+        num  = margins[:, -1][:, None] - margins[:, :-1]
+
+        w_top = normalized_weight[top_idx]
+        w_oth = normalized_weight[other_idx]
+
+        denom = torch.norm(w_top[:, None, :] - w_oth, dim=-1, p=2).clamp_min(1e-12)
+
+        radii = (num / denom).min(dim=1).values
+
+        certified = radii[:, None] > eps_float * lip_cst
         running_accuracy += correct.sum()
         running_certified += torch.sum(torch.unsqueeze(correct, -1) & certified, dim=0)
         running_inputs += inputs.size(0)
