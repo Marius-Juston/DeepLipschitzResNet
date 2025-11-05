@@ -251,6 +251,10 @@ def train_one_fold(
 
         model = LipschitzNetworkSequential(cin=d_in, n_dense=depth, padding=padding, dense_inner_dim=width,
                                            n_classes=n_classes).to(device=device, dtype=dtype)
+    elif algorithm == 'ldlt':
+        model = DeepLipschitzSequential(d_in, n_classes, layers_widths=[width] * depth, device=device, dtype=dtype)
+    elif algorithm == 'ldlt-resnet':
+        model = DeepLipschitzLinearResNet(d_in, n_classes, layers_widths=[width] * depth, device=device, dtype=dtype)
     else:
         raise ValueError("Please provide a valid algorithm name 'mlp'")
 
@@ -623,7 +627,8 @@ def parse_args():
     p.add_argument("--datasets", nargs="*", default=None,
                    help="Optional explicit list of dataset names to run (match folder names under data_root).")
 
-    p.add_argument("--algorithms", type=str, nargs='+', default=['mlp'], choices=['mlp', 'sdp'])
+    p.add_argument("--algorithms", type=str, nargs='+', default=['mlp', 'sdp', 'ldlt', 'ldlt-resnet'],
+                   choices=['mlp', 'sdp', 'ldlt', 'ldlt-resnet'])
 
     return p.parse_args()
 
