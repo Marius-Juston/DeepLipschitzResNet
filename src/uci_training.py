@@ -479,13 +479,16 @@ def _run_task(pack) -> Tuple[str, Dict[str, Any]]:
                 )
 
                 with open(results_json, "w") as f:
-                    json.dump(res, f)
+                    json.dump(res, f, indent=4)
 
             # Attach identifiers for aggregation
             res.update({'fold': k})
             fold_results.append(res)
 
+        certs = ['36', '72', '108', '255']
+
         test_accs = [fr["test_acc"] for fr in fold_results]
+
         result = {
             "dataset": dataset_name,
             "algorithm": algorithm_name,
@@ -497,6 +500,16 @@ def _run_task(pack) -> Tuple[str, Dict[str, Any]]:
             "n_features": int(X_master.shape[1]),
             "n_classes": int(n_classes),
         }
+
+        if algorithm_name != 'mlp':
+            for cert in certs:
+                values = [fr["cert_evals"][cert] for fr in fold_results]
+
+                result.update({
+                    f'mean_cert_acc_{cert}': float(np.mean(values)) if len(values) else float("nan"),
+                    f'std_cert_acc_{cert}': float(np.std(values, ddof=1) if len(values) > 1 else 0.0)
+                })
+
         return "ok", result
     except Exception as e:
         tb = traceback.format_exc()
@@ -520,7 +533,7 @@ def wilcoxon_prep(alg_summary: Dict[str, Dict[str, Any]], out_dir: Path):
                 wilcoxon_ready.append({"dataset": ds_name, "algorithm": alg_name, "mean_accuracy": mean_val})
 
     with open(out_dir / "wilcoxon_prep.json", "w") as f:
-        json.dump(wilcoxon_ready, f)
+        json.dump(wilcoxon_ready, f, indent=4)
 
 
 def schedule_and_run(datasets: List[Path], args: argparse.Namespace, out_dir: Path) -> Dict[str, Any]:
