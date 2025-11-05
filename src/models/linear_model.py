@@ -145,6 +145,35 @@ class DeepLipschitzLinearResNet(nn.Module):
 
         return first + second
 
+    def last_weight(self) -> torch.Tensor:
+        x = torch.zeros((1, self.in_features), **self.factory_kwargs)
+
+        first, a_weight, d_inv, prev_alpha, prev_omega_r, prev_constant = self.A(x)
+
+        gamma = self.A.identity
+        sigma_lower = None
+
+        current_input = x
+
+        for layer in self.layers:
+            T = gamma @ d_inv
+
+            current_input, c_weight, d_inv, prev_alpha, prev_omega_r, prev_constant = layer(current_input, prev_alpha,
+                                                                                            prev_omega_r, prev_constant)
+
+            if sigma_lower is None:
+                sigma_lower = T
+            else:
+                sigma_lower = safe_cholesky(sigma_lower @ sigma_lower.T + T @ T.T, upper=False)
+
+            gamma = T @ c_weight.T
+
+            current_input = self.activation(current_input)
+
+        second, b_weight = self.compute_b(current_input, sigma_lower, a_weight, prev_alpha, prev_omega_r)
+
+        return torch.cat([a_weight, b_weight], dim=1)
+
 
 class DeepLipschitzSequential(nn.Module):
     layers: ModuleList
