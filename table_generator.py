@@ -170,6 +170,7 @@ def format_small_p(p):
 
     return f"${p:.1e}{p_to_stars(p)}$"
 
+
 def build_wilcoxon_tables(wilc_df):
     if wilc_df.empty:
         return {}
@@ -195,7 +196,8 @@ def build_wilcoxon_tables(wilc_df):
         cols = ["Alg A", "Alg B", "n", "winsA", "winsB", "ties",
                 "WinRate A", "Median AB", "W", "p", "p_within", "p_global", "r",
                 "p_holm_within_metric"]
-        tdict[m] = t[cols].sort_values(["p_holm_within_metric", "Alg A", "Alg B"]).drop(columns=["p_holm_within_metric"])
+        tdict[m] = t[cols].sort_values(["p_holm_within_metric", "Alg A", "Alg B"]).drop(
+            columns=["p_holm_within_metric"])
     return tdict
 
 
@@ -246,6 +248,7 @@ HEADER = r"""
 % \usepackage{longtable}
 % Optional for landscape: \usepackage{pdflscape}
 """
+
 
 def tex_table_metric_summary(metric_name, df, wide=False):
     cap = f"Sorted mean$\\pm$std across datasets for each algorithm on {metric_to_name(metric_name)}."
@@ -320,7 +323,7 @@ def tex_longtable_wilcoxon(metric_name, df, span_mode="table*"):
     # For two-column spanning without page breaks: table* + tabular
     colspec = "ll r r r r r r r r r r r"
     maybe_landscape_begin = r"\begin{landscape}" if span_mode == "landscape" else ""
-    maybe_landscape_end   = r"\end{landscape}" if span_mode == "landscape" else ""
+    maybe_landscape_end = r"\end{landscape}" if span_mode == "landscape" else ""
     lines = [maybe_landscape_begin,
              r"\begin{table*}[t]",
              r"\centering",
