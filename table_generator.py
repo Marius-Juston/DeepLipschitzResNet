@@ -24,7 +24,6 @@ ALG_PRETTY = {
 METRICS_PRETTY = {
     'mean_cert_acc_108': "Mean Certified Accuracy (108/255)",
     'mean_cert_acc_255': "Mean Certified Accuracy (255/255)",
-
     'mean_cert_acc_36': "Mean Certified Accuracy (36/255)",
     'mean_cert_acc_72': "Mean Certified Accuracy (72/255)",
     'mean_test_acc': "Mean Accuracy"
@@ -33,7 +32,8 @@ METRICS_PRETTY = {
 STAR_THRESH = [(0.001, r"^{***}"), (0.01, r"^{**}"), (0.05, r"^{*}")]
 
 
-def alg_pretty(a): return ALG_PRETTY.get(a, a)
+def alg_pretty(a):
+    return ALG_PRETTY.get(a, a)
 
 
 def fmt_mean_std(x):
@@ -43,16 +43,19 @@ def fmt_mean_std(x):
 
 
 def p_to_stars(p):
-    if pd.isna(p): return ""
+    if pd.isna(p):
+        return ""
     for th, tag in STAR_THRESH:
-        if p <= th: return tag
+        if p <= th:
+            return tag
     return ""
 
 
 def bestbold(series):
     # bold (max) numerical entries; ignore em-dash
     vals = pd.to_numeric(series.str.extract(r"([0-9]+\.?[0-9]*)")[0], errors="coerce")
-    if vals.isna().all(): return series
+    if vals.isna().all():
+        return series
     best = vals.max(skipna=True)
     mask = vals.eq(best)
     out = series.copy()
@@ -74,7 +77,7 @@ def latex_escape(s):
 
 
 def metric_to_name(s: str):
-    return METRICS_PRETTY[s]
+    return METRICS_PRETTY.get(s, latex_escape(s))
 
 
 def ensure_algos(path):
@@ -112,9 +115,12 @@ def load_all(out_dir: Path, algorithms=None):
 
 def sorting_key(m: str):
     if m == 'mean_test_acc':
-        return 0
-
-    return int(m.split('_')[-1])
+        return (0, 0)
+    # sort certs numerically by epsilon value at the end
+    try:
+        return (1, int(m.split('_')[-1]))
+    except Exception:
+        return (2, m)
 
 
 def build_metric_summary(per_alg):
@@ -131,7 +137,8 @@ def build_metric_summary(per_alg):
                 if k.startswith("mean_") and (isinstance(v, (int, float)) and math.isfinite(v)):
                     rows.append({"dataset": ds, "algorithm": alg, "metric": k, "value": float(v)})
     df = pd.DataFrame(rows)
-    if df.empty: return {}, {}
+    if df.empty:
+        return {}, {}
 
     metrics = sorted(df["metric"].unique().tolist(), key=sorting_key)
     result_tables = {}
@@ -158,7 +165,8 @@ def build_metric_summary(per_alg):
 # ------------------------ Build Wilcoxon tables -------------------------- #
 
 def build_wilcoxon_tables(wilc_df):
-    if wilc_df.empty: return {}
+    if wilc_df.empty:
+        return {}
 
     # Make prettier labels and stars on Holm-within-metric
     tdict = {}
@@ -167,21 +175,22 @@ def build_wilcoxon_tables(wilc_df):
         t["Alg A"] = t["alg_a"].map(alg_pretty)
         t["Alg B"] = t["alg_b"].map(alg_pretty)
         t["WinRate A"] = (t["win_rate_a_over_b"]).round(4)
-        t["Median Δ (A−B)"] = t["median_diff_a_minus_b"].round(4)
+        t["Median AB"] = t["median_diff_a_minus_b"].round(4)  # Median Δ; we'll label with LaTeX in header
         t["W"] = t["W_stat"].round(4)
         t["p"] = t["p_two_sided"].apply(lambda p: f"{p:.3g}")
-        t["p$_{Holm,within}$"] = t["p_holm_within_metric"].apply(lambda p: f"{p:.3g}{p_to_stars(p)}")
-        t["p$_{Holm,global}$"] = t["p_holm_global"].apply(lambda p: f"{p:.3g}{p_to_stars(p)}")
+        t["p_within"] = t["p_holm_within_metric"].apply(lambda p: f"${p:.3g}{p_to_stars(p)}$")
+        t["p_global"] = t["p_holm_global"].apply(lambda p: f"${p:.3g}{p_to_stars(p)}$")
         t["r"] = t["effect_size_r"].round(4)
         t["n"] = t["n_common"].astype(int)
-        t["wins$_A$"] = t["wins_a"].astype(int)
-        t["wins$_B$"] = t["wins_b"].astype(int)
+        t["winsA"] = t["wins_a"].astype(int)
+        t["winsB"] = t["wins_b"].astype(int)
         t["ties"] = t["ties"].astype(int)
 
-        cols = ["Alg A", "Alg B", "n", "wins$_A$", "wins$_B$", "ties",
-                "WinRate A", "Median Δ (A−B)", "W", "p", "p$_{Holm,within}$", "p$_{Holm,global}$", "r",
+        cols = ["Alg A", "Alg B", "n", "winsA", "winsB", "ties",
+                "WinRate A", "Median AB", "W", "p", "p_within", "p_global", "r",
                 "p_holm_within_metric"]
-        tdict[m] = t[cols].sort_values(["p_holm_within_metric", "Alg A", "Alg B"])
+        tdict[m] = t[cols].sort_values(["p_holm_within_metric", "Alg A", "Alg B"]).drop(
+            columns=["p_holm_within_metric"])
     return tdict
 
 
@@ -204,8 +213,9 @@ def build_model_size_ranges(per_alg):
                         bag.append(fr[key])
 
         def rng(a):
-            if not a: return r"\textemdash"
-            return rf"{int(np.min(a))}–{int(np.max(a))}"
+            if not a:
+                return r"\textemdash"
+            return rf"{int(np.min(a))}--{int(np.max(a))}"  # use TeX en-dash
 
         recs.append({
             "Algorithm": alg_pretty(alg),
@@ -224,16 +234,16 @@ def build_model_size_ranges(per_alg):
 
 HEADER = r"""
 % JMLR-ready tables exported from UCI tabular experiments
-% Requires: \usepackage{booktabs}, \usepackage{siunitx}, \usepackage{threeparttable}, \usepackage{longtable}
-% Suggested siunitx config:
-% \sisetup{detect-weight=true,detect-inline-weight=math,table-number-alignment=center}
+% Requires: \usepackage{booktabs}, \usepackage{threeparttable}, \usepackage{threeparttablex}, \usepackage{longtable}
+% NOTE: siunitx is NOT required.
 """
 
 
 def tex_table_metric_summary(metric_name, df):
     cap = f"Mean$\\pm$std across datasets for each algorithm on {metric_to_name(metric_name)}."
     lab = f"tab:{metric_name}"
-    colspec = "l S[table-format=2.0] l"
+    # Only basic column types to avoid siunitx
+    colspec = "l r l"
     lines = [r"\begin{table}[t]",
              r"\centering",
              r"\begin{threeparttable}",
@@ -241,7 +251,7 @@ def tex_table_metric_summary(metric_name, df):
              rf"\label{{{lab}}}",
              rf"\begin{{tabular}}{{{colspec}}}",
              r"\toprule",
-             r"Algorithm & {$N$ datasets} & Value \\",
+             r"Algorithm & $N$ datasets & Value \\",
              r"\midrule"]
     for _, r in df.iterrows():
         lines.append(rf"{r['Algorithm']} & {int(r['$N$ datasets'])} & {r['Value']} \\")
@@ -254,24 +264,16 @@ def tex_table_metric_summary(metric_name, df):
 
 def tex_longtable_wilcoxon(metric_name, df):
     cap = (r"Wilcoxon signed-rank tests (two-sided) for " + metric_to_name(metric_name) +
-           r"; p-values with Holm FWER corrections within-metric and global. "
-           r"Stars mark significance (* $p\!\le\!0.05$, ** $p\!\le\!0.01$, *** $p\!\le\!0.001$).")
+           r"; $p$-values with Holm FWER corrections within-metric and global. "
+           r"Stars mark significance ($^*\,p\!\le\!0.05$, $^{**}\,p\!\le\!0.01$, $^{***}\,p\!\le\!0.001$).")
     lab = f"tab:wilcoxon:{metric_name}"
-    colspec = ("ll"
-               " S[table-format=3.0]"
-               " S[table-format=3.0]"
-               " S[table-format=3.0]"
-               " S[table-format=3.0]"
-               " S[table-format=1.4]"
-               " S[table-format=1.4]"
-               " S[table-format=1.4]"
-               " l"
-               " l"
-               " S[table-format=1.4]")
-    head = (r"Alg A & Alg B & {$n$} & {wins$_A$} & {wins$_B$} & {ties} & "
-            r"{WinRate A} & {Median $\Delta$} & {$W$} & {$p$} & {$p_{\text{Holm,within}}$} & {$p_{\text{Holm,global}}$} & {$r$} \\")
-    lines = [r"\begin{threeparttable}",
-             rf"\begin{{tablenotes}}[flushleft]\footnotesize {cap}\end{{tablenotes}}",
+    # Plain columns; no siunitx
+    colspec = "l l r r r r r r r r r r r"
+    head = (r"Alg A & Alg B & $n$ & wins$_A$ & wins$_B$ & ties & "
+            r"WinRate A & Median $\Delta$ (A--B) & $W$ & $p$ & $p_{\text{Holm,within}}$ & $p_{\text{Holm,global}}$ & $r$ \\")
+
+    lines = [r"\begin{ThreePartTable}",
+             rf"\begin{{TableNotes}}\item {cap}\end{{TableNotes}}",
              r"\begin{longtable}{" + colspec + "}",
              rf"\caption[{metric_to_name(metric_name)}]{{{cap}}}\label{{{lab}}}\\",
              r"\toprule",
@@ -287,19 +289,19 @@ def tex_longtable_wilcoxon(metric_name, df):
              r"\endfoot"]
     for _, r in df.iterrows():
         lines.append(
-            rf"{r['Alg A']} & {r['Alg B']} & {r['n']} & {r['wins$_A$']} & {r['wins$_B$']} & {r['ties']} & "
-            rf"{r['WinRate A']:.4f} & {r['Median Δ (A−B)']:.4f} & {r['W']:.4f} & {r['p']} & "
-            rf"{r['p$_{Holm,within}$']} & {r['p$_{Holm,global}$']} & {r['r']:.4f} \\")
+            rf"{r['Alg A']} & {r['Alg B']} & {r['n']} & {r['winsA']} & {r['winsB']} & {r['ties']} & "
+            rf"{r['WinRate A']:.4f} & {r['Median AB']:.4f} & {r['W']:.4f} & {r['p']} & "
+            rf"{r['p_within']} & {r['p_global']} & {r['r']:.4f} \\")
     lines += [r"\end{longtable}",
-              r"\end{threeparttable}"]
+              r"\end{ThreePartTable}"]
     return "\n".join(lines)
 
 
 def tex_model_ranges(df):
-    cap = ("Model dimension ranges (min–max across all datasets and folds). "
+    cap = ("Model dimension ranges (min--max across all datasets and folds). "
            "Input/Output dimensions follow dataset label spaces.")
     lab = "tab:model-ranges"
-    colspec = "l l l l l l l"
+    colspec = "l r r r r r r"
     lines = [r"\begin{table}[t]",
              r"\centering",
              r"\begin{threeparttable}",
