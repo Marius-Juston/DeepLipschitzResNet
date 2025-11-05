@@ -259,7 +259,7 @@ def train_one_fold(
     torch.set_num_threads(max(1, os.cpu_count() // torch.cuda.device_count()))
 
     writer = SummaryWriter(str(log_dir))
-    writer.add_hparams(hparams, {"acc/val": 0.0, 'acc/train': 0.0}, global_step=0)
+    writer.add_hparams(hparams, {"hparam/acc/val": 0.0, 'hparam/acc/train': 0.0}, global_step=0)
 
     best_val = -1.0
     best_state = None
@@ -298,7 +298,8 @@ def train_one_fold(
             cert_names, ac, cert_vals = eval_certified(model, val_loader, device=device, dtype=dtype)
             cert_dict_ = convert_cert_vals(cert_names, cert_vals)
 
-            writer.add_scalars('eval_cert/val', cert_dict_, epoch)
+            for n, v in cert_dict_.items():
+                writer.add_scalar(f'eval_cert/{n}', v, epoch)
 
         scheduler.step(val_acc)
 
@@ -307,7 +308,7 @@ def train_one_fold(
         writer.add_scalar("acc/train", train_acc, epoch)
         writer.add_scalar("acc/val", val_acc, epoch)
 
-        writer.add_hparams(hparams, {"acc/val": val_acc, 'acc/train': train_acc}, global_step=epoch)
+        writer.add_hparams(hparams, {"hparam/acc/val": val_acc, 'hparam/acc/train': train_acc}, global_step=epoch)
 
         writer.add_scalar("lr", optimizer.param_groups[0]["lr"], epoch)
 
@@ -342,7 +343,8 @@ def train_one_fold(
 
         cert_dict_ = convert_cert_vals(cert_names, cert_vals)
 
-        writer.add_scalars('eval_cert/best_val', cert_dict_, 0)
+        for n, v in cert_dict_.items():
+            writer.add_scalar(f'best_eval_cert/{n}', v, best_epoch if best_epoch > 0 else 0)
     else:
         cert_dict_ = None
 
