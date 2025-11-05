@@ -17,9 +17,14 @@ from typing import Dict, Any, List, Tuple
 import numpy as np
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
+from torch import Tensor
 from torch.multiprocessing import set_start_method
 from torch.utils.data import Dataset, DataLoader
 from torch.utils.tensorboard import SummaryWriter
+
+from models.linear_model import DeepLipschitzSequential, DeepLipschitzLinearResNet
+from sll_models.model import LipschitzNetworkSequential
 
 logger = logging.getLogger(__name__)
 
@@ -132,6 +137,61 @@ def eval_loop(model, loader, device):
     return correct / max(total, 1)
 
 
+def convert_cert_vals(cert_names: List[float], cert_vals: Tensor):
+    return {
+        str(int(n)): v.item() for n, v in zip(cert_names, cert_vals)
+    }
+
+
+@torch.no_grad()
+def eval_certified(model, loader, dtype=None, device=None):
+    cert_values = [36., 72., 108., 255.]
+
+    eps_float = torch.tensor(cert_values, dtype=dtype, device=device) / 255.
+    model.eval()
+    running_accuracy = 0
+
+    running_certified = torch.zeros_like(eps_float)
+
+    running_inputs = 0
+    lip_cst = 1.
+
+    if isinstance(model, DeepLipschitzSequential):
+        normalized_weight = model.last_weight()
+    elif isinstance(model, DeepLipschitzLinearResNet):
+        normalized_weight = model.last_weight()
+    elif isinstance(model, LipschitzNetworkSequential):
+        last_weight = model.model[-1].weight
+        normalized_weight = F.normalize(last_weight, p=2, dim=1)
+    else:
+        raise ValueError("Using unsupported model type for certified evaluation")
+
+    for batch_n, data in enumerate(loader):
+        inputs, labels = data
+        inputs, labels = inputs.to(device=device, dtype=dtype), labels.to(device=device, dtype=dtype)
+        outputs = model(inputs)
+        predicted = outputs.argmax(axis=1)
+        correct = predicted == labels.argmax(axis=1)
+        margins, indices = torch.sort(outputs, 1)
+        margins = torch.diff(margins)
+
+        margins /= torch.norm(normalized_weight[indices[:, None, -1]] - normalized_weight[indices[:, 0:-1]], dim=-1,
+                              p=2)
+
+        # for idx in range(margins.shape[0]):
+        #     margins[idx] /= torch.norm(
+        #         normalized_weight[indices[idx, -1]] - normalized_weight[indices[idx, 0:-1]], dim=1, p=2)
+        margins, _ = torch.sort(margins, 1)
+        certified = margins[:, 0, None] > eps_float * lip_cst
+        running_accuracy += correct.sum()
+        running_certified += torch.sum(torch.unsqueeze(correct, -1) & certified, dim=0)
+        running_inputs += inputs.size(0)
+
+    accuracy = running_accuracy / running_inputs
+    certified = running_certified / running_inputs
+    return cert_values, accuracy, certified
+
+
 def train_one_fold(
         X: np.ndarray,
         y: np.ndarray,
@@ -140,7 +200,6 @@ def train_one_fold(
         val_idx: np.ndarray,
         algorithm: str,
         seed: int,
-        device: torch.device,
         log_dir: Path,
         hparams: Dict[str, Any],
         max_epochs: int = 300,
@@ -149,6 +208,8 @@ def train_one_fold(
         num_workers: int = 8,
         lr: float = 1e-3,
         weight_decay: float = 1e-4,
+        dtype=None,
+        device: torch.device = None,
 ) -> Dict[str, Any]:
     """
     Train on folds != {test_fold, val_fold}, validate on val_fold, test on test_fold.
@@ -177,12 +238,19 @@ def train_one_fold(
     d_in = X.shape[1]
     width = suggested_width(d_in, n_classes)
 
+    depth = 4
+
     if algorithm == 'mlp':
-        model = MLP(d_in, n_classes, width=width, depth=4, dropout=0.2).to(device)
+        model = MLP(d_in, n_classes, width=width, depth=depth, dropout=0.2).to(device=device, dtype=dtype)
+    elif algorithm == 'sdp':
+        padding = max(d_in * 2, 10)
+
+        model = LipschitzNetworkSequential(cin=d_in, n_dense=depth, padding=padding, dense_inner_dim=width,
+                                           n_classes=n_classes).to(device=device, dtype=dtype)
     else:
         raise ValueError("Please provide a valid algorithm name 'mlp'")
 
-    class_w = class_weights_from_indices(y, train_idx).to(device)
+    class_w = class_weights_from_indices(y, train_idx).to(device=device, dtype=dtype)
     criterion = nn.CrossEntropyLoss(weight=class_w)
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', factor=0.5, patience=8)
@@ -206,8 +274,8 @@ def train_one_fold(
         epoch_total = 0
 
         for xb, yb in train_loader:
-            xb = xb.to(device, non_blocking=True)
-            yb = yb.to(device, non_blocking=True)
+            xb = xb.to(device=device, dtype=dtype, non_blocking=True)
+            yb = yb.to(device=device, dtype=dtype, non_blocking=True)
             optimizer.zero_grad(set_to_none=True)
 
             logits = model(xb)
@@ -225,6 +293,13 @@ def train_one_fold(
         train_loss = epoch_loss / max(epoch_total, 1)
         train_acc = epoch_correct / max(epoch_total, 1)
         val_acc = eval_loop(model, val_loader, device)
+
+        if algorithm != 'mlp':
+            cert_names, ac, cert_vals = eval_certified(model, val_loader, device=device, dtype=dtype)
+            cert_dict_ = convert_cert_vals(cert_names, cert_vals)
+
+            writer.add_scalars('eval_cert/val', cert_dict_, epoch)
+
         scheduler.step(val_acc)
 
         # TensorBoard logging
@@ -262,6 +337,15 @@ def train_one_fold(
 
     test_acc = eval_loop(model, test_loader, device)
 
+    if algorithm != 'mlp':
+        cert_names, ac, cert_vals = eval_certified(model, val_loader, device=device, dtype=dtype)
+
+        cert_dict_ = convert_cert_vals(cert_names, cert_vals)
+
+        writer.add_scalars('eval_cert/best_val', cert_dict_, 0)
+    else:
+        cert_dict_ = None
+
     writer.add_scalar("acc/test_final", test_acc, best_epoch if best_epoch > 0 else 0)
     writer.add_text("early_stopping/best_epoch", str(best_epoch), 0)
     writer.add_text("early_stopping/best_val_acc", f"{best_val:.6f}", 0)
@@ -278,6 +362,7 @@ def train_one_fold(
         "test_size": test_idx.shape[0],
         "stats": {"mean": stats["mean"].tolist(), "std": stats["std"].tolist()},
         "width": int(width),
+        'cert_evals': cert_dict_
     }
 
 
@@ -369,7 +454,8 @@ def _run_task(pack) -> Tuple[str, Dict[str, Any]]:
             results_json = log_dir / f"result.json"
 
             if os.path.exists(results_json):
-                logger.info(f"Skipping the training for {algorithm_name}:{dataset_name}:{k} and loading from {str(results_json)}")
+                logger.info(
+                    f"Skipping the training for {algorithm_name}:{dataset_name}:{k} and loading from {str(results_json)}")
                 with open(results_json, "r") as f:
                     res = json.load(f)
             else:
@@ -518,7 +604,7 @@ def parse_args():
     p.add_argument("--datasets", nargs="*", default=None,
                    help="Optional explicit list of dataset names to run (match folder names under data_root).")
 
-    p.add_argument("--algorithms", type=str, nargs='+', default=['mlp'])
+    p.add_argument("--algorithms", type=str, nargs='+', default=['mlp'], choices=['mlp', 'sdp'])
 
     return p.parse_args()
 

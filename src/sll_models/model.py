@@ -3,7 +3,7 @@
 import torch.nn as nn
 from torchvision.transforms import Normalize
 
-from sll_models.layers import LinearNormalized, PaddingChannels
+from sll_models.layers import LinearNormalized, PaddingChannels, PaddingInput
 from sll_models.layers import SDPBasedLipschitzConvLayer, SDPBasedLipschitzLinearLayer
 
 
@@ -55,6 +55,31 @@ class LipschitzNetwork(nn.Module):
             self.model.append(SDPBasedLipschitzLinearLayer(in_channels, self.dense_inner_dim))
 
         self.model.append(LinearNormalized(in_channels, self.n_classes))
+        self.model = nn.Sequential(*self.model)
+
+    def forward(self, x):
+        return self.model(x)
+
+
+class LipschitzNetworkSequential(nn.Module):
+
+    def __init__(self, cin, n_dense: int, padding: int, dense_inner_dim: int, n_classes: int):
+        super(LipschitzNetworkSequential, self).__init__()
+
+        self.n_dense: int = n_dense
+        self.cin: int = cin
+        self.padding: int = padding
+        self.dense_inner_dim: int = dense_inner_dim
+        self.n_classes: int = n_classes
+
+        self.model = []
+
+        self.model.append(PaddingInput(self.padding, self.cin))
+
+        for _ in range(self.n_dense):
+            self.model.append(SDPBasedLipschitzLinearLayer(self.padding, self.dense_inner_dim))
+
+        self.model.append(LinearNormalized(self.padding, self.n_classes))
         self.model = nn.Sequential(*self.model)
 
     def forward(self, x):

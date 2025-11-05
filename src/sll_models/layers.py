@@ -104,6 +104,23 @@ class PaddingChannels(nn.Module):
             return out
 
 
+class PaddingInput(nn.Module):
+
+    def __init__(self, ncout: int, ncin: int = 1, mode="constant"):
+        super(PaddingInput, self).__init__()
+        self.ncout: int = ncout
+        self.ncin: int = ncin
+        self.mode: str = mode
+
+        self.diff: int = self.ncout - self.ncin
+
+    def forward(self, x):
+        if self.diff <= 0:
+            return x
+
+        return torch.nn.functional.pad(x, (0, self.diff), mode=self.mode)
+
+
 class PoolingLinear(nn.Module):
 
     def __init__(self, ncin, ncout, agg="mean"):
