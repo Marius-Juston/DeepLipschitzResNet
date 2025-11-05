@@ -15,15 +15,19 @@ from pathlib import Path
 from typing import Dict, Any, List, Tuple
 
 import numpy as np
+import pandas as pd
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from scipy.stats import wilcoxon, norm
+from tabulate import tabulate
 from torch import Tensor
 from torch.multiprocessing import set_start_method
 from torch.utils.data import Dataset, DataLoader
 from torch.utils.tensorboard import SummaryWriter
 
-from models.linear_model import DeepLipschitzSequential, DeepLipschitzLinearResNet
+from lbdn_models.model import Toy
+from models.linear_model import DeepLipschitzSequential, DeepLipschitzLinearResNet, DeepLipschitzLinearResNetLNN
 from sll_models.model import LipschitzNetworkSequential
 
 logger = logging.getLogger(__name__)
@@ -160,7 +164,8 @@ def eval_certified(model, loader, dtype=None, device=None):
         normalized_weight = model.last_weight()
     elif isinstance(model, DeepLipschitzLinearResNet):
         normalized_weight = model.last_weight()
-    elif isinstance(model, LipschitzNetworkSequential):
+    elif isinstance(model, LipschitzNetworkSequential) or isinstance(model, Toy) or isinstance(model,
+                                                                                               DeepLipschitzLinearResNetLNN):
         last_weight = model.model[-1].weight
         normalized_weight = F.normalize(last_weight, p=2, dim=1)
     else:
@@ -177,7 +182,7 @@ def eval_certified(model, loader, dtype=None, device=None):
         top_idx = indices[:, -1]
         other_idx = indices[:, :-1]
 
-        num  = margins[:, -1][:, None] - margins[:, :-1]
+        num = margins[:, -1][:, None] - margins[:, :-1]
 
         w_top = normalized_weight[top_idx]
         w_oth = normalized_weight[other_idx]
@@ -244,19 +249,30 @@ def train_one_fold(
 
     depth = 4
 
+    padding = max(d_in * 2, 10)
+
     if algorithm == 'mlp':
         model = MLP(d_in, n_classes, width=width, depth=depth, dropout=0.2).to(device=device, dtype=dtype)
     elif algorithm == 'sdp':
-        padding = max(d_in * 2, 10)
-
         model = LipschitzNetworkSequential(cin=d_in, n_dense=depth, padding=padding, dense_inner_dim=width,
                                            n_classes=n_classes).to(device=device, dtype=dtype)
     elif algorithm == 'ldlt':
         model = DeepLipschitzSequential(d_in, n_classes, layers_widths=[width] * depth, device=device, dtype=dtype)
     elif algorithm == 'ldlt-resnet':
-        model = DeepLipschitzLinearResNet(d_in, n_classes, layers_widths=[width] * depth, device=device, dtype=dtype)
+        model = DeepLipschitzLinearResNetLNN(d_in, n_classes, layers_widths=[width] * depth, device=device, dtype=dtype)
+    elif algorithm == 'aol':
+        model = Toy(in_channels=d_in, num_classes=n_classes, depth=depth, layer='Aol', padding=padding).to(
+            device=device, dtype=dtype)
+    elif algorithm == 'ortho':
+        model = Toy(in_channels=d_in, num_classes=n_classes, depth=depth, layer='Orthogon', padding=padding).to(
+            device=device, dtype=dtype)
+    elif algorithm == 'sandwich':
+        model = Toy(in_channels=d_in, num_classes=n_classes, depth=depth, layer='Sandwich', padding=padding).to(
+            device=device, dtype=dtype)
     else:
         raise ValueError("Please provide a valid algorithm name 'mlp'")
+
+    total_trainable_parameters = sum([p.numel() for p in model.parameters() if p.requires_grad])
 
     class_w = class_weights_from_indices(y, train_idx).to(device=device, dtype=dtype)
     criterion = nn.CrossEntropyLoss(weight=class_w)
@@ -372,6 +388,11 @@ def train_one_fold(
         "test_size": test_idx.shape[0],
         "stats": {"mean": stats["mean"].tolist(), "std": stats["std"].tolist()},
         "width": int(width),
+        'in_features': d_in,
+        'out_features': n_classes,
+        'depth': depth,
+        'padding': padding,
+        'parameters': total_trainable_parameters,
         'cert_evals': cert_dict_
     }
 
@@ -531,17 +552,179 @@ def _run_task(pack) -> Tuple[str, Dict[str, Any]]:
 
 # ------------- Orchestrator ------------- #
 
-def wilcoxon_prep(alg_summary: Dict[str, Dict[str, Any]], out_dir: Path):
-    # Wilcoxon-friendly flattened table
-    wilcoxon_ready = []
-    for alg_name, alg in alg_summary.items():
-        for ds_name, ds_entry in alg["datasets"].items():
-            mean_val = ds_entry["mean_test_acc"]
-            if mean_val is not None:
-                wilcoxon_ready.append({"dataset": ds_name, "algorithm": alg_name, "mean_accuracy": mean_val})
+def wilcoxon_prep_all_metrics(out_dir: Path, algorithms: List[str]) -> pd.DataFrame:
+    """
+    Long-format table across *all* mean_* metrics found in per-alg summary.json files.
+    Columns: [dataset, algorithm, metric, value]
+    Writes out_dir/'wilcoxon_prep_all.json' and returns a DataFrame.
+    """
+    rows = []
+    for alg in algorithms:
+        summary_path = out_dir / alg / "summary.json"
+        if not summary_path.exists():
+            logging.warning(f"[wilcoxon_prep_all] Missing {summary_path}; skipping '{alg}'.")
+            continue
+        try:
+            with open(summary_path, "r") as f:
+                summary = json.load(f)
+        except Exception as e:
+            logging.error(f"[wilcoxon_prep_all] Could not read {summary_path}: {e}")
+            continue
 
-    with open(out_dir / "wilcoxon_prep.json", "w") as f:
-        json.dump(wilcoxon_ready, f, indent=4)
+        datasets = summary.get("datasets", {})
+        for ds_name, ds_entry in datasets.items():
+            # collect all mean_* numeric metrics
+            for k, v in ds_entry.items():
+                if k.startswith("mean_"):
+                    try:
+                        val = float(v)
+                    except Exception:
+                        continue
+                    if math.isfinite(val):
+                        rows.append({"dataset": ds_name, "algorithm": alg, "metric": k, "value": val})
+
+    df = pd.DataFrame(rows, columns=["dataset", "algorithm", "metric", "value"]).sort_values(
+        ["metric", "dataset", "algorithm"]
+    )
+    save_path = out_dir / "wilcoxon_prep_all.json"
+    df.to_json(save_path, orient="records", indent=4)
+    logging.info(f"[wilcoxon_prep_all] Wrote {save_path} with {len(df)} rows.")
+    return df
+
+
+def _holm_adjust(pvals: List[float]) -> List[float]:
+    """
+    Holm–Bonferroni FWER control, adjusted p-values in original order.
+    """
+    m = len(pvals)
+    order = sorted(range(m), key=lambda i: pvals[i])
+    adjusted = [0.0] * m
+    prev = 0.0
+    for k, i in enumerate(order, start=1):
+        adj = (m - k + 1) * pvals[i]
+        adj = max(adj, prev)
+        adjusted[i] = min(1.0, adj)
+        prev = adjusted[i]
+    return adjusted
+
+
+def run_wilcoxon_tests_all_metrics(out_dir: Path, algorithms: List[str]) -> pd.DataFrame:
+    """
+    Pairwise Wilcoxon signed-rank tests for every metric present (all mean_* keys).
+    Saves:
+      - out_dir/'wilcoxon_pairwise_all.csv'
+      - out_dir/'wilcoxon_pairwise_all.json'
+    Prints a pretty table including the 'metric' column.
+    """
+    prep_all_path = out_dir / "wilcoxon_prep_all.json"
+    if prep_all_path.exists():
+        df = pd.read_json(prep_all_path)
+    else:
+        df = wilcoxon_prep_all_metrics(out_dir, algorithms)
+
+    if df.empty:
+        logging.warning("[run_wilcoxon_tests_all_metrics] No data to compare.")
+        return df
+
+    algs_present = sorted(set(df["algorithm"]) & set(algorithms))
+    if len(algs_present) < 2:
+        logging.warning("[run_wilcoxon_tests_all_metrics] Need ≥2 algorithms; nothing to compare.")
+        return pd.DataFrame()
+
+    # Order metrics nicely: test acc first, then cert accs in numeric order, then any others alphabetical
+    def _metric_order_key(m: str):
+        if m == "mean_test_acc":
+            return (0, 0)
+        if m.startswith("mean_cert_acc_"):
+            try:
+                return (1, int(m.split("_")[-1]))
+            except Exception:
+                return (1, 10 ** 9)
+        return (2, m)
+
+    metrics = sorted(df["metric"].unique().tolist(), key=_metric_order_key)
+
+    results = []
+    for metric in metrics:
+        subm = df[df["metric"] == metric]
+        if subm.empty:
+            continue
+        pivot = subm.pivot_table(index="dataset", columns="algorithm", values="value")
+        # compare all pairs on common datasets
+        for i, a in enumerate(algs_present):
+            for b in algs_present[i + 1:]:
+                if a not in pivot.columns or b not in pivot.columns:
+                    continue
+                mat = pivot[[a, b]].dropna()
+                if mat.empty:
+                    logging.warning(f"[{metric}] No common datasets for {a} vs {b}.")
+                    continue
+
+                diffs = (mat[a] - mat[b]).values
+                n_total = len(diffs)
+                n_pos = int((diffs > 0).sum())
+                n_neg = int((diffs < 0).sum())
+                n_tie = int((diffs == 0).sum())
+                n_nonzero = n_total - n_tie
+
+                if n_nonzero == 0:
+                    stat, pval = 0.0, 1.0
+                else:
+                    stat, pval = wilcoxon(
+                        diffs, zero_method="wilcox", alternative="two-sided", correction=True, method="auto"
+                    )
+
+                p_for_z = max(float(pval), 1e-300)
+                z = float(norm.isf(p_for_z / 2.0))  # ≥0
+                z *= float(np.sign(diffs.sum() if diffs.sum() != 0 else (n_pos - n_neg)))  # give direction
+                r = float(abs(z) / np.sqrt(max(1, n_nonzero)))
+
+                results.append({
+                    "metric": metric,
+                    "alg_a": a,
+                    "alg_b": b,
+                    "n_common": n_total,
+                    "n_nonzero": n_nonzero,
+                    "wins_a": n_pos,
+                    "wins_b": n_neg,
+                    "ties": n_tie,
+                    "win_rate_a_over_b": (n_pos + 0.5 * n_tie) / n_total,
+                    "mean_diff_a_minus_b": float(np.mean(diffs)),
+                    "median_diff_a_minus_b": float(np.median(diffs)),
+                    "W_stat": float(stat),
+                    "p_two_sided": float(pval),
+                    "z_equiv": float(z),
+                    "effect_size_r": r,
+                })
+
+    res_df = pd.DataFrame(results).sort_values(["metric", "p_two_sided", "alg_a", "alg_b"]).reset_index(drop=True)
+    if res_df.empty:
+        logging.warning("[run_wilcoxon_tests_all_metrics] No pairwise results produced.")
+        return res_df
+
+    # Holm corrections: global (across *all* tests) and within each metric
+    res_df["p_holm_global"] = _holm_adjust(res_df["p_two_sided"].tolist())
+    res_df["p_holm_within_metric"] = np.nan
+    for m, idx in res_df.groupby("metric").groups.items():
+        p_adj = _holm_adjust(res_df.loc[idx, "p_two_sided"].tolist())
+        res_df.loc[idx, "p_holm_within_metric"] = p_adj
+
+    # Save artifacts
+    csv_path = out_dir / "wilcoxon_pairwise_all.csv"
+    json_path = out_dir / "wilcoxon_pairwise_all.json"
+    res_df.to_csv(csv_path, index=False)
+    res_df.to_json(json_path, orient="records", indent=4)
+    logging.info(f"[run_wilcoxon_tests_all_metrics] Wrote {csv_path} and {json_path}.")
+
+    # Pretty table (metric included)
+    pretty = res_df[[
+        "metric", "alg_a", "alg_b", "n_common", "wins_a", "wins_b", "ties",
+        "win_rate_a_over_b", "mean_diff_a_minus_b", "median_diff_a_minus_b",
+        "W_stat", "p_two_sided", "p_holm_within_metric", "p_holm_global", "effect_size_r"
+    ]]
+    print("\n=== Wilcoxon signed-rank (two-sided), across ALL metrics (mean_*), per dataset ===")
+    print(tabulate(pretty, headers="keys", tablefmt="github", floatfmt=".4f"))
+    return res_df
 
 
 def schedule_and_run(datasets: List[Path], args: argparse.Namespace, out_dir: Path) -> Dict[str, Any]:
@@ -627,8 +810,9 @@ def parse_args():
     p.add_argument("--datasets", nargs="*", default=None,
                    help="Optional explicit list of dataset names to run (match folder names under data_root).")
 
-    p.add_argument("--algorithms", type=str, nargs='+', default=['mlp', 'sdp', 'ldlt', 'ldlt-resnet'],
-                   choices=['mlp', 'sdp', 'ldlt', 'ldlt-resnet'])
+    p.add_argument("--algorithms", type=str, nargs='+',
+                   default=['mlp', 'sdp', 'ldlt', 'ldlt-resnet', 'aol', 'ortho', 'sandwich'],
+                   choices=['mlp', 'sdp', 'ldlt', 'ldlt-resnet', 'aol', 'ortho', 'sandwich'])
 
     return p.parse_args()
 
@@ -693,7 +877,8 @@ def main():
 
     summary = schedule_and_run(all_ds, args, out_dir)
 
-    wilcoxon_prep(summary, out_dir)
+    wilcoxon_prep_all_metrics(out_dir, args.algorithms)
+    run_wilcoxon_tests_all_metrics(out_dir, args.algorithms)
 
     logger.info(f"TensorBoard logs under: {out_dir / 'runs'}")
     logger.info(f"To view: tensorboard --logdir {str(out_dir / "runs")}")

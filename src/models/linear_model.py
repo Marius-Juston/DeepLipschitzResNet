@@ -4,6 +4,7 @@ import torch
 from torch import nn, Tensor
 from torch.nn import ModuleList, Module, ReLU
 
+from lbdn_models.layers import LinearNormalized
 from models.linear_layers import FirstLipschitzLinearLayer, LastLipschitzLinearLayer, InnerWeightLipschitzLinearLayer, \
     LinearLipschitz
 from utils import safe_cholesky
@@ -173,6 +174,35 @@ class DeepLipschitzLinearResNet(nn.Module):
         second, b_weight = self.compute_b(current_input, sigma_lower, a_weight, prev_alpha, prev_omega_r)
 
         return torch.cat([a_weight, b_weight], dim=1)
+
+
+class DeepLipschitzLinearResNetLNN(DeepLipschitzLinearResNet):
+    def generate_layers(self) -> None:
+        self.A = FirstLipschitzLinearLayer(in_features=self.in_features, out_features=self.layer_widths[-1],
+                                           constant_sq=self.lipschitz_constant_sq, enable_alpha=self.enable_alpha,
+                                           **self.factory_kwargs)
+
+        self.B = LastLipschitzLinearLayer(in_features=self.layer_widths[-1], out_features=self.layer_widths[-1],
+                                          bias=False,
+                                          enable_alpha=self.enable_alpha,
+                                          # Don't need bias on both A and B since they would be doing the same thing
+                                          **self.factory_kwargs)
+
+        layer = []
+
+        prev = self.in_features
+
+        for i, out_features in enumerate(self.layer_widths):
+            layer.append(
+                InnerWeightLipschitzLinearLayer(prev, out_features,
+                                                constant_sq=2.0,
+                                                enable_alpha=self.enable_alpha,
+                                                **self.factory_kwargs))
+            prev = out_features
+
+        layer.append(LinearNormalized(prev, self.out_features))
+
+        self.layers = ModuleList(layer)
 
 
 class DeepLipschitzSequential(nn.Module):

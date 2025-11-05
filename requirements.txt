@@ -6,3 +6,4 @@ git+https://github.com/BorealisAI/advertorch.git # Need the latest version for P
 torch-tb-profiler
 prettytable
 wandb
+einops
