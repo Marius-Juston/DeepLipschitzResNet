@@ -14,8 +14,8 @@ import pandas as pd
 ALG_PRETTY = {
     "mlp": "MLP",
     "sdp": "SDP",
-    "ldlt": "LDLT",
-    "ldlt-resnet": "LDLT-ResNet",
+    "ldlt": "LDLT-L",
+    "ldlt-resnet": "LDLT-R",
     "aol": "AOL",
     "ortho": "Orthogonal",
     "sandwich": "Sandwich",
@@ -164,6 +164,12 @@ def build_metric_summary(per_alg):
 
 # ------------------------ Build Wilcoxon tables -------------------------- #
 
+def format_small_p(p):
+    if p == 0:
+        return f"$0{p_to_stars(p)}$"
+
+    return f"${p:.1e}{p_to_stars(p)}$"
+
 def build_wilcoxon_tables(wilc_df):
     if wilc_df.empty:
         return {}
@@ -177,9 +183,9 @@ def build_wilcoxon_tables(wilc_df):
         t["WinRate A"] = (t["win_rate_a_over_b"]).round(4)
         t["Median AB"] = t["median_diff_a_minus_b"].round(4)  # Median Δ; we'll label with LaTeX in header
         t["W"] = t["W_stat"].round(4)
-        t["p"] = t["p_two_sided"].apply(lambda p: f"{p:.3g}")
-        t["p_within"] = t["p_holm_within_metric"].apply(lambda p: f"${p:.3g}{p_to_stars(p)}$")
-        t["p_global"] = t["p_holm_global"].apply(lambda p: f"${p:.3g}{p_to_stars(p)}$")
+        t["p"] = t["p_two_sided"].apply(format_small_p)
+        t["p_within"] = t["p_holm_within_metric"].apply(format_small_p)
+        t["p_global"] = t["p_holm_global"].apply(format_small_p)
         t["r"] = t["effect_size_r"].round(4)
         t["n"] = t["n_common"].astype(int)
         t["winsA"] = t["wins_a"].astype(int)
@@ -189,8 +195,7 @@ def build_wilcoxon_tables(wilc_df):
         cols = ["Alg A", "Alg B", "n", "winsA", "winsB", "ties",
                 "WinRate A", "Median AB", "W", "p", "p_within", "p_global", "r",
                 "p_holm_within_metric"]
-        tdict[m] = t[cols].sort_values(["p_holm_within_metric", "Alg A", "Alg B"]).drop(
-            columns=["p_holm_within_metric"])
+        tdict[m] = t[cols].sort_values(["p_holm_within_metric", "Alg A", "Alg B"]).drop(columns=["p_holm_within_metric"])
     return tdict
 
 
@@ -215,7 +220,7 @@ def build_model_size_ranges(per_alg):
         def rng(a):
             if not a:
                 return r"\textemdash"
-            return rf"{int(np.min(a))}--{int(np.max(a))}"  # use TeX en-dash
+            return rf"{int(np.min(a))}--{int(np.max(a))}"  # TeX en-dash
 
         recs.append({
             "Algorithm": alg_pretty(alg),
@@ -233,18 +238,21 @@ def build_model_size_ranges(per_alg):
 # ---------------------------- LaTeX emitters ---------------------------- #
 
 HEADER = r"""
-% JMLR-ready tables exported from UCI tabular experiments
-% Requires: \usepackage{booktabs}, \usepackage{threeparttable}, \usepackage{threeparttablex}, \usepackage{longtable}
-% NOTE: siunitx is NOT required.
+% JMLR-ready tables for two-column papers
+% Required packages (no siunitx):
+% \usepackage{booktabs}
+% \usepackage{threeparttable}
+% \usepackage{threeparttablex} % for TableNotes + longtable
+% \usepackage{longtable}
+% Optional for landscape: \usepackage{pdflscape}
 """
 
-
-def tex_table_metric_summary(metric_name, df):
-    cap = f"Mean$\\pm$std across datasets for each algorithm on {metric_to_name(metric_name)}."
+def tex_table_metric_summary(metric_name, df, wide=False):
+    cap = f"Sorted mean$\\pm$std across datasets for each algorithm on {metric_to_name(metric_name)}."
     lab = f"tab:{metric_name}"
-    # Only basic column types to avoid siunitx
+    env = "table*" if wide else "table"
     colspec = "l r l"
-    lines = [r"\begin{table}[t]",
+    lines = [fr"\begin{{{env}}}[t]",
              r"\centering",
              r"\begin{threeparttable}",
              rf"\caption{{{cap}}}",
@@ -253,56 +261,96 @@ def tex_table_metric_summary(metric_name, df):
              r"\toprule",
              r"Algorithm & $N$ datasets & Value \\",
              r"\midrule"]
+
+    df = df.sort_values(by='Value', ascending=False)
+
     for _, r in df.iterrows():
         lines.append(rf"{r['Algorithm']} & {int(r['$N$ datasets'])} & {r['Value']} \\")
     lines += [r"\bottomrule",
               r"\end{tabular}",
               r"\end{threeparttable}",
-              r"\end{table}"]
+              fr"\end{{{env}}}"]
     return "\n".join(lines)
 
 
-def tex_longtable_wilcoxon(metric_name, df):
-    cap = (r"Wilcoxon signed-rank tests (two-sided) for " + metric_to_name(metric_name) +
-           r"; $p$-values with Holm FWER corrections within-metric and global. "
-           r"Stars mark significance ($^*\,p\!\le\!0.05$, $^{**}\,p\!\le\!0.01$, $^{***}\,p\!\le\!0.001$).")
+def tex_longtable_wilcoxon(metric_name, df, span_mode="table*"):
+    r"""
+    span_mode:
+      - 'longtable'  : emits ThreePartTable + longtable (requires single-column or \onecolumn ... \twocolumn page breaks)
+      - 'table*'     : emits wide float using tabular (no page breaks; good for two-column spanning)
+      - 'landscape'  : wraps table* inside landscape environment
+    """
+    cap_base = (r"Wilcoxon signed-rank tests (two-sided) for " + metric_to_name(metric_name) +
+                r"; $p$-values with Holm FWER corrections within-metric and global. "
+                r"Stars mark significance ($^*\,p\!\le\!0.05$, $^{**}\,p\!\le\!0.01$, $^{***}\,p\!\le\!0.001$).")
     lab = f"tab:wilcoxon:{metric_name}"
-    # Plain columns; no siunitx
-    colspec = "l l r r r r r r r r r r r"
     head = (r"Alg A & Alg B & $n$ & wins$_A$ & wins$_B$ & ties & "
             r"WinRate A & Median $\Delta$ (A--B) & $W$ & $p$ & $p_{\text{Holm,within}}$ & $p_{\text{Holm,global}}$ & $r$ \\")
 
-    lines = [r"\begin{ThreePartTable}",
-             rf"\begin{{TableNotes}}\item {cap}\end{{TableNotes}}",
-             r"\begin{longtable}{" + colspec + "}",
-             rf"\caption[{metric_to_name(metric_name)}]{{{cap}}}\label{{{lab}}}\\",
+    df = df.sort_values(by='W')
+
+    if span_mode == "longtable":
+        colspec = "ll r r r r r r r r r r r"
+        lines = [r"\onecolumn",
+                 r"\begin{ThreePartTable}",
+                 rf"\begin{{TableNotes}}[flushleft]\footnotesize {cap_base}\end{{TableNotes}}",
+                 r"\begin{longtable}{" + colspec + "}",
+                 rf"\caption[{metric_to_name(metric_name)}]{{{cap_base}}}\label{{{lab}}}\\",
+                 r"\toprule",
+                 head,
+                 r"\midrule",
+                 r"\endfirsthead",
+                 r"\toprule",
+                 head,
+                 r"\midrule",
+                 r"\endhead",
+                 r"\bottomrule",
+                 r"\insertTableNotes",
+                 r"\endfoot"]
+        for _, r in df.iterrows():
+            lines.append(
+                rf"{r['Alg A']} & {r['Alg B']} & {r['n']} & {r['winsA']} & {r['winsB']} & {r['ties']} & "
+                rf"{r['WinRate A']:.4f} & {r['Median AB']:.4f} & {r['W']:.0f} & {r['p']} & "
+                rf"{r['p_within']} & {r['p_global']} & {r['r']:.4f} \\")
+        lines += [r"\end{longtable}",
+                  r"\end{ThreePartTable}",
+                  r"\twocolumn"]
+        return "\n".join(lines)
+
+    # For two-column spanning without page breaks: table* + tabular
+    colspec = "ll r r r r r r r r r r r"
+    maybe_landscape_begin = r"\begin{landscape}" if span_mode == "landscape" else ""
+    maybe_landscape_end   = r"\end{landscape}" if span_mode == "landscape" else ""
+    lines = [maybe_landscape_begin,
+             r"\begin{table*}[t]",
+             r"\centering",
+             r"\begin{threeparttable}",
+             rf"\caption[{metric_to_name(metric_name)}]{{{cap_base}}}",
+             rf"\label{{{lab}}}",
+             rf"\begin{{tabular}}{{{colspec}}}",
              r"\toprule",
              head,
-             r"\midrule",
-             r"\endfirsthead",
-             r"\toprule",
-             head,
-             r"\midrule",
-             r"\endhead",
-             r"\bottomrule",
-             r"\insertTableNotes",
-             r"\endfoot"]
+             r"\midrule"]
     for _, r in df.iterrows():
         lines.append(
             rf"{r['Alg A']} & {r['Alg B']} & {r['n']} & {r['winsA']} & {r['winsB']} & {r['ties']} & "
-            rf"{r['WinRate A']:.4f} & {r['Median AB']:.4f} & {r['W']:.4f} & {r['p']} & "
+            rf"{r['WinRate A']:.4f} & {r['Median AB']:.4f} & {r['W']:.0f} & {r['p']} & "
             rf"{r['p_within']} & {r['p_global']} & {r['r']:.4f} \\")
-    lines += [r"\end{longtable}",
-              r"\end{ThreePartTable}"]
+    lines += [r"\bottomrule",
+              r"\end{tabular}",
+              r"\end{threeparttable}",
+              r"\end{table*}",
+              maybe_landscape_end]
     return "\n".join(lines)
 
 
-def tex_model_ranges(df):
+def tex_model_ranges(df, wide=False):
     cap = ("Model dimension ranges (min--max across all datasets and folds). "
            "Input/Output dimensions follow dataset label spaces.")
     lab = "tab:model-ranges"
+    env = "table*" if wide else "table"
     colspec = "l r r r r r r"
-    lines = [r"\begin{table}[t]",
+    lines = [fr"\begin{{{env}}}[t]",
              r"\centering",
              r"\begin{threeparttable}",
              rf"\caption{{{cap}}}",
@@ -317,7 +365,7 @@ def tex_model_ranges(df):
     lines += [r"\bottomrule",
               r"\end{tabular}",
               r"\end{threeparttable}",
-              r"\end{table}"]
+              fr"\end{{{env}}}"]
     return "\n".join(lines)
 
 
@@ -330,6 +378,12 @@ def main():
     ap.add_argument("--algorithms", nargs="*", default=None,
                     help="Optional explicit list; default is to detect subfolders containing summary.json")
     ap.add_argument("--tex", default="jmlr_tables.tex", help="Output LaTeX file")
+    ap.add_argument("--wide-summaries", type=bool, default=False, action=argparse.BooleanOptionalAction,
+                    help="Emit model ranges as two-column floats (table*).")
+    ap.add_argument("--wide-metrics-summary", type=bool, default=True, action=argparse.BooleanOptionalAction,
+                    help="Emit model metric summaries as two-column floats (table*).")
+    ap.add_argument("--wilcoxon-span", choices=["table*", "longtable", "landscape"], default="table*",
+                    help="How to span the Wilcoxon tables in two-column docs: 'table*' (default), 'longtable' (forces page breaks via \\onecolumn/\\twocolumn), or 'landscape' (table* inside pdflscape).")
     args = ap.parse_args()
 
     per_alg, wilc_df, algs = load_all(args.out_dir, args.algorithms)
@@ -342,16 +396,16 @@ def main():
 
     tex_chunks = [HEADER.strip(), ""]
 
-    # Model ranges first (small and universally useful)
-    tex_chunks.append(tex_model_ranges(ranges_df))
+    # Model ranges first (universally useful)
+    tex_chunks.append(tex_model_ranges(ranges_df, wide=args.wide_summaries))
     tex_chunks.append("")
 
-    # Per-metric performance summaries and their Wilcoxon longtables
+    # Per-metric performance summaries and their Wilcoxon tables
     for m in sorted(metric_tables.keys(), key=sorting_key):
-        tex_chunks.append(tex_table_metric_summary(m, metric_tables[m]))
+        tex_chunks.append(tex_table_metric_summary(m, metric_tables[m], wide=args.wide_metrics_summary))
         tex_chunks.append("")
         if m in wilc_tables:
-            tex_chunks.append(tex_longtable_wilcoxon(m, wilc_tables[m]))
+            tex_chunks.append(tex_longtable_wilcoxon(m, wilc_tables[m], span_mode=args.wilcoxon_span))
             tex_chunks.append("")
 
     out = "\n".join(tex_chunks).strip() + "\n"
