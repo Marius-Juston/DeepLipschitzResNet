@@ -200,9 +200,14 @@ class DeepLipschitzLinearResNetLNN(DeepLipschitzLinearResNet):
                                                 **self.factory_kwargs))
             prev = out_features
 
-        layer.append(LinearNormalized(prev, self.out_features))
+        self.last = LinearNormalized(prev, self.out_features, **self.factory_kwargs)
 
         self.layers = ModuleList(layer)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = super().forward(x)
+
+        return self.last(x)
 
 
 class DeepLipschitzSequential(nn.Module):

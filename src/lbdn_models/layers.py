@@ -74,8 +74,8 @@ class PlainConv(nn.Conv2d):
 
 class LinearNormalized(nn.Linear):
 
-    def __init__(self, in_features, out_features, bias=True, scale=1.0):
-        super(LinearNormalized, self).__init__(in_features, out_features, bias)
+    def __init__(self, in_features, out_features, bias=True, scale=1.0, device=None, dtype=None):
+        super(LinearNormalized, self).__init__(in_features, out_features, bias, device=device, dtype=dtype)
         self.scale = scale
 
     def forward(self, x):

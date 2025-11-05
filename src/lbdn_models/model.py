@@ -215,7 +215,7 @@ class Toy(nn.Module):
             )
 
             for _ in range(depth - 2):
-                self.model.append(SandwichFc(self.in_channels, w, scale=g))
+                self.model.append(SandwichFc(w, w, scale=g))
 
             self.model.append(LinearNormalized(w, self.num_classes, scale=g))
 
