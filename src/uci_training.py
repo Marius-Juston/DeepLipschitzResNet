@@ -302,6 +302,10 @@ def train_one_fold(
             yb = yb.to(device=device, dtype=dtype, non_blocking=True)
             optimizer.zero_grad(set_to_none=True)
 
+            if algorithm == 'mlp' and xb.shape[0] == 1:
+                # Skip entry due to BatchNorm having problems otherwise
+                continue
+
             logits = model(xb)
             loss = criterion(logits, yb)
             loss.backward()
