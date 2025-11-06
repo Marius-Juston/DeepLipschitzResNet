@@ -5,6 +5,7 @@ import argparse
 import json
 import math
 from pathlib import Path
+from typing import List
 
 import numpy as np
 import pandas as pd
@@ -276,6 +277,70 @@ def tex_table_metric_summary(metric_name, df, wide=False):
     return "\n".join(lines)
 
 
+def get_data_metrics(lines: List[List[str]], algorithms: List[str], metrics: List[str], metric_summary: pd.DataFrame):
+    for alg in algorithms:
+        data = [alg]
+
+        for col in metrics:
+            if not metric_summary[col]['Algorithm'].isin([alg]).any():
+                data.append(r"\textemdash")
+                continue
+
+            metric_values = metric_summary[col]
+
+            entries = metric_values.loc[metric_values["Algorithm"] == alg]
+
+            if len(data) == 1:
+                data.append(str(entries["$N$ datasets"].iat[0]))
+
+            data.append(entries["Value"].iat[0])
+
+        lines.append(" & ".join(data) + r" \\")
+
+
+def tex_table_metric_summary_combined(metric_summary, wide=True):
+    cap = f"Sorted mean$\\pm$std across datasets for each algorithm."
+    lab = f"tab:metric_summary"
+    env = "table*" if wide else "table"
+
+    columns = sorted(metric_summary.keys(), key=sorting_key)
+
+    colspec = f"l r {'l' * len(columns)}"
+    lines = [fr"\begin{{{env}}}[t]",
+             r"\centering",
+             r"\begin{threeparttable}",
+             rf"\caption{{{cap}}}",
+             rf"\label{{{lab}}}",
+             rf"\begin{{tabular}}{{{colspec}}}",
+             r"\toprule",
+             r' &  &  & \multicolumn{4}{c}{Certified Accuracy} \\',
+             r'\cmidrule(lr){4-7}',
+             r"Algorithm & $N$ datasets & Accuracy & 36 & 72 & 108 & 255 \\",
+             r"\midrule"]
+
+    seperate = "LDLT"
+
+    methods = set(list(metric_summary.values())[0]['Algorithm'].values)
+
+    separate_methods = set(m for m in methods if seperate in m)
+    grouped_methods = methods.difference(separate_methods)
+
+    grouped_methods = list(sorted(grouped_methods))
+    separate_methods = list(sorted(separate_methods))
+
+    get_data_metrics(lines, grouped_methods, columns, metric_summary)
+
+    lines.append(r"\midrule \\")
+
+    get_data_metrics(lines, separate_methods, columns, metric_summary)
+
+    lines += [r"\bottomrule",
+              r"\end{tabular}",
+              r"\end{threeparttable}",
+              fr"\end{{{env}}}"]
+    return "\n".join(lines)
+
+
 def tex_longtable_wilcoxon(metric_name, df, span_mode="table*"):
     r"""
     span_mode:
@@ -287,8 +352,9 @@ def tex_longtable_wilcoxon(metric_name, df, span_mode="table*"):
                 r"; $p$-values with Holm FWER corrections within-metric and global. "
                 r"Stars mark significance ($^*\,p\!\le\!0.05$, $^{**}\,p\!\le\!0.01$, $^{***}\,p\!\le\!0.001$).")
     lab = f"tab:wilcoxon:{metric_name}"
-    head_groups = (r'\multicolumn{2}{c}{Algorithms} & \multicolumn{6}{c}{Run Statistics} & \multicolumn{5}{c}{Wilcoxon pairwise Statistics} \\'
-                   r'\cmidrule(lr){1-2} \cmidrule(lr){3-8} \cmidrule(lr){9-13}')
+    head_groups = (
+        r'\multicolumn{2}{c}{Algorithms} & \multicolumn{6}{c}{Run Statistics} & \multicolumn{5}{c}{Wilcoxon pairwise Statistics} \\'
+        r'\cmidrule(lr){1-2} \cmidrule(lr){3-8} \cmidrule(lr){9-13}')
     head = (r"Alg A & Alg B & $n$ & wins$_A$ & wins$_B$ & ties & "
             r"WinRate A & \shortstack{Median \\ $\Delta$ (A--B)} & $W$ & $p$ & $p_{\text{Holm,within}}$ & $p_{\text{Holm,global}}$ & $r$ \\")
 
@@ -393,6 +459,8 @@ def main():
                     help="Emit model ranges as two-column floats (table*).")
     ap.add_argument("--wide-metrics-summary", type=bool, default=False, action=argparse.BooleanOptionalAction,
                     help="Emit model metric summaries as two-column floats (table*).")
+    ap.add_argument("--use-per-metrics-summary", type=bool, default=False, action=argparse.BooleanOptionalAction,
+                    help="Generate the metric summaries for each metric separately.")
     ap.add_argument("--wilcoxon-span", choices=["table*", "longtable", "landscape"], default="table*",
                     help="How to span the Wilcoxon tables in two-column docs: 'table*' (default), 'longtable' (forces page breaks via \\onecolumn/\\twocolumn), or 'landscape' (table* inside pdflscape).")
     args = ap.parse_args()
@@ -411,10 +479,15 @@ def main():
     tex_chunks.append(tex_model_ranges(ranges_df, wide=args.wide_summaries))
     tex_chunks.append("")
 
+    tex_chunks.append(tex_table_metric_summary_combined(metric_tables))
+    tex_chunks.append("")
+
     # Per-metric performance summaries and their Wilcoxon tables
     for m in sorted(metric_tables.keys(), key=sorting_key):
-        tex_chunks.append(tex_table_metric_summary(m, metric_tables[m], wide=args.wide_metrics_summary))
-        tex_chunks.append("")
+        if args.use_per_metrics_summary:
+            tex_chunks.append(tex_table_metric_summary(m, metric_tables[m], wide=args.wide_metrics_summary))
+            tex_chunks.append("")
+
         if m in wilc_tables:
             tex_chunks.append(tex_longtable_wilcoxon(m, wilc_tables[m], span_mode=args.wilcoxon_span))
             tex_chunks.append("")
