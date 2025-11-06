@@ -158,7 +158,7 @@ def build_metric_summary(per_alg):
         show["Value"] = bestbold(show["Value"])
 
         result_tables[m] = show
-        numeric_tables[m] = grp[["Algorithm", "mean"]].set_index("Algorithm")["mean"]
+        numeric_tables[m] = grp[["Algorithm", "mean", "std"]].set_index("Algorithm")[["mean", 'std']]
     return result_tables, numeric_tables
 
 
@@ -287,8 +287,10 @@ def tex_longtable_wilcoxon(metric_name, df, span_mode="table*"):
                 r"; $p$-values with Holm FWER corrections within-metric and global. "
                 r"Stars mark significance ($^*\,p\!\le\!0.05$, $^{**}\,p\!\le\!0.01$, $^{***}\,p\!\le\!0.001$).")
     lab = f"tab:wilcoxon:{metric_name}"
+    head_groups = (r'\multicolumn{2}{c}{Algorithms} & \multicolumn{6}{c}{Run Statistics} & \multicolumn{5}{c}{Wilcoxon pairwise Statistics} \\'
+                   r'\cmidrule(lr){1-2} \cmidrule(lr){3-8} \cmidrule(lr){9-13}')
     head = (r"Alg A & Alg B & $n$ & wins$_A$ & wins$_B$ & ties & "
-            r"WinRate A & Median $\Delta$ (A--B) & $W$ & $p$ & $p_{\text{Holm,within}}$ & $p_{\text{Holm,global}}$ & $r$ \\")
+            r"WinRate A & \shortstack{Median \\ $\Delta$ (A--B)} & $W$ & $p$ & $p_{\text{Holm,within}}$ & $p_{\text{Holm,global}}$ & $r$ \\")
 
     df = df.sort_values(by='W')
 
@@ -300,6 +302,7 @@ def tex_longtable_wilcoxon(metric_name, df, span_mode="table*"):
                  r"\begin{longtable}{" + colspec + "}",
                  rf"\caption[{metric_to_name(metric_name)}]{{{cap_base}}}\label{{{lab}}}\\",
                  r"\toprule",
+                 head_groups,
                  head,
                  r"\midrule",
                  r"\endfirsthead",
@@ -316,6 +319,7 @@ def tex_longtable_wilcoxon(metric_name, df, span_mode="table*"):
                 rf"{r['WinRate A']:.4f} & {r['Median AB']:.4f} & {r['W']:.0f} & {r['p']} & "
                 rf"{r['p_within']} & {r['p_global']} & {r['r']:.4f} \\")
         lines += [r"\end{longtable}",
+                  r'\endgroup'
                   r"\end{ThreePartTable}",
                   r"\twocolumn"]
         return "\n".join(lines)
@@ -330,8 +334,11 @@ def tex_longtable_wilcoxon(metric_name, df, span_mode="table*"):
              r"\begin{threeparttable}",
              rf"\caption[{metric_to_name(metric_name)}]{{{cap_base}}}",
              rf"\label{{{lab}}}",
+             r'\begingroup',
+             r'\setlength{\tabcolsep}{4pt}',
              rf"\begin{{tabular}}{{{colspec}}}",
              r"\toprule",
+             head_groups,
              head,
              r"\midrule"]
     for _, r in df.iterrows():
@@ -341,6 +348,7 @@ def tex_longtable_wilcoxon(metric_name, df, span_mode="table*"):
             rf"{r['p_within']} & {r['p_global']} & {r['r']:.4f} \\")
     lines += [r"\bottomrule",
               r"\end{tabular}",
+              r'\endgroup'
               r"\end{threeparttable}",
               r"\end{table*}",
               maybe_landscape_end]
@@ -381,9 +389,9 @@ def main():
     ap.add_argument("--algorithms", nargs="*", default=None,
                     help="Optional explicit list; default is to detect subfolders containing summary.json")
     ap.add_argument("--tex", default="jmlr_tables.tex", help="Output LaTeX file")
-    ap.add_argument("--wide-summaries", type=bool, default=False, action=argparse.BooleanOptionalAction,
+    ap.add_argument("--wide-summaries", type=bool, default=True, action=argparse.BooleanOptionalAction,
                     help="Emit model ranges as two-column floats (table*).")
-    ap.add_argument("--wide-metrics-summary", type=bool, default=True, action=argparse.BooleanOptionalAction,
+    ap.add_argument("--wide-metrics-summary", type=bool, default=False, action=argparse.BooleanOptionalAction,
                     help="Emit model metric summaries as two-column floats (table*).")
     ap.add_argument("--wilcoxon-span", choices=["table*", "longtable", "landscape"], default="table*",
                     help="How to span the Wilcoxon tables in two-column docs: 'table*' (default), 'longtable' (forces page breaks via \\onecolumn/\\twocolumn), or 'landscape' (table* inside pdflscape).")
