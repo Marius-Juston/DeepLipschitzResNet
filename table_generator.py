@@ -234,7 +234,14 @@ def build_model_size_ranges(per_alg):
             "Input dim": rng(din),
             "Output dim": rng(dout),
         })
-    df = pd.DataFrame(recs).sort_values("Algorithm")
+
+    df = pd.DataFrame(recs)
+
+    df = df.sort_values(
+        by="Algorithm",
+        key=lambda s: list(zip(s.ne("MLP"), s.str.contains("LDLT", na=False), s.str.casefold()))
+    ).reset_index(drop=True)
+
     return df
 
 
@@ -277,7 +284,7 @@ def tex_table_metric_summary(metric_name, df, wide=False):
     return "\n".join(lines)
 
 
-def get_data_metrics(lines: List[List[str]], algorithms: List[str], metrics: List[str], metric_summary: pd.DataFrame):
+def get_data_metrics(lines: List[str], algorithms: List[str], metrics: List[str], metric_summary: pd.DataFrame):
     for alg in algorithms:
         data = [alg]
 
@@ -325,14 +332,16 @@ def tex_table_metric_summary_combined(metric_summary, wide=True):
     separate_methods = set(m for m in methods if seperate in m)
     grouped_methods = methods.difference(separate_methods)
 
-    grouped_methods = list(sorted(grouped_methods))
+    grouped_methods = list(sorted(grouped_methods, key=lambda x: (x != 'MLP', 'LDLT' in x, str.casefold(x))))
     separate_methods = list(sorted(separate_methods))
 
-    get_data_metrics(lines, grouped_methods, columns, metric_summary)
+    if len(grouped_methods) > 0:
+        get_data_metrics(lines, grouped_methods, columns, metric_summary)
 
-    lines.append(r"\midrule")
+        lines.append(r"\midrule")
 
-    get_data_metrics(lines, separate_methods, columns, metric_summary)
+    if len(separate_methods) > 0:
+        get_data_metrics(lines, separate_methods, columns, metric_summary)
 
     lines += [r"\bottomrule",
               r"\end{tabular}",
