@@ -330,7 +330,7 @@ def tex_table_metric_summary_combined(metric_summary, wide=True):
 
     get_data_metrics(lines, grouped_methods, columns, metric_summary)
 
-    lines.append(r"\midrule \\")
+    lines.append(r"\midrule")
 
     get_data_metrics(lines, separate_methods, columns, metric_summary)
 
@@ -349,8 +349,7 @@ def tex_longtable_wilcoxon(metric_name, df, span_mode="table*"):
       - 'landscape'  : wraps table* inside landscape environment
     """
     cap_base = (r"Wilcoxon signed-rank tests (two-sided) for " + metric_to_name(metric_name) +
-                r"; $p$-values with Holm FWER corrections within-metric and global. "
-                r"Stars mark significance ($^*\,p\!\le\!0.05$, $^{**}\,p\!\le\!0.01$, $^{***}\,p\!\le\!0.001$).")
+                r"; $p$-values with Holm FWER corrections within-metric and global.")
     lab = f"tab:wilcoxon:{metric_name}"
     head_groups = (
         r'\multicolumn{2}{c}{Algorithms} & \multicolumn{6}{c}{Run Statistics} & \multicolumn{5}{c}{Wilcoxon pairwise Statistics} \\'
@@ -414,7 +413,10 @@ def tex_longtable_wilcoxon(metric_name, df, span_mode="table*"):
             rf"{r['p_within']} & {r['p_global']} & {r['r']:.4f} \\")
     lines += [r"\bottomrule",
               r"\end{tabular}",
-              r'\endgroup'
+              r'\begin{tablenotes}',
+              r'\item Stars mark significance ($^*\,p\!\le\!0.05$, $^{**}\,p\!\le\!0.01$, $^{***}\,p\!\le\!0.001$).',
+              r'\end{tablenotes}',
+              r'\endgroup',
               r"\end{threeparttable}",
               r"\end{table*}",
               maybe_landscape_end]
