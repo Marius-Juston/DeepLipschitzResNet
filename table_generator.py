@@ -14,7 +14,7 @@ import pandas as pd
 
 ALG_PRETTY = {
     "mlp": "MLP",
-    "sdp": "SDP",
+    "sdp": "SLL",
     "ldlt": "LDLT-L",
     "ldlt-resnet": "LDLT-R",
     "aol": "AOL",
