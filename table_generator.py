@@ -9,6 +9,7 @@ from typing import List
 
 import numpy as np
 import pandas as pd
+from scipy.stats import rankdata, f, studentized_range
 
 # ------------------------------- Helpers -------------------------------- #
 
@@ -245,6 +246,110 @@ def build_model_size_ranges(per_alg):
     return df
 
 
+# ---- NEW: per-dataset matrix (rows=datasets, cols=algorithms) ----
+def _dataset_metric_matrix(per_alg: dict, metric: str) -> pd.DataFrame:
+    rows = []
+    for alg, js in per_alg.items():
+        for ds, payload in js.get("datasets", {}).items():
+            v = payload.get(metric, None)
+            if isinstance(v, (int, float)) and np.isfinite(v):
+                rows.append({"dataset": ds, "algorithm": alg_pretty(alg), "value": float(v)})
+    if not rows:
+        return pd.DataFrame()
+    df = pd.DataFrame(rows)
+    return df.pivot_table(index="dataset", columns="algorithm", values="value", aggfunc="mean")
+
+
+# ---- NEW: Friedman / Iman–Davenport / Nemenyi CD ----
+def _friedman_iman_nemenyi(pivot: pd.DataFrame, alpha: float = 0.05):
+    if pivot.empty or pivot.shape[1] < 2:
+        return None
+    X = pivot.to_numpy(float)
+    N, k = X.shape
+    ranks = np.vstack([rankdata(-row, method="average") for row in X])  # 1=best
+    avg_ranks = pd.Series(ranks.mean(axis=0), index=pivot.columns).sort_values()
+
+    chi2_F = (12 * N) / (k * (k + 1)) * (np.sum(avg_ranks.values ** 2) - k * (k + 1) ** 2 / 4.0)
+    denom = N * (k - 1) - chi2_F
+    F_F = ((N - 1) * chi2_F) / denom if denom > 1e-12 else np.inf
+    p_F = 1 - f.cdf(F_F, k - 1, (k - 1) * (N - 1))
+
+    q_alpha = studentized_range.isf(alpha, k, np.inf)
+    CD = float(q_alpha * np.sqrt(k * (k + 1) / (6.0 * N)))
+
+    return {"N": N, "k": k, "avg_ranks": avg_ranks, "F_F": float(F_F), "p_F": float(p_F), "CD": CD}
+
+
+# ---- NEW: summarize Wilcoxon wins/losses for each algorithm (Holm within-metric) ----
+def _wilcoxon_summary_for_metric(wilc_df: pd.DataFrame, metric: str, alpha: float = 0.05) -> pd.DataFrame:
+    if wilc_df is None or wilc_df.empty:
+        return pd.DataFrame()
+    sub = wilc_df[wilc_df["metric"] == metric].copy()
+    if sub.empty:
+        return pd.DataFrame()
+
+    sub["win_A"] = (sub["median_diff_a_minus_b"] > 0) & (sub["p_holm_within_metric"] <= alpha)
+    sub["win_B"] = (sub["median_diff_a_minus_b"] < 0) & (sub["p_holm_within_metric"] <= alpha)
+
+    algs = sorted(set(sub["alg_a"]).union(set(sub["alg_b"])))
+    rows = []
+    for a in algs:
+        sig_wins = int(sub[(sub["alg_a"] == a) & sub["win_A"]].shape[0] +
+                       sub[(sub["alg_b"] == a) & sub["win_B"]].shape[0])
+        sig_losses = int(sub[(sub["alg_a"] == a) & sub["win_B"]].shape[0] +
+                         sub[(sub["alg_b"] == a) & sub["win_A"]].shape[0])
+
+        r_wins = []
+        r_wins += sub[(sub["alg_a"] == a) & sub["win_A"]]["effect_size_r"].tolist()
+        r_wins += sub[(sub["alg_b"] == a) & sub["win_B"]]["effect_size_r"].tolist()
+        mean_r_win = float(np.mean(r_wins)) if len(r_wins) else 0.0
+
+        total_pairs = len(algs) - 1
+        rows.append({
+            "Algorithm": alg_pretty(a),
+            "sig_wins": sig_wins,
+            "sig_losses": sig_losses,
+            "net_sig_wins": sig_wins - sig_losses,
+            "sig_win_share": sig_wins / total_pairs if total_pairs > 0 else np.nan,
+            "mean_r_win": mean_r_win,
+        })
+
+    return pd.DataFrame(rows).set_index("Algorithm").sort_values(
+        ["net_sig_wins", "sig_wins", "mean_r_win"], ascending=False
+    )
+
+
+# ---- NEW: overall metric stats (avg ranks + Wilcoxon summaries) ----
+def build_overall_metric_stats(per_alg: dict, wilc_df: pd.DataFrame, alpha: float = 0.05):
+    # collect metrics that appear in summaries
+    metrics = set()
+    for _, js in per_alg.items():
+        for _, payload in js.get("datasets", {}).items():
+            for k, v in payload.items():
+                if k.startswith("mean_") and isinstance(v, (int, float)) and np.isfinite(v):
+                    metrics.add(k)
+    metrics = sorted(metrics, key=sorting_key)
+
+    out_tables, caps = {}, {}
+    for m in metrics:
+        pivot = _dataset_metric_matrix(per_alg, m)
+        fried = _friedman_iman_nemenyi(pivot, alpha=alpha)
+        if fried is None:
+            continue
+        avg = fried["avg_ranks"].rename("Avg rank ↓").to_frame()
+        wsum = _wilcoxon_summary_for_metric(wilc_df, m, alpha=alpha)
+        tbl = avg.join(wsum, how="left").fillna(
+            {"sig_wins": 0, "sig_losses": 0, "net_sig_wins": 0, "sig_win_share": 0.0, "mean_r_win": 0.0}
+        )
+
+        upper = tbl.drop(index=[i for i in tbl.index if i in ("LDLT-L", "LDLT-R")], errors="ignore")
+        lower = tbl.loc[[i for i in ("LDLT-L", "LDLT-R") if i in tbl.index]]
+        out_tables[m] = pd.concat([upper, lower], axis=0)
+
+        caps[m] = {"N": fried["N"], "k": fried["k"], "F_F": fried["F_F"], "p_F": fried["p_F"], "CD": fried["CD"]}
+    return out_tables, caps
+
+
 # ---------------------------- LaTeX emitters ---------------------------- #
 
 HEADER = r"""
@@ -259,7 +364,7 @@ HEADER = r"""
 
 
 def tex_table_metric_summary(metric_name, df, wide=False):
-    cap = f"Sorted mean$\\pm$std across datasets for each algorithm on {metric_to_name(metric_name)}."
+    cap = f"Sorted mean$\\pm$std across $N$ datasets for each algorithm on {metric_to_name(metric_name)}."
     lab = f"tab:{metric_name}"
     env = "table*" if wide else "table"
     colspec = "l r l"
@@ -270,7 +375,7 @@ def tex_table_metric_summary(metric_name, df, wide=False):
              rf"\label{{{lab}}}",
              rf"\begin{{tabular}}{{{colspec}}}",
              r"\toprule",
-             r"Algorithm & $N$ datasets & Value \\",
+             r"Algorithm & $N$ & Value \\",
              r"\midrule"]
 
     df = df.sort_values(by='Value', ascending=False)
@@ -306,7 +411,7 @@ def get_data_metrics(lines: List[str], algorithms: List[str], metrics: List[str]
 
 
 def tex_table_metric_summary_combined(metric_summary, wide=True):
-    cap = f"Sorted mean$\\pm$std across datasets for each algorithm."
+    cap = f"Sorted mean$\\pm$std across $N$ datasets for each algorithm."
     lab = f"tab:metric_summary"
     env = "table*" if wide else "table"
 
@@ -322,7 +427,7 @@ def tex_table_metric_summary_combined(metric_summary, wide=True):
              r"\toprule",
              r' &  &  & \multicolumn{4}{c}{Certified Accuracy} \\',
              r'\cmidrule(lr){4-7}',
-             r"Algorithm & $N$ datasets & Accuracy & 36 & 72 & 108 & 255 \\",
+             r"Algorithm & $N$ & Accuracy & 36 & 72 & 108 & 255 \\",
              r"\midrule"]
 
     seperate = "LDLT"
@@ -457,6 +562,136 @@ def tex_model_ranges(df, wide=False):
     return "\n".join(lines)
 
 
+# ---- NEW: overall per-metric summary table (two-column ready) ----
+def tex_table_overall_summary(metric_name: str, df: pd.DataFrame, caps: dict, wide: bool = True) -> str:
+    env = "table*" if wide else "table"
+    cap = (f"Overall comparison on {metric_to_name(metric_name)}: average rank (lower is better) "
+           f"with Iman--Davenport $F={caps['F_F']:.2f}$ (df={int(caps['k'] - 1)},{int((caps['k'] - 1) * (caps['N'] - 1))}), "
+           f"$p={caps['p_F']:.3g}$; Nemenyi CD$={caps['CD']:.3f}$. "
+           r"Counts are significant wins/losses after Holm within-metric at $\alpha=0.05$.")
+    lab = f"tab:overall:{metric_name}"
+    colspec = "@{}l r r r r r r@{}"
+    header = r"Algorithm & \shortstack{Avg \\ rank} $\downarrow$ & \shortstack{sig \\ wins} & \shortstack{sig \\ losses} & \shortstack{net \\ wins} & \shortstack{win \\ share} & mean $r$ \\"
+
+    body = []
+    # upper = df.drop(index=[i for i in df.index if i in ("LDLT-L", "LDLT-R")], errors="ignore")
+    upper = df.sort_values(by='Avg rank ↓')
+
+    # lower = df.loc[[i for i in ("LDLT-L", "LDLT-R") if i in df.index]]
+    for idx, row in upper.iterrows():
+        body.append(rf"{idx} & {row['Avg rank ↓']:.3f} & {int(row['sig_wins'])} & {int(row['sig_losses'])} & "
+                    rf"{int(row['net_sig_wins'])} & {row['sig_win_share']:.3f} & {row['mean_r_win']:.3f} \\")
+    # if not lower.empty:
+    #     body.append(r"\midrule")
+    #     for idx, row in lower.iterrows():
+    #         body.append(rf"{idx} & {row['Avg rank ↓']:.3f} & {int(row['sig_wins'])} & {int(row['sig_losses'])} & "
+    #                     rf"{int(row['net_sig_wins'])} & {row['sig_win_share']:.3f} & {row['mean_r_win']:.3f} \\")
+
+    lines = [
+        fr"\begin{{{env}}}[t]", r"\centering", r"\begin{threeparttable}", r"{\small",
+        rf"\caption{{{cap}}}", rf"\label{{{lab}}}", r"\setlength{\tabcolsep}{4pt}",
+        rf"\begin{{tabular}}{{{colspec}}}", r"\toprule", header, r"\midrule",
+        *body, r"\bottomrule", r"\end{tabular}", r"}", r"\end{threeparttable}", fr"\end{{{env}}}",
+    ]
+    return "\n".join(lines)
+
+
+# ---- NEW: critical difference (CD) diagram (TikZ) ----
+def tex_cd_diagram(metric_name: str, avg_ranks: pd.Series, CD: float, width: float = 12.0) -> str:
+    algs = list(avg_ranks.index)
+    ranks = avg_ranks.values
+    k = len(algs)
+    xmin, xmax = 1.0, float(k)
+
+    def sx(r):
+        return (r - xmin) / (xmax - xmin) * width
+
+    # simple greedy cliques for non-significant groups (range <= CD)
+    blocks, i = [], 0
+    while i < k:
+        j, rmin, rmax = i, ranks[i], ranks[i]
+        while j + 1 < k:
+            rmin, rmax = min(rmin, ranks[j + 1]), max(rmax, ranks[j + 1])
+            if (rmax - rmin) <= CD + 1e-12:
+                j += 1
+            else:
+                break
+        blocks.append((i, j))
+        i = j + 1
+
+    cap = (rf"Critical Difference diagram for {metric_to_name(metric_name)} "
+           rf"(CD = {CD:.2f}; lower rank = better).")
+    lab = f"fig:cd:{metric_name}"
+    lines = [r"\begin{figure*}[t]", r"\centering", r"\begin{threeparttable}",
+             r"{\small",
+             rf"\label{{{lab}}}",
+             r"\begin{tikzpicture}[x=1cm,y=1cm]",
+             rf"\draw[thick] (0,0) -- ({width:.3f},0);"]
+    for r in range(1, k + 1):
+        x = sx(float(r))
+        lines += [rf"\draw ({x:.3f},0.1) -- ({x:.3f},-0.1) node[below]{{\scriptsize {r}}};"]
+    cd_left, cd_right = sx(xmin), sx(xmin + CD)
+    lines += [rf"\draw[thick] ({cd_left:.3f},1.0) -- ({cd_right:.3f},1.0);",
+              rf"\draw[thick] ({cd_left:.3f},0.9) -- ({cd_left:.3f},1.1);",
+              rf"\draw[thick] ({cd_right:.3f},0.9) -- ({cd_right:.3f},1.1);",
+              rf"\node[above] at ({(cd_left + cd_right) / 2:.3f},1.1) {{\scriptsize CD}};"]
+    for idx, (alg, r) in enumerate(zip(algs, ranks)):
+        x = sx(r)
+        y = 0.35 if (idx % 2 == 0) else -0.35
+        lines += [rf"\draw[thick] ({x:.3f},0) -- ({x:.3f},{0.25 if y > 0 else -0.25});",
+                  rf"\node[align=center] at ({x:.3f},{y:.3f}) {{\scriptsize {alg}}};"]
+    y0, dy = 0.65, 0.18
+    for b, (i0, i1) in enumerate(blocks):
+        if i1 <= i0: continue
+        xL, xR = sx(ranks[i0]), sx(ranks[i1])
+        y = y0 + b * dy
+        lines += [rf"\draw[very thick] ({xL:.3f},{y:.3f}) -- ({xR:.3f},{y:.3f});"]
+    lines += [r"\end{tikzpicture}", r"}",
+              r"\end{threeparttable}",
+              rf"\caption{{{cap}}}",
+              r"\end{figure*}"]
+    return "\n".join(lines)
+
+
+# ---- NEW: Wilcoxon significance matrix (▲/▼/·) ----
+def tex_significance_matrix(metric_name: str, wilc_df: pd.DataFrame, alpha: float = 0.05, wide=False) -> str:
+    sub = wilc_df[wilc_df["metric"] == metric_name].copy()
+    if sub.empty: return "% No Wilcoxon data for this metric."
+    algs = sorted(set(sub["alg_a"]).union(set(sub["alg_b"])))
+    idx = {a: i for i, a in enumerate(algs)}
+
+    tie = r"$\cdot$"
+    win = r"\textcolor{green}{$\blacktriangle$}" # ▲
+    loss = r"\textcolor{red}{$\blacktriangledown$}" # ▼
+
+    sym = [[tie for _ in algs] for _ in algs]
+
+    for _, r in sub.iterrows():
+        a, b = r["alg_a"], r["alg_b"]
+        pa, med = r["p_holm_within_metric"], r["median_diff_a_minus_b"]
+        i, j = idx[a], idx[b]
+        if pa <= alpha and med > 0:
+            sym[i][j], sym[j][i] = win, loss  # ▲, ▼
+        elif pa <= alpha and med < 0:
+            sym[i][j], sym[j][i] = loss, win  # ▼, ▲
+
+    env = "table*" if wide else "table"
+    colspec = "@{}l " + " ".join(["c"] * len(algs)) + " @{}"
+    cap = (r"Pairwise Wilcoxon outcomes for " + metric_to_name(metric_name) +
+           fr" (Holm within-metric at $\alpha=0.05$): row vs. column ({win} win, {loss} loss, {tie} none).")
+    lab = f"tab:signif:{metric_name}"
+    header = " & ".join(alg_pretty(a) for a in algs)
+
+    lines = [fr"\begin{{{env}}}[t]", r"\centering", r"\begin{threeparttable}", r"{",
+             rf"\caption{{{cap}}}", rf"\label{{{lab}}}", r"\setlength{\tabcolsep}{3pt}",
+             rf"\begin{{tabular}}{{{colspec}}}", r"\toprule", rf" & {header} \\", r"\midrule"]
+    for i, a in enumerate(algs):
+        row = " & ".join(sym[i])
+        lines.append(rf"{alg_pretty(a)} & {row} \\")
+    lines += [r"\bottomrule", r"\end{tabular}", r"}", r"\end{threeparttable}", fr"\end{{{env}}}"]
+    return "\n".join(lines)
+
+
 # ------------------------------ Main CLI -------------------------------- #
 
 def main():
@@ -474,6 +709,14 @@ def main():
                     help="Generate the metric summaries for each metric separately.")
     ap.add_argument("--wilcoxon-span", choices=["table*", "longtable", "landscape"], default="table*",
                     help="How to span the Wilcoxon tables in two-column docs: 'table*' (default), 'longtable' (forces page breaks via \\onecolumn/\\twocolumn), or 'landscape' (table* inside pdflscape).")
+    # NEW flags in argparse:
+    ap.add_argument("--emit-overall-summary", action=argparse.BooleanOptionalAction, default=True,
+                    help="Emit overall per-metric summary table (avg ranks + Wilcoxon counts).")
+    ap.add_argument("--emit-cd-diagram", action=argparse.BooleanOptionalAction, default=True,
+                    help="Emit TikZ critical-difference diagrams per metric (requires \\usepackage{tikz}).")
+    ap.add_argument("--emit-signif-matrix", action=argparse.BooleanOptionalAction, default=True,
+                    help="Emit Wilcoxon significance matrix (▲/▼/·) per metric.")
+
     args = ap.parse_args()
 
     per_alg, wilc_df, algs = load_all(args.out_dir, args.algorithms)
@@ -483,6 +726,8 @@ def main():
     metric_tables, numeric = build_metric_summary(per_alg)
     wilc_tables = build_wilcoxon_tables(wilc_df)
     ranges_df = build_model_size_ranges(per_alg)
+
+    overall_tables, overall_caps = build_overall_metric_stats(per_alg, wilc_df, alpha=0.05)
 
     tex_chunks = [HEADER.strip(), ""]
 
@@ -499,6 +744,24 @@ def main():
             tex_chunks.append(tex_table_metric_summary(m, metric_tables[m], wide=args.wide_metrics_summary))
             tex_chunks.append("")
 
+    for m in sorted(metric_tables.keys(), key=sorting_key):
+        if args.emit_overall_summary and m in overall_tables:
+            tex_chunks.append(tex_table_overall_summary(m, overall_tables[m], overall_caps[m], wide=False))
+            tex_chunks.append("")
+
+
+    for m in sorted(metric_tables.keys(), key=sorting_key):
+        if args.emit_signif_matrix and m in wilc_tables:
+            tex_chunks.append(tex_significance_matrix(m, wilc_df, alpha=0.05))
+            tex_chunks.append("")
+
+    for m in sorted(metric_tables.keys(), key=sorting_key):
+        if args.emit_cd_diagram and m in overall_tables:
+            avg_ranks = overall_tables[m]["Avg rank ↓"]
+            tex_chunks.append(tex_cd_diagram(m, avg_ranks, overall_caps[m]["CD"], width=12.0))
+            tex_chunks.append("")
+
+    for m in sorted(metric_tables.keys(), key=sorting_key):
         if m in wilc_tables:
             tex_chunks.append(tex_longtable_wilcoxon(m, wilc_tables[m], span_mode=args.wilcoxon_span))
             tex_chunks.append("")
