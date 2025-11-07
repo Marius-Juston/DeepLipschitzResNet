@@ -427,7 +427,7 @@ def tex_table_metric_summary_combined(metric_summary, wide=True):
              r"\toprule",
              r' &  &  & \multicolumn{4}{c}{Certified Accuracy} \\',
              r'\cmidrule(lr){4-7}',
-             r"Algorithm & $N$ & Accuracy & 36 & 72 & 108 & 255 \\",
+             r"Algorithm & $N$ & Accuracy & 36/255 & 72/255 & 108/255 & 255/255 \\",
              r"\midrule"]
 
     seperate = "LDLT"
