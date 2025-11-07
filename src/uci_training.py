@@ -1034,7 +1034,7 @@ def train_one_fold(
     test_acc = eval_loop(model, test_loader, device)
 
     if algorithm != 'mlp':
-        cert_names, ac, cert_vals = eval_certified(model, val_loader, device=device, dtype=dtype)
+        cert_names, ac, cert_vals = eval_certified(model, test_loader, device=device, dtype=dtype)
 
         cert_dict_ = convert_cert_vals(cert_names, cert_vals)
 
