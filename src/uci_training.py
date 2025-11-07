@@ -218,6 +218,7 @@ def train_one_fold(
         patience: int = 30,
         batch_size: int = 128,
         num_workers: int = 8,
+        depth:int=4,
         lr: float = 1e-3,
         weight_decay: float = 1e-4,
         dtype=None,
@@ -250,8 +251,6 @@ def train_one_fold(
     d_in = X.shape[1]
     width = suggested_width(d_in, n_classes)
 
-    depth = 8
-
     padding = max(d_in * 2, 10)
 
     if algorithm == 'mlp':
@@ -260,9 +259,11 @@ def train_one_fold(
         model = LipschitzNetworkSequential(cin=d_in, n_dense=depth, padding=padding, dense_inner_dim=width,
                                            n_classes=n_classes).to(device=device, dtype=dtype)
     elif algorithm == 'ldlt':
-        model = DeepLipschitzSequentialLNN(d_in, n_classes, layers_widths=[width] * (depth - 1), device=device, dtype=dtype)
+        model = DeepLipschitzSequentialLNN(d_in, n_classes, layers_widths=[width] * (depth - 1), device=device,
+                                           dtype=dtype)
     elif algorithm == 'ldlt-resnet':
-        model = DeepLipschitzLinearResNetLNN(d_in, n_classes, layers_widths=[width] * (depth - 1), device=device, dtype=dtype)
+        model = DeepLipschitzLinearResNetLNN(d_in, n_classes, layers_widths=[width] * (depth - 1), device=device,
+                                             dtype=dtype)
     elif algorithm == 'aol':
         model = Toy(in_channels=d_in, num_classes=n_classes, depth=depth, layer='Aol', padding=padding).to(
             device=device, dtype=dtype)
@@ -484,6 +485,7 @@ def _run_task(pack) -> Tuple[str, Dict[str, Any]]:
                 lr=args.lr,
                 max_epochs=args.max_epochs,
                 patience=args.patience,
+                depth=args.depth,
                 gpu_id=gpu_id
             )
 
@@ -510,6 +512,7 @@ def _run_task(pack) -> Tuple[str, Dict[str, Any]]:
                     max_epochs=args.max_epochs,
                     patience=args.patience,
                     batch_size=args.batch_size,
+                    depth=args.depth,
                     num_workers=min(16, max(4, (os.cpu_count() // max(1, args.gpus)) // 4)),
                     lr=args.lr,
                 )
@@ -818,8 +821,10 @@ def parse_args():
                    help="Optional explicit list of dataset names to run (match folder names under data_root).")
 
     p.add_argument("--algorithms", type=str, nargs='+',
-                   default=['mlp', 'sdp', 'ldlt', 'ldlt-resnet', 'aol', 'ortho', 'sandwich'],
-                   choices=['mlp', 'sdp', 'ldlt', 'ldlt-resnet', 'aol', 'ortho', 'sandwich'])
+                   default=['sdp', 'ldlt', 'ldlt-resnet', 'aol', 'ortho', 'sandwich'],
+                   choices=['sdp', 'ldlt', 'ldlt-resnet', 'aol', 'ortho', 'sandwich'])
+
+    p.add_argument("--depth", type=int, default=4, help="The depth of the networks")
 
     return p.parse_args()
 
