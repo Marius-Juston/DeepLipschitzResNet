@@ -1,6 +1,14 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
+"""
+Cross-validated training harness for Lipschitz-constrained models on the JKU UCI collection.
+
+This module prepares tabular datasets, trains a variety of Lipschitz-aware models with
+TensorBoard logging, evaluates both empirical and certified accuracies, and orchestrates
+Wilcoxon signed-rank comparisons across algorithms. Runtime behavior strictly matches the
+original implementation; only documentation and type annotations have been added.
+"""
 
 import argparse
 import json
@@ -10,11 +18,13 @@ import os
 import random
 import sys
 import traceback
+from collections.abc import Sequence
 from multiprocessing import get_context
 from pathlib import Path
-from typing import Dict, Any, List, Tuple
+from typing import Any
 
 import numpy as np
+import numpy.typing as npt
 import pandas as pd
 import torch
 import torch.nn as nn
@@ -27,19 +37,144 @@ from torch.utils.data import Dataset, DataLoader
 from torch.utils.tensorboard import SummaryWriter
 
 from lbdn_models.model import Toy
-from models.linear_model import DeepLipschitzSequential, DeepLipschitzLinearResNet, DeepLipschitzLinearResNetLNN, \
-    DeepLipschitzSequentialLNN
+from models.linear_model import (
+    DeepLipschitzSequential,
+    DeepLipschitzLinearResNet,
+    DeepLipschitzLinearResNetLNN,
+    DeepLipschitzSequentialLNN,
+)
 from sll_models.model import LipschitzNetworkSequential
+
+type FloatArray = npt.NDArray[np.float64]
+type IntArray = npt.NDArray[np.int64]
 
 logger = logging.getLogger(__name__)
 
 
-def load_dat(path: Path):
+def load_dat(path: Path) -> FloatArray:
+    """
+    Load a comma-delimited `.dat` file as a float64 matrix.
+
+    Parameters
+    ----------
+    path : Path
+        Absolute or relative path to the `.dat` file containing values arranged row-wise.
+
+    Returns
+    -------
+    data : (n_rows, n_cols) float64 ndarray
+        Parsed numeric matrix with `np.float64` dtype.
+
+    Raises
+    ------
+    OSError
+        If the file cannot be opened.
+    ValueError
+        If the file contents cannot be interpreted as a rectangular numeric array.
+
+    Notes
+    -----
+    Internally wraps :func:`numpy.loadtxt` with `delimiter=','`, matching the format of the
+    JKU UCI preprocessed artifacts.
+
+    Mathematical sketch
+    --------------------
+    No transformation is applied beyond parsing; the loader simply maps ASCII tokens to
+    floats via NumPy's vectorized scanner.
+
+    Examples
+    --------
+    >>> from pathlib import Path
+    >>> tmp = Path('example.dat')
+    >>> _ = tmp.write_text('1,2\\n3,4\\n')
+    >>> load_dat(tmp)
+    array([[1., 2.],
+           [3., 4.]])
+    >>> tmp.unlink()
+    """
     return np.loadtxt(path, delimiter=',')
 
 
-class ArrayDataset(Dataset):
-    def __init__(self, X: np.ndarray, y: np.ndarray, indices: np.ndarray):
+class ArrayDataset(Dataset[tuple[Tensor, Tensor]]):
+    """
+    Thin dataset wrapper around dense NumPy arrays with one-hot encoded labels.
+
+    Parameters
+    ----------
+    X : (n_samples, n_features) float64 ndarray
+        Feature matrix that has already been standardized.
+    y : (n_samples,) int64 ndarray
+        Integer class labels in `[0, n_classes - 1]`.
+    indices : (n_indices,) int64 ndarray
+        Row indices selecting the partition (train/val/test).
+
+    Notes
+    -----
+    Converts arrays into contiguous `torch.float32` tensors once during initialization to
+    avoid repeated host-to-device transfers per sample.
+
+    Returns
+    -------
+    None
+
+    Raises
+    ------
+    None
+
+    Mathematical sketch
+    --------------------
+    Each call to :meth:`__getitem__` simply indexes row `i` from the cached tensors and
+    returns `(x_i, y_i)` with `y_i` already one-hot encoded.
+
+    Examples
+    --------
+    >>> X = np.array([[0.0], [1.0]], dtype=np.float64)
+    >>> y = np.array([0, 1], dtype=np.int64)
+    >>> ArrayDataset(X, y, np.array([0, 1], dtype=np.int64))
+    <...ArrayDataset object at ...>
+    """
+
+    def __init__(self, X: FloatArray, y: IntArray, indices: IntArray) -> None:
+        """
+        Construct the dataset and pre-compute one-hot encodings.
+
+        Parameters
+        ----------
+        X : (n_samples, n_features) float64 ndarray
+            Feature matrix representing the entire dataset.
+        y : (n_samples,) int64 ndarray
+            Ground-truth class indices with zero-based encoding.
+        indices : (n_subset,) int64 ndarray
+            Integer positions that choose which rows belong to the dataset split.
+
+        Returns
+        -------
+        None
+            The initializer mutates internal tensors in place.
+
+        Raises
+        ------
+        None
+
+        Notes
+        -----
+        The method converts data to contiguous CPU tensors with dtype `torch.float32`,
+        ensuring compatibility with subsequent `DataLoader` usage.
+
+        Mathematical sketch
+        --------------------
+        Represent each class label `c` by the canonical basis vector `e_c` in
+        \\( \\mathbb{R}^{C} \\); the stored label tensor simply stacks these vectors.
+
+        Examples
+        --------
+        >>> X = np.array([[0.0], [1.0]], dtype=np.float64)
+        >>> y = np.array([0, 1], dtype=np.int64)
+        >>> idx = np.array([0, 1], dtype=np.int64)
+        >>> ds = ArrayDataset(X, y, idx)
+        >>> len(ds)
+        2
+        """
         self.X = torch.from_numpy(X).to(torch.float32)
 
         n_classes = y.max() + 1
@@ -50,18 +185,121 @@ class ArrayDataset(Dataset):
 
         self.idx = indices.astype(np.int64, copy=False)
 
-    def __len__(self):
+    def __len__(self) -> int:
+        """
+        Number of accessible samples.
+
+        Returns
+        -------
+        length : int
+            Cardinality of the subset represented by `self.idx`.
+
+        Raises
+        ------
+        None
+
+        Notes
+        -----
+        Required by PyTorch's `Dataset` protocol.
+
+        Mathematical sketch
+        --------------------
+        The method simply returns the length of the cached index tensor.
+
+        Examples
+        --------
+        >>> len(ArrayDataset(np.zeros((2, 1)), np.zeros(2, dtype=np.int64), np.array([0], dtype=np.int64)))
+        1
+        """
         return self.idx.shape[0]
 
-    def __getitem__(self, i):
+    def __getitem__(self, i: int) -> tuple[Tensor, Tensor]:
+        """
+        Retrieve the `i`-th sample/label pair.
+
+        Parameters
+        ----------
+        i : int
+            Position inside the subset index array, `0 <= i < len(self)`.
+
+        Returns
+        -------
+        sample : (n_features,) float32 tensor
+            Standardized tabular feature vector.
+        target : (n_classes,) float32 tensor
+            One-hot encoded target.
+
+        Raises
+        ------
+        IndexError
+            If `i` is out of range.
+
+    Notes
+    -----
+    The implementation uses integer indexing into pre-materialized tensors, so the
+    operation is `O(1)`.
+
+    Mathematical sketch
+    --------------------
+    Retrieves row `j = idx[i]` and returns `(X_j, Y_j)` after squeezing singleton
+    dimensions introduced by PyTorch's storage layout.
+
+    Examples
+    --------
+    >>> X = np.array([[0.0], [1.0]], dtype=np.float64)
+        >>> y = np.array([0, 1], dtype=np.int64)
+        >>> ds = ArrayDataset(X, y, np.array([1], dtype=np.int64))
+        >>> xb, yb = ds[0]
+        >>> (xb.item(), yb.argmax().item())
+        (1.0, 1)
+        """
         j = self.idx[i]
         return self.X[j].squeeze(0), self.y[j].squeeze(0)
 
 
-def standardize_inplace(X: np.ndarray, train_idx: np.ndarray, eps: float = 1e-8) -> Dict[str, np.ndarray]:
+def standardize_inplace(X: FloatArray, train_idx: IntArray, eps: float = 1e-8) -> dict[str, FloatArray]:
     """
-    Standardize features using mean/std computed on training examples only.
-    Returns the stats for reproducibility.
+    Standardize features in place using training statistics.
+
+    Parameters
+    ----------
+    X : (n_samples, n_features) float64 ndarray
+        Full design matrix to standardize; mutated in place.
+    train_idx : (n_train, 1) or (n_train,) int64 ndarray
+        Integer indices specifying training rows used to compute moments.
+    eps : float, default=1e-8
+        Small positive floor to avoid division by zero when a feature is constant.
+
+    Returns
+    -------
+    stats : dict[str, (n_features,) float64 ndarray]
+        Dictionary with keys ``"mean"`` and ``"std"`` storing training-only moments.
+
+    Raises
+    ------
+    None
+
+    Notes
+    -----
+    Standardization uses \\( z = (x - \\mu) / \\sigma \\) with \\( \\sigma = \\max(\\text{std}, \\varepsilon) \\).
+    All views of `X` reflect the modified values because the operation updates the array in place.
+
+    Mathematical sketch
+    --------------------
+    Given training subset \\( \\mathcal{T} \\), compute
+    \\( \\mu_j = \\frac{1}{|\\mathcal{T}|} \\sum_{i \\in \\mathcal{T}} X_{ij} \\)
+    and \\( \\sigma_j = \\sqrt{ \\frac{1}{|\\mathcal{T}|} \\sum_{i \\in \\mathcal{T}} (X_{ij} - \\mu_j)^2 } \\).
+    Each feature column is then centered and scaled by these statistics.
+    Assumes `train_idx` contains at least one entry.
+
+    Examples
+    --------
+    >>> X = np.array([[1., 2.], [3., 4.]], dtype=np.float64)
+    >>> stats = standardize_inplace(X, np.array([0, 1], dtype=np.int64))
+    >>> np.allclose(X.mean(axis=0), np.zeros(2))
+    True
+    >>> np.round(stats['std'], 6).tolist()
+    [1.414214, 1.414214]
     """
     mu = X[train_idx].mean(axis=0)
     sigma = X[train_idx].std(axis=0)
@@ -70,7 +308,46 @@ def standardize_inplace(X: np.ndarray, train_idx: np.ndarray, eps: float = 1e-8)
     return {"mean": mu, "std": sigma}
 
 
-def class_weights_from_indices(y: np.ndarray, train_idx: np.ndarray) -> torch.Tensor:
+def class_weights_from_indices(y: IntArray, train_idx: IntArray) -> Tensor:
+    """
+    Compute inverse-frequency class weights from training indices.
+
+    Parameters
+    ----------
+    y : (n_samples,) int64 ndarray
+        Class labels for the entire dataset.
+    train_idx : (n_train, 1) or (n_train,) int64 ndarray
+        Indices specifying which samples belong to the training split.
+
+    Returns
+    -------
+    weights : (n_classes,) float32 tensor
+        Weight vector normalized so that its mean equals one.
+
+    Raises
+    ------
+    None
+
+    Notes
+    -----
+    Frequencies are estimated as \\( f_c = n_c / n_{\\text{train}} \\) and weights become
+    \\( w_c = (\\sum_c 1 / f_c)^{-1} / f_c \\). This keeps the cross-entropy loss scale
+    stable while counteracting class imbalance.
+
+    Mathematical sketch
+    --------------------
+    The method sets
+    \\( w_c = \\frac{C}{\\sum_{c'} 1/f_{c'}} \\cdot \\frac{1}{f_c} \\),
+    where `C` is the number of observed classes. The scaling ensures \\( \\frac{1}{C} \\sum_c w_c = 1 \\).
+    Assumes each class in `train_idx` appears at least once.
+
+    Examples
+    --------
+    >>> y = np.array([0, 0, 1, 1, 1], dtype=np.int64)
+    >>> idx = np.array([0, 2, 3, 4], dtype=np.int64)
+    >>> class_weights_from_indices(y, idx).tolist()
+    [1.5, 0.5]
+    """
     classes, counts = np.unique(y[train_idx], return_counts=True)
     freq = counts.astype(np.float64) / counts.sum()
     w = 1.0 / np.maximum(freq, 1e-9)
@@ -85,7 +362,97 @@ def class_weights_from_indices(y: np.ndarray, train_idx: np.ndarray) -> torch.Te
 
 
 class MLP(nn.Module):
-    def __init__(self, d_in: int, n_classes: int, width: int, depth: int = 4, dropout: float = 0.2):
+    """
+    Simple batch-normalized multilayer perceptron baseline for tabular data.
+
+    Parameters
+    ----------
+    d_in : int
+        Number of input features.
+    n_classes : int
+        Number of mutually exclusive classes.
+    width : int
+        Hidden layer width.
+    depth : int, default=4
+        Number of hidden layers (each comprises Linear → BatchNorm → ReLU → Dropout).
+    dropout : float, default=0.2
+        Dropout probability applied after each activation.
+
+    Notes
+    -----
+    Uses Kaiming uniform initialization appropriate for ReLU activations. No Lipschitz
+    constraints are enforced; the model primarily serves as a baseline.
+
+    Returns
+    -------
+    None
+
+    Raises
+    ------
+    None
+
+    Mathematical sketch
+    --------------------
+    The network computes
+    \\( f(x) = W_{\\text{out}} h_{d}(x) + b_{\\text{out}} \\),
+    where each hidden block performs
+    \\( h_{k+1} = \\text{Dropout}(\\text{ReLU}(\\text{BN}(W_k h_k + b_k))) \\).
+
+    Examples
+    --------
+    >>> model = MLP(d_in=8, n_classes=3, width=64)
+    >>> isinstance(model, nn.Module)
+    True
+    """
+
+    def __init__(
+            self,
+            d_in: int,
+            n_classes: int,
+            width: int,
+            depth: int = 4,
+            dropout: float = 0.2,
+    ) -> None:
+        """
+        Initialize the multilayer perceptron backbone.
+
+        Parameters
+        ----------
+        d_in : int
+            Dimensionality of the input features.
+        n_classes : int
+            Number of logits produced by the head.
+        width : int
+            Width of each hidden block.
+        depth : int, default=4
+            Number of hidden blocks to stack.
+        dropout : float, default=0.2
+            Probability of zeroing activations during training.
+
+        Returns
+        -------
+        None
+
+        Raises
+        ------
+        None
+
+        Notes
+        -----
+        Each hidden block allocates fresh Linear, BatchNorm1d, ReLU, and Dropout layers.
+        Weight initialization follows `torch.nn.init.kaiming_uniform_`.
+
+        Mathematical sketch
+        --------------------
+        Initializes parameters so that incoming variance is preserved, i.e.,
+        \\( \\text{Var}(W x) = \\text{Var}(x) \\) under ReLU assumptions as per Kaiming initialization.
+
+        Examples
+        --------
+        >>> model = MLP(d_in=4, n_classes=3, width=16)
+        >>> sum(p.numel() for p in model.parameters()) > 0
+        True
+        """
         super().__init__()
         layers = []
         prev = d_in
@@ -104,17 +471,86 @@ class MLP(nn.Module):
                     bound = 1 / math.sqrt(fan_in)
                     nn.init.uniform_(m.bias, -bound, bound)
 
-    def forward(self, x):
+    def forward(self, x: Tensor) -> Tensor:
+        """
+        Compute logits for the provided batch.
+
+        Parameters
+        ----------
+        x : (batch, d_in) float32 tensor
+            Standardized feature batch on CPU or GPU.
+
+        Returns
+        -------
+        logits : (batch, n_classes) float32 tensor
+            Unnormalized logit scores prior to softmax.
+
+        Raises
+        ------
+        RuntimeError
+            If the input dimensionality mismatches `d_in`.
+
+        Notes
+        -----
+        The method simply applies the sequential backbone followed by the linear head.
+
+        Mathematical sketch
+        --------------------
+        Equivalent to applying the composed affine/ReLU mapping described in the class
+        docstring.
+
+        Examples
+        --------
+        >>> model = MLP(d_in=2, n_classes=2, width=8)
+        >>> out = model(torch.zeros(4, 2))
+        >>> out.shape
+        torch.Size([4, 2])
+        """
         x = self.backbone(x)
         return self.head(x)
 
 
 def suggested_width(d_in: int, n_classes: int) -> int:
-    # heuristic tailored for small-to-mid tabular datasets
+    """
+    Heuristic for choosing MLP width on small-to-mid-sized tabular datasets.
+
+    Parameters
+    ----------
+    d_in : int
+        Number of input features.
+    n_classes : int
+        Number of output classes; larger values bias towards broader hidden layers.
+
+    Returns
+    -------
+    width : int
+        Selected width constrained to the discrete set ``{32, 64, 128, 256, 384, 512}``.
+
+    Notes
+    -----
+    The heuristic scales as `min(512, max(32, 4 * d_in))` with an additional 25% boost
+    when `n_classes > 10`, then rounds to the nearest bucket for reproducibility.
+
+    Mathematical sketch
+    --------------------
+    The rule encodes the intuition that each feature contributes roughly four hidden units,
+    capping capacity at 512 to avoid overfitting. Assumes datasets roughly follow the UCI
+    statistics seen in Lipschitz model benchmarks.
+
+    Examples
+    --------
+    >>> suggested_width(10, 3)
+    64
+    >>> suggested_width(200, 20)
+    512
+
+    Raises
+    ------
+    None
+    """
     base = max(32, min(512, 4 * d_in))
     if n_classes > 10:
         base = int(base * 1.25)
-    # round to nearest power of two-ish bucket
     buckets = [32, 64, 128, 256, 384, 512]
     return min(buckets, key=lambda b: abs(b - base))
 
@@ -122,13 +558,84 @@ def suggested_width(d_in: int, n_classes: int) -> int:
 # ------------- Training ------------- #
 
 def set_seed(seed: int):
+    """
+    Synchronize Python, NumPy, and PyTorch RNG states.
+
+    Parameters
+    ----------
+    seed : int
+        Non-negative seed applied to `random`, `numpy`, and `torch`.
+
+    Returns
+    -------
+    None
+
+    Raises
+    ------
+    None
+
+    Notes
+    -----
+    Deterministic seeding aids reproducibility of cross-validation splits and model
+    initialization.
+
+    Mathematical sketch
+    --------------------
+    Calls `random.seed`, `np.random.seed`, and `torch.manual_seed` with the same integer.
+
+    Examples
+    --------
+    >>> set_seed(0)
+    >>> random.randint(0, 10)
+    6
+    """
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
 
 
 @torch.no_grad()
-def eval_loop(model, loader, device):
+def eval_loop(model: nn.Module, loader: DataLoader[tuple[Tensor, Tensor]], device: torch.device) -> float:
+    """
+    Evaluate categorical accuracy over a dataloader.
+
+    Parameters
+    ----------
+    model : torch.nn.Module
+        Network that outputs raw logits.
+    loader : DataLoader[((n_features,), (n_classes,))]
+        Iterable emitting `(inputs, one_hot_labels)` tuples already on CPU.
+    device : torch.device
+        Target device for inference (CPU or CUDA).
+
+    Returns
+    -------
+    accuracy : float
+        Fraction of correctly classified samples in `[0, 1]`.
+
+    Raises
+    ------
+    RuntimeError
+        Propagated if model forward pass fails.
+
+    Notes
+    -----
+    Uses `argmax` over logits and one-hot labels, so both tensors must share consistent
+    class ordering.
+
+    Mathematical sketch
+    --------------------
+    Computes \\( \\frac{1}{N} \\sum_{i=1}^{N} \\mathbb{1}\\{\\arg\\max_k \\hat{y}_{ik} = \\arg\\max_k y_{ik}\\} \\).
+
+    Examples
+    --------
+    >>> class Constant(nn.Module):
+    ...     def forward(self, x):
+    ...         return torch.tensor([[1., 0.]], dtype=x.dtype).expand(x.size(0), -1)
+    >>> loader = DataLoader([(torch.zeros(1, 2), torch.tensor([[1., 0.]]))])
+    >>> eval_loop(Constant(), loader, torch.device('cpu'))
+    1.0
+    """
     model.eval()
     correct = 0
     total = 0
@@ -142,14 +649,100 @@ def eval_loop(model, loader, device):
     return correct / max(total, 1)
 
 
-def convert_cert_vals(cert_names: List[float], cert_vals: Tensor):
-    return {
-        str(int(n)): v.item() for n, v in zip(cert_names, cert_vals)
-    }
+def convert_cert_vals(cert_names: Sequence[float], cert_vals: Tensor) -> dict[str, float]:
+    """
+    Zip epsilon radii with their empirical certified accuracies.
+
+    Parameters
+    ----------
+    cert_names : sequence of float
+        Certified radii expressed in pixel-space (0–255 scaling).
+    cert_vals : (n_eps,) float tensor
+        Certified accuracy per epsilon as returned by :func:`eval_certified`.
+
+    Returns
+    -------
+    mapping : dict[str, float]
+        Dictionary keyed by integer epsilon string (e.g., ``\"36\"``) with scalar accuracies.
+
+    Notes
+    -----
+    Converts tensor entries to Python floats to ease JSON serialization.
+
+    Mathematical sketch
+    --------------------
+    The function performs a bijective mapping from `(ε, metric)` pairs to dictionary items
+    by stringifying the epsilon budget.
+
+    Examples
+    --------
+    >>> convert_cert_vals([36, 72], torch.tensor([0.8, 0.5]))
+    {'36': 0.8, '72': 0.5}
+
+    Raises
+    ------
+    None
+    """
+    return {str(int(n)): v.item() for n, v in zip(cert_names, cert_vals)}
 
 
 @torch.no_grad()
-def eval_certified(model, loader, dtype=None, device=None):
+def eval_certified(
+        model: nn.Module,
+        loader: DataLoader[tuple[Tensor, Tensor]],
+        dtype: torch.dtype | None = None,
+        device: torch.device | None = None,
+) -> tuple[list[float], float, Tensor]:
+    """
+    Compute certified accuracies for fixed perturbation radii.
+
+    Parameters
+    ----------
+    model : torch.nn.Module
+        Lipschitz-constrained classifier exposing `last_weight()` or a final linear layer.
+    loader : DataLoader[((n_features,), (n_classes,))]
+        Validation dataloader emitting normalized features and one-hot labels.
+    dtype : torch.dtype, optional
+        Desired tensor dtype for computations; defaults to model parameters' dtype.
+    device : torch.device, optional
+        Device hosting inference; defaults to the active CUDA device if available.
+
+    Returns
+    -------
+    cert_values : list of float
+        Pixel-space epsilon radii `[36, 72, 108, 255]`.
+    accuracy : float
+        Standard accuracy under point predictions.
+    certified : (len(cert_values),) float tensor
+        Fraction of correctly certified examples for each epsilon.
+
+    Raises
+    ------
+    ValueError
+        If the model type is unsupported for certified evaluation.
+
+    Notes
+    -----
+    The certification radius per sample equals
+    \\( r(x) = \\min_{k \\neq y} \\frac{(f_y(x) - f_k(x))}{\\|w_y - w_k\\|_2} \\),
+    where `w_y` are normalized final-layer weights and `f` are logits. Samples whose
+    radius exceeds `ε / 255` contribute to the certified accuracy at that epsilon.
+
+    Mathematical sketch
+    --------------------
+    For margin vector `m = f_y - f_k` and normalized weights `\\hat{w}`, the Lipschitz
+    bound implies robustness ball radius `m / \\|\\hat{w}_y - \\hat{w}_k\\|_2`. The function
+    evaluates this for every competing class, aggregates minima, and compares against
+    scaled epsilon budgets. Assumes `model` exposes the last linear weight either via
+    `.last_weight()` or `.model[-1].weight`.
+
+    Examples
+    --------
+    >>> dummy = Toy(in_channels=4, num_classes=2, depth=1, layer='Aol', padding=8)  # doctest: +SKIP
+    >>> loader = DataLoader([ (torch.zeros(1, 4), torch.tensor([[1., 0.]])) ])      # doctest: +SKIP
+    >>> eval_certified(dummy, loader, dtype=torch.float32, device=torch.device('cpu'))  # doctest: +SKIP
+    ([36.0, 72.0, 108.0, 255.0], 0.0, tensor([0., 0., 0., 0.]))
+    """
     cert_values = [36., 72., 108., 255.]
 
     eps_float = torch.tensor(cert_values, dtype=dtype, device=device) / 255.
@@ -205,27 +798,97 @@ def eval_certified(model, loader, dtype=None, device=None):
 
 
 def train_one_fold(
-        X: np.ndarray,
-        y: np.ndarray,
-        train_idx: np.ndarray,
-        test_idx: np.ndarray,
-        val_idx: np.ndarray,
+        X: FloatArray,
+        y: IntArray,
+        train_idx: IntArray,
+        test_idx: IntArray,
+        val_idx: IntArray,
         algorithm: str,
         seed: int,
         log_dir: Path,
-        hparams: Dict[str, Any],
+        hparams: dict[str, Any],
         max_epochs: int = 300,
         patience: int = 30,
         batch_size: int = 128,
         num_workers: int = 8,
-        depth:int=4,
+        depth: int = 4,
         lr: float = 1e-3,
         weight_decay: float = 1e-4,
-        dtype=None,
-        device: torch.device = None,
-) -> Dict[str, Any]:
+        dtype: torch.dtype | None = None,
+        device: torch.device | None = None,
+) -> dict[str, Any]:
     """
-    Train on folds != {test_fold, val_fold}, validate on val_fold, test on test_fold.
+    Train, validate, and test a single fold of cross-validation.
+
+    Parameters
+    ----------
+    X : (n_samples, n_features) float64 ndarray
+        Full dataset features; mutated in place during standardization.
+    y : (n_samples,) int64 ndarray
+        Class labels aligned with `X`.
+    train_idx, test_idx, val_idx : (n_subset, 1) int64 ndarray
+        Boolean-fold-derived indices for training, testing, and validation splits.
+    algorithm : {'mlp', 'sdp', 'ldlt', 'ldlt-resnet', 'aol', 'ortho', 'sandwich'}
+        Model family identifier selecting the appropriate architecture.
+    seed : int
+        Deterministic seed for data shuffling and initialization.
+    log_dir : Path
+        Directory where TensorBoard events and checkpoints are persisted.
+    hparams : dict
+        Hyperparameter metadata recorded to TensorBoard.
+    max_epochs : int, default=300
+        Maximum optimization epochs.
+    patience : int, default=30
+        Early-stopping patience measured in epochs.
+    batch_size : int, default=128
+        Training mini-batch size; validation/test use 512.
+    num_workers : int, default=8
+        DataLoader worker processes.
+    depth : int, default=4
+        Network depth where applicable.
+    lr : float, default=1e-3
+        AdamW learning rate.
+    weight_decay : float, default=1e-4
+        AdamW weight decay coefficient.
+    dtype : torch.dtype, optional
+        Computation dtype for model parameters and tensors.
+    device : torch.device, optional
+        Execution device; CUDA is preferred when available.
+
+    Returns
+    -------
+    metrics : dict
+        Dictionary containing best epoch, accuracies, architectural metadata, and
+        certified evaluations (when applicable).
+
+    Raises
+    ------
+    ValueError
+        If `algorithm` is unrecognized.
+
+    Notes
+    -----
+    Implements standard training with TensorBoard logging, ReduceLROnPlateau scheduling,
+    and gradient clipping (`\\|g\\|_2 <= 5`). Statistics for standardization are measured
+    on `train_idx` only and serialized with the results.
+
+    Mathematical sketch
+    --------------------
+    The optimization objective is the weighted cross-entropy
+    \\( \\mathcal{L} = -\\sum_i w_{y_i} \\log p_{y_i}(x_i) \\),
+    minimized via AdamW with cosine-like LR reductions triggered by validation accuracy
+    plateaus. Early stopping selects the checkpoint with maximal validation accuracy.
+
+    Examples
+    --------
+    >>> X = np.random.randn(20, 4)
+    >>> y = np.random.randint(0, 2, size=20).astype(np.int64)
+    >>> idx = np.arange(20, dtype=np.int64)
+    >>> res = train_one_fold(  # doctest: +SKIP
+    ...     X, y, idx[:10], idx[10:], idx[10:], 'mlp', 0, Path('tmp'), {}, max_epochs=1
+    ... )
+    >>> sorted(res.keys())  # doctest: +SKIP
+    ['best_epoch', 'best_val_acc', 'cert_evals', 'depth', 'in_features', 'out_features', 'padding', 'parameters', 'stats', 'test_acc', 'test_size', 'train_size', 'val_size', 'width']
     """
     set_seed(seed)
 
@@ -407,7 +1070,47 @@ def train_one_fold(
 
 # ------------- Worker: trains one dataset for one repeat (10 folds) ------------- #
 
-def load_dataset_bundle(dataset_dir: Path) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+def load_dataset_bundle(dataset_dir: Path) -> tuple[FloatArray, IntArray, IntArray, IntArray]:
+    """
+    Load features, labels, folds, and validation folds for a single dataset.
+
+    Parameters
+    ----------
+    dataset_dir : Path
+        Directory containing ``*_py.dat`` files as produced by the preprocessing scripts.
+
+    Returns
+    -------
+    X : (n_samples, n_features) float64 ndarray
+        Feature matrix.
+    y : (n_samples,) int64 ndarray
+        Class labels.
+    folds : (n_samples, n_folds) int64 ndarray
+        Binary fold assignment matrix where `1` denotes training membership.
+    val_map_folds : (n_samples, n_folds) int64 ndarray
+        Binary matrix marking validation splits.
+
+    Raises
+    ------
+    AssertionError
+        If fold matrices contain invalid markers or mismatched shapes.
+    OSError
+        If any required file is missing or unreadable.
+
+    Notes
+    -----
+    The function enforces that each row belongs to at most one of train/val/test for every
+    fold by verifying `folds + val_map_folds` is binary.
+
+    Mathematical sketch
+    --------------------
+    Treat folds as indicator matrices `F` and validation map as `V`; constraints ensure
+    `F_ik + V_ik ∈ {0, 1}` so the implicit test set is their complement.
+
+    Examples
+    --------
+    >>> load_dataset_bundle(Path('data/uci/abalone'))  # doctest: +SKIP
+    """
     features_path = dataset_dir / f"{dataset_dir.name}_py.dat"
     folds_path = dataset_dir / "folds_py.dat"
     labels_path = dataset_dir / "labels_py.dat"
@@ -438,10 +1141,40 @@ def load_dataset_bundle(dataset_dir: Path) -> Tuple[np.ndarray, np.ndarray, np.n
     return X, y, folds, val_map_folds
 
 
-def _run_task(pack) -> Tuple[str, Dict[str, Any]]:
+def _run_task(pack: tuple[Path, str, str, int, str, int, argparse.Namespace]) -> tuple[str, dict[str, Any]]:
     """
-    pack = (dataset_dir, dataset_name, repeat_id, gpu_id, out_dir, base_seed, args_dict)
-    Returns ("ok", result) or ("error", errdict).
+    Train every fold for one dataset/algorithm pair on a dedicated GPU.
+
+    Parameters
+    ----------
+    pack : tuple
+        `(dataset_dir, dataset_name, algorithm_name, gpu_id, out_dir, base_seed, args)`
+        as prepared by :func:`schedule_and_run`.
+
+    Returns
+    -------
+    status : {'ok', 'error'}
+        Execution outcome flag.
+    payload : dict
+        Fold-aggregated metrics when status is ``'ok'``; otherwise includes traceback info.
+
+    Raises
+    ------
+    None
+
+    Notes
+    -----
+    Sets `CUDA_VISIBLE_DEVICES` per task to avoid GPU contention and caches per-fold
+    results under `out_dir/algorithm_name/runs/<dataset>/fold_k/result.json`.
+
+    Mathematical sketch
+    --------------------
+    No additional math is performed beyond delegating to :func:`train_one_fold`; the
+    routine orchestrates cross-validation loops, ensuring seeds increment by fold index.
+
+    Examples
+    --------
+    >>> # _run_task is invoked internally by multiprocessing; no stand-alone example.
     """
     dataset_dir, dataset_name, algorithm_name, gpu_id, out_dir, base_seed, args = pack
     try:
@@ -562,11 +1295,38 @@ def _run_task(pack) -> Tuple[str, Dict[str, Any]]:
 
 # ------------- Orchestrator ------------- #
 
-def wilcoxon_prep_all_metrics(out_dir: Path, algorithms: List[str]) -> pd.DataFrame:
+def wilcoxon_prep_all_metrics(out_dir: Path, algorithms: list[str]) -> pd.DataFrame:
     """
-    Long-format table across *all* mean_* metrics found in per-alg summary.json files.
-    Columns: [dataset, algorithm, metric, value]
-    Writes out_dir/'wilcoxon_prep_all.json' and returns a DataFrame.
+    Assemble a long-format table of per-dataset mean metrics for Wilcoxon tests.
+
+    Parameters
+    ----------
+    out_dir : Path
+        Directory containing ``<algorithm>/summary.json`` files.
+    algorithms : list of str
+        Algorithm identifiers to include; missing summaries are skipped.
+
+    Returns
+    -------
+    df : pandas.DataFrame
+        Table with columns ``[dataset, algorithm, metric, value]`` sorted by metric.
+
+    Raises
+    ------
+    None
+
+    Notes
+    -----
+    Only keys prefixed with ``\"mean_\"`` are extracted, mirroring the certified accuracy
+    metrics produced earlier in the pipeline.
+
+    Mathematical sketch
+    --------------------
+    The routine simply flattens nested dictionaries; no statistical transformation occurs.
+
+    Examples
+    --------
+    >>> wilcoxon_prep_all_metrics(Path('./runs'), ['sdp'])  # doctest: +SKIP
     """
     rows = []
     for alg in algorithms:
@@ -602,9 +1362,34 @@ def wilcoxon_prep_all_metrics(out_dir: Path, algorithms: List[str]) -> pd.DataFr
     return df
 
 
-def _holm_adjust(pvals: List[float]) -> List[float]:
+def _holm_adjust(pvals: Sequence[float]) -> list[float]:
     """
-    Holm–Bonferroni FWER control, adjusted p-values in original order.
+    Apply the Holm–Bonferroni correction to a list of p-values.
+
+    Parameters
+    ----------
+    pvals : sequence of float
+        Raw p-values from dependent hypothesis tests.
+
+    Returns
+    -------
+    adjusted : list of float
+        Holm-adjusted p-values preserving the input order.
+
+    Notes
+    -----
+    Implements the step-down procedure where `p_(i)` is scaled by `(m - i + 1)` with
+    cumulative monotonic enforcement.
+
+    Mathematical sketch
+    --------------------
+    Let `p_(1) ≤ ... ≤ p_(m)` be sorted values. The adjusted statistic is
+    \\( q_{(i)} = \\max(q_{(i-1)}, (m - i + 1) p_{(i)}) \\), clipped to `[0, 1]`.
+
+    Examples
+    --------
+    >>> _holm_adjust([0.01, 0.04, 0.02])
+    [0.03, 0.04, 0.04]
     """
     m = len(pvals)
     order = sorted(range(m), key=lambda i: pvals[i])
@@ -618,13 +1403,40 @@ def _holm_adjust(pvals: List[float]) -> List[float]:
     return adjusted
 
 
-def run_wilcoxon_tests_all_metrics(out_dir: Path, algorithms: List[str]) -> pd.DataFrame:
+def run_wilcoxon_tests_all_metrics(out_dir: Path, algorithms: list[str]) -> pd.DataFrame:
     """
-    Pairwise Wilcoxon signed-rank tests for every metric present (all mean_* keys).
-    Saves:
-      - out_dir/'wilcoxon_pairwise_all.csv'
-      - out_dir/'wilcoxon_pairwise_all.json'
-    Prints a pretty table including the 'metric' column.
+    Perform pairwise Wilcoxon signed-rank tests across all metrics and algorithms.
+
+    Parameters
+    ----------
+    out_dir : Path
+        Directory containing `wilcoxon_prep_all.json` or per-algorithm summaries.
+    algorithms : list of str
+        Algorithms to compare; others are ignored.
+
+    Returns
+    -------
+    df : pandas.DataFrame
+        Table of pairwise statistics including Holm-adjusted p-values.
+
+    Raises
+    ------
+    None
+
+    Notes
+    -----
+    Outputs CSV/JSON artifacts and prints a Markdown-formatted summary to stdout. Metrics
+    are ordered so that test accuracy and certified accuracies appear first.
+
+    Mathematical sketch
+    --------------------
+    For each pair `(a, b)` the Wilcoxon signed-rank test compares metric differences on
+    datasets where both algorithms report results. The resulting statistic approximates a
+    paired `t`-test for non-Gaussian data; Holm corrections control family-wise error.
+
+    Examples
+    --------
+    >>> run_wilcoxon_tests_all_metrics(Path('./runs'), ['sdp', 'ldlt'])  # doctest: +SKIP
     """
     prep_all_path = out_dir / "wilcoxon_prep_all.json"
     if prep_all_path.exists():
@@ -737,10 +1549,42 @@ def run_wilcoxon_tests_all_metrics(out_dir: Path, algorithms: List[str]) -> pd.D
     return res_df
 
 
-def schedule_and_run(datasets: List[Path], args: argparse.Namespace, out_dir: Path) -> Dict[str, Any]:
+def schedule_and_run(datasets: list[Path], args: argparse.Namespace, out_dir: Path) -> dict[str, Any]:
     """
-    Use a Pool with 'spawn' context. Pool size == args.gpus (one concurrent task per GPU).
-    Each task (dataset, repeat) is pre-assigned a GPU id in round-robin.
+    Launch multiprocessing workers to process all dataset/algorithm combinations.
+
+    Parameters
+    ----------
+    datasets : list of Path
+        Resolved dataset directories discovered at runtime.
+    args : argparse.Namespace
+        Parsed CLI arguments containing training hyperparameters.
+    out_dir : Path
+        Root directory for algorithm-specific subfolders and summaries.
+
+    Returns
+    -------
+    alg_summary : dict
+        Mapping from algorithm name to the progressively updated summary dictionary.
+
+    Raises
+    ------
+    RuntimeError
+        Propagated if pool execution fails.
+
+    Notes
+    -----
+    Workers equal the number of GPUs requested; each task is assigned a GPU id in
+    round-robin order. Intermediate summaries are written after every task completion.
+
+    Mathematical sketch
+    --------------------
+    No statistical computation is performed here; the scheduler simply partitions the
+    Cartesian product of datasets and algorithms into `ngpus` ordered queues.
+
+    Examples
+    --------
+    >>> schedule_and_run([Path('data/sample')], argparse.Namespace(gpus=1, algorithms=['mlp']), Path('./runs'))  # doctest: +SKIP
     """
     ngpus = max(1, args.gpus)
     base_seed = args.seed
@@ -756,7 +1600,7 @@ def schedule_and_run(datasets: List[Path], args: argparse.Namespace, out_dir: Pa
     total = len(tasks)
     logger.info(f"Launching Pool with {ngpus} workers over {total} tasks...")
 
-    results: List[Dict[str, Any]] = []
+    results: list[dict[str, Any]] = []
     ctx = get_context("spawn")
 
     # Aggregate summary JSON
@@ -803,7 +1647,32 @@ def schedule_and_run(datasets: List[Path], args: argparse.Namespace, out_dir: Pa
     return alg_summary
 
 
-def parse_args():
+def parse_args() -> argparse.Namespace:
+    """
+    Build the command-line interface and parse user arguments.
+
+    Returns
+    -------
+    args : argparse.Namespace
+        Parsed configuration with attributes documented in the help strings.
+
+    Raises
+    ------
+    SystemExit
+        If parsing fails or help text is requested.
+
+    Notes
+    -----
+    Defaults mirror the experimental setup described in the project README.
+
+    Mathematical sketch
+    --------------------
+    Not applicable.
+
+    Examples
+    --------
+    >>> _ = parse_args()  # doctest: +SKIP
+    """
     p = argparse.ArgumentParser(description="Train MLP on JKU UCI collection with 10-fold CV and TensorBoard logging.")
     p.add_argument("--data-root", type=str, default='../data/UCI',
                    help="Root directory with data/<dataset_name>/ subfolders.")
@@ -829,7 +1698,39 @@ def parse_args():
     return p.parse_args()
 
 
-def setup_logging(config, log_folder):
+def setup_logging(config: argparse.Namespace, log_folder: Path) -> None:
+    """
+    Configure module-level logging to stream and file handlers.
+
+    Parameters
+    ----------
+    config : argparse.Namespace
+        Parsed arguments whose `verbosity` attribute selects the log level.
+    log_folder : Path
+        Directory where `logs.txt` will be written.
+
+    Returns
+    -------
+    None
+
+    Raises
+    ------
+    OSError
+        If the log file cannot be created.
+
+    Notes
+    -----
+    Formats log records with timestamps and process/thread identifiers for debugging
+    multi-processing runs.
+
+    Mathematical sketch
+    --------------------
+    Not applicable.
+
+    Examples
+    --------
+    >>> setup_logging(argparse.Namespace(verbosity='info'), Path('.'))  # doctest: +SKIP
+    """
     log_file = log_folder / 'logs.txt'
 
     level = {'DEBUG': 10, 'ERROR': 40, 'FATAL': 50,
@@ -839,7 +1740,31 @@ def setup_logging(config, log_folder):
                         handlers=[logging.FileHandler(log_file), logging.StreamHandler(sys.stdout)])
 
 
-def main():
+def main() -> None:
+    """
+    Entry point that discovers datasets, launches training, and runs statistics.
+
+    Returns
+    -------
+    None
+
+    Raises
+    ------
+    SystemExit
+        If no valid datasets are found.
+
+    Notes
+    -----
+    Sets the multiprocessing start method to ``"spawn"`` for CUDA compatibility.
+
+    Mathematical sketch
+    --------------------
+    Not applicable.
+
+    Examples
+    --------
+    >>> main()  # doctest: +SKIP
+    """
     try:
         set_start_method("spawn", force=True)
     except RuntimeError:
@@ -893,7 +1818,7 @@ def main():
     run_wilcoxon_tests_all_metrics(out_dir, args.algorithms)
 
     logger.info(f"TensorBoard logs under: {out_dir / 'runs'}")
-    logger.info(f"To view: tensorboard --logdir {str(out_dir / "runs")}")
+    logger.info(f"To view: tensorboard --logdir {str(out_dir / 'runs')}")
 
 
 if __name__ == "__main__":

@@ -1,132 +1,200 @@
 # LDLT Lipschitz Network
 
-This repository is the implementation of the paper https://arxiv.org/abs/2502.21279 and should be cited as [[1]](#1).
+> Training code, evaluation scripts, and analysis tooling for **L-Lipschitz Gershgorin ResNet Network** (arXiv: [2502.21279](https://arxiv.org/abs/2502.21279)).
 
-# Experiments
+This repository reproduces the experiments from the paper and provides ready-made
+utilities for CIFAR-10/100, Tiny-ImageNet, UCI tabular suites, and profiling of
+compiled Lipschitz networks.
 
-Experiments were done with PyTorch 2.8,
+## Table of Contents
 
-train & evaluation
+1. [Background](#background)
+2. [Installation](#installation)
+3. [Usage](#usage)
+   - [Training](#training)
+   - [Evaluation](#evaluation)
+   - [Reproducing paper tables](#reproducing-paper-tables)
+4. [Profiling & Diagnostics](#profiling--diagnostics)
+5. [Plotting Utilities](#plotting-utilities)
+6. [Performance Notes](#performance-notes)
+7. [TensorBoard Access](#tensorboard-access)
+8. [Citation](#citation)
 
-# training
+## Background
+
+`DeepLipschitzResNet` implements the LDLT linear and residual architectures that
+enforce global \(L\)-Lipschitz constraints via LDLT Decomposition. The codebase
+covers:
+
+- convolutional and linear models for CIFAR-10/100 and Tiny-ImageNet
+- UCI tabular experiments (via `src/uci_training.py`)
+- certified robustness evaluation against fixed perturbation budgets
+- profiling, visualization, and numerical stability diagnostics
+
+If you use this repository, please cite the accompanying paper in the
+[Citation](#citation) section.
+
+## Installation
+
+> Requires Python ≥ 3.10 and PyTorch ≥ 2.8 (nightly 2.10 for compiled CNN support).
 
 ```bash
-# Training
-torchrun --standalone --nproc_per_node=4 src/main.py --dataset cifar10 --model-name small --train_dir small_model 2>&1 | tee output.txt
-
-# Evaluation
-torchrun --standalone --nproc_per_node=1 src/main.py --dataset cifar10 --model-name small --train_dir small_model --mode certified 2>&1 | tee output.txt
+git clone https://github.com/<your-org>/DeepLipschitzResNet.git
+cd DeepLipschitzResNet
+python -m venv .venv
+source .venv/bin/activate  # or .\.venv\Scripts\activate on Windows
+pip install -r requirements.txt
 ```
 
+For CUDA builds unaffected by the Inductor complex-view bug (see
+[Performance Notes](#performance-notes)), install the latest nightlies:
+
 ```bash
-torchrun --standalone --nproc_per_node=4 src/main.py --dataset cifar100 --optimizer admaw --model-name medium --train_dir medium_model 2>&1 | tee output.txt
+pip install --pre -U torch torchvision --index-url https://download.pytorch.org/whl/nightly/cu128
 ```
 
-or running
+Datasets are expected under `data/` (CIFAR and Tiny-ImageNet) and UCI bundles
+under `data/UCI/`. See `AGENTS.md` for directory conventions.
+
+## Usage
+
+### Training
+
+Single command entry point (`src/main.py`) with torchrun:
 
 ```bash
-./train_cifar10.sh         # train using CIFAR10
-./train_cifar100.sh # train using CIFAR10
-./train.sh cifar100        # train using CIFAR100
-./train.sh tiny-imagenet   # train using tiny-imagenet
+# 4-GPU CIFAR-10 (small model)
+torchrun --standalone --nproc_per_node=4 \
+  src/main.py --dataset cifar10 --model-name small --train_dir runs/cifar10_small
+
+# 4-GPU CIFAR-100 (medium model, AdamW optimizer)
+torchrun --standalone --nproc_per_node=4 \
+  src/main.py --dataset cifar100 --model-name medium --optimizer adamw \
+  --train_dir runs/cifar100_medium
 ```
 
+Wrapper scripts mirror the paper’s setups:
+
 ```bash
- /home/mjuston2/anaconda3/envs/DeepLipschitzResNet/bin/python -m torch.distributed.run --standalone --nnodes=1 --nproc_per_node=gpu main.py --dataset cifar10 --model-name small --train_dir small_model
+./train_cifar10.sh           # CIFAR-10 baseline
+./train_cifar100.sh          # CIFAR-100 baseline
+./train.sh cifar100          # generic entry (CIFAR-100)
+./train.sh tiny-imagenet     # Tiny-ImageNet variant
 ```
 
-## Reproducing CIFAR10/100 results from the paper
+Specialized trainers for ablations:
+- `src/linear_train.py`
+- `src/cnn_train.py`
 
-Download the checkpoints here
+Both expose flags for depth, optimizer, spectral penalties, and certification
+modes identical to the paper.
+
+### Evaluation
+
+Run certified/standard evaluation against checkpoints:
 
 ```bash
-python3 reproduce_tables.py
+# Standard + certified accuracy
+torchrun --standalone --nproc_per_node=1 \
+  src/main.py --dataset cifar10 --model-name small \
+  --train_dir runs/cifar10_small --mode certified
 ```
 
-# Files
+Pretrained weights, logs, and TensorBoard events are hosted on
+[Hugging Face: SuperComputer/LDLT](https://huggingface.co/SuperComputer/LDLT).
+Download a checkpoint and point `--train_dir` at the extracted run folder to
+replicate the paper’s metrics.
 
-## Training
-
-To run the specific trainings found in the paper you can use [linear_train.py](./src/linear_train.py)
-or [cnn_train.py](./src/cnn_train.py)
-
-this has multiple routines that you can enable for the specific outputs that you desire.
-
-## Profiling
-
-To profile the networks you can use [profiling.py](./src/profiling.py), which compiles with `torch.compile` and then
-finds CUDA profiles the system for performance issues. This is extremely useful for finding graph break issues with
-`torch.compile`
-
-To vizualize the output `trace.json` open Chrome and load the trace file inside [chrome://tracing](chrome://tracing) as
-demonstrated
-in [here](https://docs.pytorch.org/tutorials/recipes/recipes/profiler_recipe.html#using-tracing-functionality)
-
-## Plots
-
-To generate the LMI plots use [model_lmi.py](./test/model_lmi.py), where you can optionally put the specific model
-weights and structure that you desire as a model weight path that would get loaded. This will create
-a [figs](./test/figs/) folder with the output graphs
-
-To generate the numerical instability graphs we have that [numerical_instability.py](./test/numerical_instability.py)
-script.
-
-# Performance
-
-For full performance in the CNN implementation of the lipschitz network, so that `torch.compile` works, due to a bug
-with the inductor compiler and complex datatypes and views `.mH`, please make sure to get either the nightly build or
-any build that fixes PyTorch
-issue [https://github.com/pytorch/pytorch/issues/163243](https://github.com/pytorch/pytorch/issues/163243), where the
-sample code [complex_cholesky_decomposition.py](./test/complex_cholesky_decomposition.py) should run and compile the
-graph.
-
-This issue has been fixed in the nightly build `torch-2.10.0.dev20250923` and onwards so please use this version for an
-optimized experience, which means that it will only fully work in `PyTorch 2.10` when that releases.
-
-To install the prerelease:
+### Reproducing paper tables
 
 ```bash
-pip3 install --pre -U torch torchvision --index-url https://download.pytorch.org/whl/nightly/cu128
+python reproduce_tables.py
 ```
 
-# Evaluation
+This script downloads the published checkpoints, runs inference passes, and
+emits the CIFAR-10/100 tables reported in the manuscript.
 
-To evaluate the network all the weights and training Tensorboard plots are available
-in https://huggingface.co/SuperComputer/LDLT
+## Profiling & Diagnostics
 
-You can download the specific weights used for the training in the paper and validate the results yourself as well as
-the training run.
-
-## Tensorboard
-
-### For remote server
+Use the built-in profiler to trace compiled execution graphs:
 
 ```bash
-ssh -L 6006:127.0.0.1:6006 <user>@<ip address>
+python src/profiling.py --train_dir runs/cifar10_small
+```
+
+This script wraps `torch.compile`, records traces in `trace.json`, and reports
+graph breaks. Visualize traces by opening Chrome and navigating to
+`chrome://tracing`, then loading `trace.json`. See the
+[PyTorch profiler recipe](https://docs.pytorch.org/tutorials/recipes/recipes/profiler_recipe.html#using-tracing-functionality)
+for more details.
+
+The `test/complex_cholesky_decomposition.py` snippet reproduces the Inductor bug
+referenced in the paper; it should compile cleanly on torch nightlies ≥
+`2.10.0.dev20250923`.
+
+## Plotting Utilities
+
+- **LMI plots**: `python test/model_lmi.py --checkpoint <path>` generates plots
+  saved under `test/figs/`.
+- **Numerical instability plots**: `python test/numerical_instability.py`
+  reproduces the histograms from the manuscript.
+
+Both scripts accept optional checkpoint paths to inspect specific trained
+weights.
+
+## Performance Notes
+
+For compiled CNNs, ensure you are on a PyTorch build that includes the fix for
+Inductor complex datatypes and `.mH` views (issue
+[#163243](https://github.com/pytorch/pytorch/issues/163243)). Nightlies at
+`torch-2.10.0.dev20250923` or later contain the patch; PyTorch 2.10 stable will
+also include it.
+
+If you encounter compilation failures, verify:
+
+1. `torch.compile` is enabled (default in `profiling.py`).
+2. You are on a patched nightly or the upcoming 2.10 release.
+3. `complex_cholesky_decomposition.py` compiles locally; if not, update PyTorch.
+
+## TensorBoard Access
+
+TensorBoard logs live under `runs/`. Two common workflows:
+
+### Remote server
+
+```bash
+ssh -L 6006:127.0.0.1:6006 <user>@<server-ip>
 conda activate DeepLipschitzResNet
-tensorboard --logdir=.
+tensorboard --logdir runs
 ```
 
-### For WSL2
+Point your local browser to `http://localhost:6006`.
+
+### WSL2 / local only
 
 ```bash
-tensorboard --host localhost --port 8888 --logdir=.
+tensorboard --host localhost --port 8888 --logdir runs
 ```
 
-## Reference
+## Citation
 
-To cite please use,
+If this repository helps your research, please cite:
 
 <a id="1">[1]</a>
 
 ```
 @misc{juston2025llipschitzgershgorinresnetnetwork,
-      title={L-Lipschitz Gershgorin ResNet Network}, 
-      author={Marius F. R. Juston and William R. Norris and Dustin Nottage and Ahmet Soylemezoglu},
-      year={2025},
-      eprint={2502.21279},
-      archivePrefix={arXiv},
-      primaryClass={cs.LG},
-      url={https://arxiv.org/abs/2502.21279}, 
+  title={L-Lipschitz Gershgorin ResNet Network},
+  author={Marius F. R. Juston and William R. Norris and Dustin Nottage and Ahmet Soylemezoglu},
+  year={2025},
+  eprint={2502.21279},
+  archivePrefix={arXiv},
+  primaryClass={cs.LG},
+  url={https://arxiv.org/abs/2502.21279}
 }
 ```
+
+---
+
+Questions or issues? Please open a GitHub issue with the command you ran, full
+stack trace (if any), and environment details (OS, CUDA, PyTorch version).***
