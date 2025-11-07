@@ -1,4 +1,4 @@
-# Code copied from
+# Code copied from https://github.com/acfr/LBDN/blob/main/model.py
 from typing import Literal
 
 import torch.nn as nn
