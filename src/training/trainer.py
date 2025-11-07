@@ -5,19 +5,24 @@ import os
 import pprint
 import socket
 import time
+from argparse import Namespace
 from contextlib import nullcontext
 from os.path import join, exists
+from typing import Tuple, Iterator
 
 import numpy as np
 import torch
 import torch.backends.cudnn as cudnn
+import wandb
+from torch.nn import Parameter
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.tensorboard import SummaryWriter
 
-from models.model import LipschitzNetwork
+from models.model import LipschitzNetwork, is_complex_config
 from training import utils
 from training.data.readers import readers_config
 from training.utils import print_module_parameters
+from utils import weight_grad_norm_normalization_
 
 
 def local_only(func):
@@ -85,7 +90,10 @@ class Trainer:
         self.saved_ckpts.add(self.checkpoint['epoch'])
         self.start_epoch = self.checkpoint['epoch']
         self.start_global_step = self.checkpoint['global_step']
-        # self.config = new_config
+
+        # Update the default values with the new config configuration
+        self.config: Namespace
+        self.config.__dict__.update(new_config.__dict__)
 
         if callable(getattr(self.scheduler, 'state_dict', None)):
             self.scheduler.load_state_dict(self.checkpoint['scheduler'])
@@ -132,15 +140,30 @@ class Trainer:
 
         self.summary_writer = SummaryWriter(log_dir=save_folder)
 
-        self.hparams_dict = {
+        if is_complex_config(self.config):
+            self.hparams_dict = {
+                "n_classes": self.reader.n_classes,
+                "n_conv": str(self.config.n_conv),
+                "n_dense": str(self.config.n_dense)
+            }
+        else:
+            self.hparams_dict = {
+                "n_conv": self.config.n_conv,
+                "n_dense": self.config.n_dense,
+                "cin": self.config.w,
+                "conv_inner_dim": self.config.conv_inner_dim,
+                "dense_inner_dim": self.config.dense_inner_dim,
+                "n_classes": self.reader.n_classes,
+            }
 
-            "n_conv": self.config.n_conv,
-            "n_dense": self.config.n_dense,
-            "cin": self.config.w,
-            "conv_inner_dim": self.config.conv_inner_dim,
-            "dense_inner_dim": self.config.dense_inner_dim,
-            "n_classes": self.reader.n_classes,
-        }
+        self.hparams_dict['lr'] = self.config.lr
+        self.hparams_dict['loss'] = self.config.loss
+        self.hparams_dict['scheduler'] = self.config.scheduler
+        self.hparams_dict['optimizer'] = self.config.optimizer
+        self.hparams_dict['batch_size'] = self.config.batch_size
+        self.hparams_dict['batch_norm'] = self.config.batch_norm
+        self.hparams_dict['dropout'] = self.config.dropout
+        self.hparams_dict['seed'] = self.config.seed
 
     @local_only
     def print_module_parameters(self, model):
@@ -287,6 +310,11 @@ class Trainer:
         self.start_epoch = 0
         self.start_global_step = 0
 
+        if self.config.log_wandb and self.local_rank == 0:
+            logging.info("Starting W&B logging")
+            wandb.init(project=f"DeepLipschitzNetwork-{self.config.dataset}")
+            wandb.watch(self.model, log='all', log_freq=1)
+
     def load(self):
         checkpoints_path = join(self.train_dir, 'checkpoints', str(self.config.seed))
 
@@ -329,7 +357,8 @@ class Trainer:
                 self.local_notification(f"Reached epoch {epoch_id}: {latest_accuracy}")
 
         self._save_ckpt(global_step, epoch_id, final=True)
-        self.local_notification(f"Finished training. Best accuracy ({self.best_checkpoint}) {self.best_accuracy}", temporary=False)
+        self.local_notification(f"Finished training. Best accuracy ({self.best_checkpoint}) {self.best_accuracy}",
+                                temporary=False)
         logging.info("Done training -- epoch limit reached.")
 
     @local_only
@@ -368,16 +397,23 @@ class Trainer:
 
     @torch.no_grad()
     def eval_certified_run(self, dataloader, epoch):
-        running_accuracy = 0
-        running_inputs = 0
+        running_correct = torch.tensor(0.0, device=f'cuda:{self.local_rank}')
+        running_total = torch.tensor(0.0, device=f'cuda:{self.local_rank}')
+
         for batch_n, data in enumerate(dataloader):
             inputs, labels = data
             inputs, labels = inputs.to(self.local_rank), labels.to(self.local_rank)
             outputs = self.model(inputs)
             predicted = outputs.argmax(axis=1)
-            running_accuracy += predicted.eq(labels.data).sum().item()
-            running_inputs += inputs.size(0)
-        accuracy = running_accuracy / running_inputs
+
+            running_correct += predicted.eq(labels).sum()
+            running_total += torch.tensor(labels.size(0), device=f'cuda:{self.local_rank}')
+
+        # Synchronize across all GPUs
+        torch.distributed.all_reduce(running_correct, op=torch.distributed.ReduceOp.SUM)
+        torch.distributed.all_reduce(running_total, op=torch.distributed.ReduceOp.SUM)
+
+        accuracy = (running_correct / running_total).item()
 
         if self.local_rank == 0:
             self.message.add('epoch', epoch, format='.0f')
@@ -385,6 +421,11 @@ class Trainer:
             logging.info(self.message.get_message())
 
             self.summary_writer.add_scalar(f'Validation/Accuracy', accuracy, global_step=epoch)
+
+            if self.config.log_wandb:
+                wandb.log({
+                    'accuracy': accuracy,
+                })
 
         return accuracy
 
@@ -416,13 +457,30 @@ class Trainer:
         return (step % frequency == 0 and self.local_rank == 0) or \
             (step == 1 and self.local_rank == 0)
 
+    def _to_log_metrics(self, step):
+        frequency = self.config.frequency_model_log_steps
+        if frequency is None:
+            return False
+        return (step % frequency == 0 and self.local_rank == 0) or \
+            (step == 1 and self.local_rank == 0)
+
     def process_gradients(self, step):
-        if self.config.gradient_clip_by_norm:
+        if self.config.gradient_layer_normalization:
+            parameters = [p for n, p in self.model.named_parameters() if 'weight' in n]
+
+            norms = weight_grad_norm_normalization_(parameters)
+            if step == 0 and self.local_rank == 0:
+                logging.info("total norm: {}".format(
+                    norms))
+        elif self.config.gradient_clip_by_norm:
             if step == 0 and self.local_rank == 0:
                 logging.info("Clipping Gradient by norm: {}".format(
                     self.config.gradient_clip_by_norm))
-            torch.nn.utils.clip_grad_norm_(
+            norm = torch.nn.utils.clip_grad_norm_(
                 self.model.parameters(), self.config.gradient_clip_by_norm)
+            if step == 0 and self.local_rank == 0:
+                logging.info("total norm: {}".format(
+                    norm.item()))
         elif self.config.gradient_clip_by_value:
             if step == 0 and self.local_rank == 0:
                 logging.info("Clipping Gradient by value: {}".format(
@@ -481,3 +539,28 @@ class Trainer:
             self.summary_writer.add_scalar('Training/LR', lr, global_step=step)
             self.summary_writer.add_scalar('Training/Loss', loss, global_step=step)
             self.summary_writer.add_scalar('Training/FPS', examples_per_second, global_step=step)
+
+        if self._to_log_metrics(step):
+            self.log_all(self.model.named_parameters(), step)
+
+            lr = self.optimizer.param_groups[0]['lr']
+
+            if self.config.log_wandb and self.local_rank == 0:
+                wandb.log({
+                    'lr': lr,
+                    'loss': loss
+                })
+
+    @torch.no_grad()
+    def log_all(self, parameters: Iterator[Tuple[str, Parameter]], step):
+        for n, param in parameters:
+            if param.numel() == 1:
+                fnc = self.summary_writer.add_scalar
+            else:
+                fnc = self.summary_writer.add_histogram
+
+            if self.config.log_tensorboard_grad and param.requires_grad and param.grad is not None:
+                fnc(f"gradients/{n}", param.grad, global_step=step)
+
+            if self.config.log_tensorboard_vals:
+                fnc(f"values/{n}", param, global_step=step)

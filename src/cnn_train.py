@@ -38,14 +38,14 @@ class LipschitzNetwork(nn.Module):
         if linear:
             self.conv = nn.Sequential(
                 DeepLipschitzConvSequential(
-                    in_channels=in_channels, out_channels=1, layers_widths=[hidden, hidden, hidden, hidden],
+                    in_channels=in_channels, out_channels=1, layers_widths=[hidden, hidden * 2, hidden * 2, hidden],
                     kernel_size=3, padding=1, device=device, dtype=torch.float32,
                 ), Flatten()
             )
         else:
             self.conv = nn.Sequential(
                 DeepLipschitzConvResNet(
-                    in_channels=in_channels, out_channels=1, layers_widths=[hidden, hidden, hidden, hidden],
+                    in_channels=in_channels, out_channels=1, layers_widths=[hidden, hidden * 2, hidden * 2, hidden],
                     kernel_size=3, padding=1, device=device, dtype=torch.float32,
                 ), Flatten()
             )
@@ -148,7 +148,7 @@ def run_experiment(device='cpu'):
 
     model = LipschitzNetwork(device=device)
 
-    # model = torch.compile(model, mode='max-autotune')
+    model = torch.compile(model, mode='max-autotune')
 
     print(model)
     print(print_num_parameters(model))

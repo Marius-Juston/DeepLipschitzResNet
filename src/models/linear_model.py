@@ -4,6 +4,7 @@ import torch
 from torch import nn, Tensor
 from torch.nn import ModuleList, Module, ReLU
 
+from lbdn_models.layers import LinearNormalized
 from models.linear_layers import FirstLipschitzLinearLayer, LastLipschitzLinearLayer, InnerWeightLipschitzLinearLayer, \
     LinearLipschitz
 from utils import safe_cholesky
@@ -145,15 +146,80 @@ class DeepLipschitzLinearResNet(nn.Module):
 
         return first + second
 
+    def last_weight(self) -> torch.Tensor:
+        x = torch.zeros((1, self.in_features), **self.factory_kwargs)
+
+        first, a_weight, d_inv, prev_alpha, prev_omega_r, prev_constant = self.A(x)
+
+        gamma = self.A.identity
+        sigma_lower = None
+
+        current_input = x
+
+        for layer in self.layers:
+            T = gamma @ d_inv
+
+            current_input, c_weight, d_inv, prev_alpha, prev_omega_r, prev_constant = layer(current_input, prev_alpha,
+                                                                                            prev_omega_r, prev_constant)
+
+            if sigma_lower is None:
+                sigma_lower = T
+            else:
+                sigma_lower = safe_cholesky(sigma_lower @ sigma_lower.T + T @ T.T, upper=False)
+
+            gamma = T @ c_weight.T
+
+            current_input = self.activation(current_input)
+
+        second, b_weight = self.compute_b(current_input, sigma_lower, a_weight, prev_alpha, prev_omega_r)
+
+        return torch.cat([a_weight, b_weight], dim=1)
+
+
+class DeepLipschitzLinearResNetLNN(DeepLipschitzLinearResNet):
+    def generate_layers(self) -> None:
+        self.A = FirstLipschitzLinearLayer(in_features=self.in_features, out_features=self.layer_widths[-1],
+                                           constant_sq=self.lipschitz_constant_sq, enable_alpha=self.enable_alpha,
+                                           **self.factory_kwargs)
+
+        self.B = LastLipschitzLinearLayer(in_features=self.layer_widths[-1], out_features=self.layer_widths[-1],
+                                          bias=False,
+                                          enable_alpha=self.enable_alpha,
+                                          # Don't need bias on both A and B since they would be doing the same thing
+                                          **self.factory_kwargs)
+
+        layer = []
+
+        prev = self.in_features
+
+        for i, out_features in enumerate(self.layer_widths):
+            layer.append(
+                InnerWeightLipschitzLinearLayer(prev, out_features,
+                                                constant_sq=2.0,
+                                                enable_alpha=self.enable_alpha,
+                                                **self.factory_kwargs))
+            prev = out_features
+
+        self.last = LinearNormalized(prev, self.out_features, **self.factory_kwargs)
+
+        self.layers = ModuleList(layer)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = super().forward(x)
+
+        return self.last(x)
+
 
 class DeepLipschitzSequential(nn.Module):
     layers: ModuleList
 
     def __init__(self, in_features: int, out_features: int, layers_widths: Sequence[int],
                  activation: Union[Module, List[Module]] = None, lipschitz_constant: float = 1.0,
+                 dropout=False,
                  device: Union[str, torch.device] = 'cuda', dtype=None) -> None:
         super().__init__()
 
+        self.dropout = dropout
         assert len(layers_widths) >= 1, "This deep network assumes that the number of layers is greater "
         assert in_features > 0, "The input width needs to be larger than 0"
         assert out_features > 0, "The output width needs to be larger than 0"
@@ -192,6 +258,10 @@ class DeepLipschitzSequential(nn.Module):
 
             layer.append(
                 LinearLipschitz(prev, out_features, constant_sq=constant, activation=activation, **self.factory_kwargs))
+
+            if self.dropout:
+                layer.append(nn.Dropout())
+
             prev = out_features
 
         layer.append(
@@ -206,12 +276,15 @@ class DeepLipschitzSequential(nn.Module):
         prev_const = torch.tensor(1.0, **self.factory_kwargs)
 
         for layer in self.layers:
-            layer: LinearLipschitz
+            if isinstance(layer, nn.Dropout):
+                current_input = layer(current_input)
+            else:
+                layer: LinearLipschitz
 
-            current_input, d_sqrt, _ = layer(current_input, d_sqrt, prev_alpha, prev_const)
+                current_input, d_sqrt, _ = layer(current_input, d_sqrt, prev_alpha, prev_const)
 
-            prev_const = layer.constant
-            prev_alpha = layer.alpha
+                prev_const = layer.constant
+                prev_alpha = layer.alpha
 
         return current_input
 
@@ -223,11 +296,45 @@ class DeepLipschitzSequential(nn.Module):
         prev_const = torch.tensor(1.0, **self.factory_kwargs)
 
         for layer in self.layers:
-            layer: LinearLipschitz
+            if isinstance(layer, nn.Dropout):
+                x = layer(x)
+            else:
+                layer: LinearLipschitz
+                x, d_sqrt, W = layer(x, d_sqrt, prev_alpha, prev_const)
 
-            x, d_sqrt, W = layer(x, d_sqrt, prev_alpha, prev_const)
-
-            prev_const = layer.constant
-            prev_alpha = layer.alpha
+                prev_const = layer.constant
+                prev_alpha = layer.alpha
 
         return W
+
+
+class DeepLipschitzSequentialLNN(DeepLipschitzSequential):
+    def generate_layers(self) -> None:
+        layer = []
+
+        prev = self.in_features
+
+        for i, out_features in enumerate(self.layer_widths):
+            activation = self.activation
+            constant = 2.0
+
+            layer.append(
+                LinearLipschitz(prev, out_features, constant_sq=constant, activation=activation, **self.factory_kwargs))
+
+            if self.dropout:
+                layer.append(nn.Dropout())
+
+            prev = out_features
+
+        layer.append(
+            LinearLipschitz(prev, self.layer_widths[-1], constant_sq=1.0, activation=None, **self.factory_kwargs))
+
+        self.layers = ModuleList(layer)
+
+        self.last = LinearNormalized(self.layer_widths[-1], self.out_features, **self.factory_kwargs)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = super().forward(x)
+        x = self.last(x)
+
+        return x

@@ -1,10 +1,11 @@
+import math
 from abc import abstractmethod, ABC
 from typing import Optional, Tuple, Union
 
 import torch
 import torch.nn.functional as F
 from torch import nn, Tensor
-from torch.nn import Parameter
+from torch.nn import Parameter, init
 from torch.nn.common_types import _size_2_t
 from torch.nn.modules.utils import _pair
 from torch.nn.utils import parametrize
@@ -40,6 +41,23 @@ def _unbatchify_freq(M_flat: Tensor, H: int, Wf: int) -> Tensor:
     # M =  M_flat.permute(1, 2, 0).reshape(out_ch, in_ch, H, Wf)
     M = M_flat.reshape(H, Wf, out_ch, in_ch).permute(2, 3, 0, 1)
     return M  # (out, in, H, Wf)
+
+
+def make_real(M):
+    # return M
+    X, Y = M.real, M.imag
+    top = torch.cat([X, -Y], dim=-1)  # (..., out, 2*in)
+    bot = torch.cat([Y, X], dim=-1)  # (..., out, 2*in)
+    return torch.cat([top, bot], dim=-2)  # (..., 2*out, 2*in)
+
+
+def make_complex(M):
+    # return M
+    out2, in2 = M.shape[-2:]
+    out, inn = out2 // 2, in2 // 2
+    X = M[..., :out, :inn]  # Re
+    Y = M[..., out:, :inn]  # Im
+    return torch.complex(X, Y)
 
 
 class AbstractLipschitzConvLayer(nn.Conv2d, ABC):
@@ -102,6 +120,17 @@ class AbstractLipschitzConvLayer(nn.Conv2d, ABC):
         else:
             self.register_buffer('alpha', initial_alpha)
 
+    def reset_parameters(self) -> None:
+        # Setting a=sqrt(5) in kaiming_uniform is the same as initializing with
+        # uniform(-1/sqrt(k), 1/sqrt(k)), where k = weight.size(1) * prod(*kernel_size)
+        # For more details see: https://github.com/pytorch/pytorch/issues/15314#issuecomment-477448573
+        init.kaiming_uniform_(self.weight, a=math.sqrt(5))
+        if self.bias is not None:
+            fan_in, _ = init._calculate_fan_in_and_fan_out(self.weight)
+            if fan_in != 0:
+                bound = 1 / math.sqrt(fan_in)
+                init.uniform_(self.bias, -bound, bound)
+
     def sum_weight(self, Wf, transpose: bool = False):
         if transpose:
             # m = torch.einsum('fim,fin->fmn', Wf, Wf)
@@ -125,32 +154,16 @@ class AbstractLipschitzConvLayer(nn.Conv2d, ABC):
 
         return omega, W, R
 
-    def make_real(self, M):
-        # return M
-        top = torch.concat([M.real, -M.imag], dim=-1)
-        bottom = torch.concat([M.imag, M.real], dim=-1)
-
-        return torch.cat([top, bottom], dim=-2)
-
-    def make_complex(self, M):
-        # return M
-        A = M[..., :M.size(-2) // 2, :M.size(-1) // 2, None]
-        B = M[..., M.size(-2) // 2:, :M.size(-1) // 2, None]
-
-        complex = torch.cat([A, B], dim=-1)
-
-        return torch.view_as_complex(complex)
-
     def _weight_fft_for_input(self, H: int, W: int) -> Tensor:
         pad = _center_and_pad_kernel(self.weight, H, W)
         K_fft = torch.fft.rfft2(pad, s=(H, W), norm="backward")
 
-        K_fft_expanded_real = self.make_real(K_fft)
+        K_fft_expanded_real = make_real(K_fft)
 
         return K_fft_expanded_real
 
     def _ifft_from_freq(self, M_freq: Tensor, H: int, W: int) -> Tensor:
-        M_freq_complex = self.make_complex(M_freq)
+        M_freq_complex = make_complex(M_freq)
 
         pad_spatial = torch.fft.irfft2(M_freq_complex, s=(H, W), norm="backward")
         return pad_spatial
@@ -187,7 +200,7 @@ class AbstractLipschitzConvLayer(nn.Conv2d, ABC):
     def circular_convolution(self, input, H, W, Wf_norm, H_fft, Wf_fft):
         # FFT of the input tensor
         X_fft = torch.fft.rfft2(input, s=(H, W), norm="backward")
-        X_fft = self.make_real(X_fft)
+        X_fft = make_real(X_fft)
 
         X_fft, _, _ = _freq_batchify(X_fft)
 
@@ -281,14 +294,11 @@ class FirstSequentialLipschitzConvLayer(AbstractLipschitzConvLayer):
     def process(self, Wf: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
         _, W, _ = self.scale_w(Wf)
 
-        scale = self.constant
-        div_scale = self.constant_sq * self.alpha
-
-        W = scale * W
+        W = self.constant * W
 
         omega = self.sum_weight(Wf)
 
-        d_inv = omega / div_scale
+        d_inv = omega / (self.constant_sq * self.alpha)
 
         omega_r = torch.linalg.cholesky(omega, upper=False)
 

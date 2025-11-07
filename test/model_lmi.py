@@ -10,9 +10,11 @@ from matplotlib.image import AxesImage
 from matplotlib.patches import Rectangle, ConnectionPatch
 from matplotlib.ticker import MaxNLocator
 from mpl_toolkits.axes_grid1 import make_axes_locatable
+from torch import nn
 
 import utils
-from models.linear_model import DeepLipschitzLinearResNet
+from models.linear_layers import LinearLipschitz
+from models.linear_model import DeepLipschitzLinearResNet, DeepLipschitzSequential
 
 DEFAULT_DPI = 600
 
@@ -104,10 +106,15 @@ def main_real(A: torch.Tensor, B: torch.Tensor, Cs: List[torch.Tensor], Ls: List
     return M
 
 
-def extract_lmi_constants_deep_resnet_new(model):
-    x = torch.zeros((1, model.in_features), device=model.device, dtype=model.dtype)
+def extract_lmi_constants_deep_resnet_new(model: DeepLipschitzLinearResNet):
+    x = torch.zeros((1, model.in_features), **model.factory_kwargs)
 
-    first, a_weight, d_inv = model.A(x)
+    first, a_weight, d_inv, prev_alpha, prev_omega_r, prev_constant = model.A(x)
+
+    gamma = model.A.identity
+    sigma_lower = None
+
+    current_input = x
 
     Cs = []
     Ls = []
@@ -116,41 +123,73 @@ def extract_lmi_constants_deep_resnet_new(model):
         a_weight.shape[1],
     ]
 
-    gamma = model.A.identity
-    sigma_lower = None
-
-    current_input = x
-
-    prev_layer = model.A
-
     for layer in model.layers:
         T = gamma @ d_inv
 
-        current_input, c_weight, d_inv = layer(current_input, prev_layer)
+        current_input, c_weight, d_inv, prev_alpha, prev_omega_r, prev_constant = layer(current_input, prev_alpha,
+                                                                                        prev_omega_r, prev_constant)
 
         if sigma_lower is None:
             sigma_lower = T
         else:
-            sigma_lower = torch.linalg.cholesky(sigma_lower @ sigma_lower.T + T @ T.T, upper=False)
+            sigma_lower = utils.safe_cholesky(sigma_lower @ sigma_lower.T + T @ T.T, upper=False)
 
         gamma = T @ c_weight.T
 
         current_input = model.activation(current_input)
-
-        prev_layer = layer
 
         Cs.append(c_weight)
         Ls.append(layer.identity_out)
         Lms.append([1, 0])
         dimensions.append(c_weight.shape[0])
 
-    second, b_weight = model.compute_b(current_input, sigma_lower, a_weight, model.layers[-1])
+    second, b_weight = model.compute_b(current_input, sigma_lower, a_weight, prev_alpha, prev_omega_r)
+
+    return a_weight, b_weight, Cs, Ls, Lms, dimensions
+
+
+def extract_lmi_constants_deep_linear(model: DeepLipschitzSequential):
+    x = torch.zeros((1, model.in_features), **model.factory_kwargs)
+
+    current_input = x
+    b_weight = torch.eye(model.out_features, **model.factory_kwargs)
+    a_weight = torch.zeros((model.out_features, model.in_features), **model.factory_kwargs)
+
+    d_sqrt = model.lipschitz_constant * model.layers[0].identity
+    prev_alpha = torch.tensor(1.0, **model.factory_kwargs)
+    prev_const = torch.tensor(1.0, **model.factory_kwargs)
+
+    Cs = []
+    Ls = []
+    Lms = []
+    dimensions = [
+        model.out_features,
+    ]
+
+    for layer in model.layers:
+        if isinstance(layer, nn.Dropout):
+            current_input = layer(current_input)
+        else:
+            layer: LinearLipschitz
+
+            current_input, d_sqrt, c_weight = layer(current_input, d_sqrt, prev_alpha, prev_const)
+
+            prev_const = layer.constant
+            prev_alpha = layer.alpha
+
+            Cs.append(c_weight)
+            Ls.append(layer.identity_out)
+            Lms.append([1, 0])
+            dimensions.append(c_weight.shape[0])
 
     return a_weight, b_weight, Cs, Ls, Lms, dimensions
 
 
 def extract_lmi_constants(model):
-    return extract_lmi_constants_deep_resnet_new(model)
+    if isinstance(model, DeepLipschitzLinearResNet):
+        return extract_lmi_constants_deep_resnet_new(model)
+    else:
+        return extract_lmi_constants_deep_linear(model)
 
 
 def plot_matrix(M: torch.Tensor, fig_name: str = None, dpi: int = DEFAULT_DPI, mask: bool = True,
@@ -166,7 +205,11 @@ def plot_matrix(M: torch.Tensor, fig_name: str = None, dpi: int = DEFAULT_DPI, m
     vmin, vmax = min, max
 
     if normalize:
-        normalized = (M - min) / (max - min) * 255
+        if vmin == vmin:
+            normalized = M / vmax  * 255
+        else:
+            normalized = (M - min) / (max - min) * 255
+
         normalized = normalized.round()
         vmin = 0
         vmax = 255
@@ -463,8 +506,8 @@ def get_maximum_model(model_func, *args, device=None):
 
     return model
 
-def plot_information(M, a_weight, Cs, b_weight, dimensions, figs_folder, suffix=''):
 
+def plot_information(M, a_weight, Cs, b_weight, dimensions, figs_folder, suffix=''):
     plot_ldlt_decomposition(M, dimensions, os.path.join(figs_folder, f"ldlt_decomposition{suffix}"))
 
     eigenvalues, eigenvectors = torch.linalg.eigh(M)
@@ -500,7 +543,9 @@ def plot_information(M, a_weight, Cs, b_weight, dimensions, figs_folder, suffix=
 def main():
     torch.manual_seed(0)
 
-    figs_folder = 'figs/linear'
+    model_fnc = DeepLipschitzLinearResNet
+
+    figs_folder = f'figs/linear/{'resnet' if model_fnc == DeepLipschitzLinearResNet else 'fnn'}'
     os.makedirs(figs_folder, exist_ok=True)
 
     input_features = 1
@@ -509,12 +554,11 @@ def main():
 
     factory_kwargs = dict(device=device, dtype=torch.float32)
 
-    model_fnc = DeepLipschitzLinearResNet
-
     weights = (64, 64, 64, 64, 64)
 
-    model_artifacting(model_fnc, weights, fig_name=os.path.join(figs_folder, "b_artifacting_grid"),
-                      factory_kwargs=factory_kwargs)
+    if model_fnc == DeepLipschitzLinearResNet:
+        model_artifacting(model_fnc, weights, fig_name=os.path.join(figs_folder, "b_artifacting_grid"),
+                          factory_kwargs=factory_kwargs)
 
     # test_sqrt(device)
 

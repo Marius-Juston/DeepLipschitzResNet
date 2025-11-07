@@ -3,6 +3,7 @@ runs/
 test/figs
 trained_models/
 data/
+wandb/
 
 # Discord bot
 .env

@@ -5,3 +5,5 @@ pytorch_warmup
 git+https://github.com/BorealisAI/advertorch.git # Need the latest version for PyTorch 2.0 compatability
 torch-tb-profiler
 prettytable
+wandb
+einops
