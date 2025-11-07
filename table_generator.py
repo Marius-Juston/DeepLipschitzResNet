@@ -712,7 +712,7 @@ def main():
     # NEW flags in argparse:
     ap.add_argument("--emit-overall-summary", action=argparse.BooleanOptionalAction, default=True,
                     help="Emit overall per-metric summary table (avg ranks + Wilcoxon counts).")
-    ap.add_argument("--emit-cd-diagram", action=argparse.BooleanOptionalAction, default=True,
+    ap.add_argument("--emit-cd-diagram", action=argparse.BooleanOptionalAction, default=False,
                     help="Emit TikZ critical-difference diagrams per metric (requires \\usepackage{tikz}).")
     ap.add_argument("--emit-signif-matrix", action=argparse.BooleanOptionalAction, default=True,
                     help="Emit Wilcoxon significance matrix (▲/▼/·) per metric.")
