@@ -306,3 +306,35 @@ class DeepLipschitzSequential(nn.Module):
                 prev_alpha = layer.alpha
 
         return W
+
+
+class DeepLipschitzSequentialLNN(DeepLipschitzSequential):
+    def generate_layers(self) -> None:
+        layer = []
+
+        prev = self.in_features
+
+        for i, out_features in enumerate(self.layer_widths):
+            activation = self.activation
+            constant = 2.0
+
+            layer.append(
+                LinearLipschitz(prev, out_features, constant_sq=constant, activation=activation, **self.factory_kwargs))
+
+            if self.dropout:
+                layer.append(nn.Dropout())
+
+            prev = out_features
+
+        layer.append(
+            LinearLipschitz(prev, self.layer_widths[-1], constant_sq=1.0, activation=None, **self.factory_kwargs))
+
+        self.layers = ModuleList(layer)
+
+        self.last = LinearNormalized(self.layer_widths[-1], self.out_features, **self.factory_kwargs)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = super().forward(x)
+        x = self.last(x)
+
+        return x
