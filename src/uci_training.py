@@ -27,7 +27,8 @@ from torch.utils.data import Dataset, DataLoader
 from torch.utils.tensorboard import SummaryWriter
 
 from lbdn_models.model import Toy
-from models.linear_model import DeepLipschitzSequential, DeepLipschitzLinearResNet, DeepLipschitzLinearResNetLNN
+from models.linear_model import DeepLipschitzSequential, DeepLipschitzLinearResNet, DeepLipschitzLinearResNetLNN, \
+    DeepLipschitzSequentialLNN
 from sll_models.model import LipschitzNetworkSequential
 
 logger = logging.getLogger(__name__)
@@ -160,12 +161,14 @@ def eval_certified(model, loader, dtype=None, device=None):
     running_inputs = 0
     lip_cst = 1.
 
-    if isinstance(model, DeepLipschitzSequential):
+    if isinstance(model, DeepLipschitzLinearResNetLNN) or isinstance(model, DeepLipschitzSequentialLNN):
+        last_weight = model.last.weight
+        normalized_weight = F.normalize(last_weight, p=2, dim=1)
+    elif isinstance(model, DeepLipschitzSequential):
         normalized_weight = model.last_weight()
     elif isinstance(model, DeepLipschitzLinearResNet):
         normalized_weight = model.last_weight()
-    elif isinstance(model, LipschitzNetworkSequential) or isinstance(model, Toy) or isinstance(model,
-                                                                                               DeepLipschitzLinearResNetLNN):
+    elif isinstance(model, LipschitzNetworkSequential) or isinstance(model, Toy):
         last_weight = model.model[-1].weight
         normalized_weight = F.normalize(last_weight, p=2, dim=1)
     else:
