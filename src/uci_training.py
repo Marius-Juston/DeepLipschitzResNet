@@ -250,7 +250,7 @@ def train_one_fold(
     d_in = X.shape[1]
     width = suggested_width(d_in, n_classes)
 
-    depth = 4
+    depth = 8
 
     padding = max(d_in * 2, 10)
 
@@ -260,9 +260,9 @@ def train_one_fold(
         model = LipschitzNetworkSequential(cin=d_in, n_dense=depth, padding=padding, dense_inner_dim=width,
                                            n_classes=n_classes).to(device=device, dtype=dtype)
     elif algorithm == 'ldlt':
-        model = DeepLipschitzSequential(d_in, n_classes, layers_widths=[width] * depth, device=device, dtype=dtype)
+        model = DeepLipschitzSequentialLNN(d_in, n_classes, layers_widths=[width] * (depth - 1), device=device, dtype=dtype)
     elif algorithm == 'ldlt-resnet':
-        model = DeepLipschitzLinearResNetLNN(d_in, n_classes, layers_widths=[width] * depth, device=device, dtype=dtype)
+        model = DeepLipschitzLinearResNetLNN(d_in, n_classes, layers_widths=[width] * (depth - 1), device=device, dtype=dtype)
     elif algorithm == 'aol':
         model = Toy(in_channels=d_in, num_classes=n_classes, depth=depth, layer='Aol', padding=padding).to(
             device=device, dtype=dtype)
