@@ -767,7 +767,7 @@ def main():
             tex_chunks.append("")
 
     out = "\n".join(tex_chunks).strip() + "\n"
-    Path(args.tex).write_text(out, encoding="utf-8")
+    (args.out_dir / Path(args.tex)).write_text(out, encoding="utf-8")
     print(f"Wrote LaTeX to {args.tex}")
 
 
