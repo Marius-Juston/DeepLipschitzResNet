@@ -774,7 +774,7 @@ def _friedman_iman_nemenyi(pivot: pd.DataFrame, alpha: float = 0.05) -> dict[str
     F_F = ((N - 1) * chi2_F) / denom if denom > 1e-12 else np.inf
     p_F = 1 - f.cdf(F_F, k - 1, (k - 1) * (N - 1))
 
-    q_alpha = studentized_range.isf(alpha, k, np.inf)
+    q_alpha = studentized_range.isf(alpha, k, np.inf) / math.sqrt(2.0)
     CD = float(q_alpha * np.sqrt(k * (k + 1) / (6.0 * N)))
 
     return {"N": N, "k": k, "avg_ranks": avg_ranks, "F_F": float(F_F), "p_F": float(p_F), "CD": CD}
