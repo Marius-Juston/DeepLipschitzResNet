@@ -433,7 +433,7 @@ def sorting_key(m: str) -> tuple[int, int | str]:
 
 
 def build_metric_summary(per_alg: PerAlgorithmSummaries) -> tuple[MetricTableMap, NumericTableMap]:
-    """
+    r"""
     Aggregate mean metrics across datasets for each algorithm.
 
     Parameters
@@ -721,7 +721,7 @@ def _dataset_metric_matrix(per_alg: PerAlgorithmSummaries, metric: str) -> pd.Da
 
 
 def _friedman_iman_nemenyi(pivot: pd.DataFrame, alpha: float = 0.05) -> dict[str, Any] | None:
-    """
+    r"""
     Compute Friedman/Iman–Davenport statistics and the Nemenyi critical difference.
 
     Parameters
