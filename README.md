@@ -60,6 +60,8 @@ under `data/UCI/`. See `AGENTS.md` for directory conventions.
 
 ### Training
 
+#### CIFAR 10/ 100
+
 Single command entry point (`src/main.py`) with torchrun:
 
 ```bash
@@ -79,7 +81,6 @@ Wrapper scripts mirror the paper’s setups:
 ./train_cifar10.sh           # CIFAR-10 baseline
 ./train_cifar100.sh          # CIFAR-100 baseline
 ./train.sh cifar100          # generic entry (CIFAR-100)
-./train.sh tiny-imagenet     # Tiny-ImageNet variant
 ```
 
 Specialized trainers for ablations:
@@ -88,6 +89,13 @@ Specialized trainers for ablations:
 
 Both expose flags for depth, optimizer, spectral penalties, and certification
 modes identical to the paper.
+
+### UCI Datasets
+
+```bash
+python src/uci_training.py --out runs/UCI_N4 --data-root data/UCI # training with a depth of 4
+python table_generator.py --out-dir runs/UCI_N4 # generate the tables for statistical inference
+```
 
 ### Evaluation
 

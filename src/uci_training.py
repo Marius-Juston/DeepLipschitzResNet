@@ -950,7 +950,7 @@ def train_one_fold(
     torch.set_num_threads(max(1, os.cpu_count() // torch.cuda.device_count()))
 
     writer = SummaryWriter(str(log_dir))
-    writer.add_hparams(hparams, {"hparam/acc/val": 0.0, 'hparam/acc/train': 0.0}, global_step=0)
+    # writer.add_hparams(hparams, {"hparam/acc/val": 0.0, 'hparam/acc/train': 0.0}, global_step=0)
 
     best_val = -1.0
     best_state = None
@@ -1003,8 +1003,6 @@ def train_one_fold(
         writer.add_scalar("acc/train", train_acc, epoch)
         writer.add_scalar("acc/val", val_acc, epoch)
 
-        writer.add_hparams(hparams, {"hparam/acc/val": val_acc, 'hparam/acc/train': train_acc}, global_step=epoch)
-
         writer.add_scalar("lr", optimizer.param_groups[0]["lr"], epoch)
 
         # Early stopping (maximize val_acc)
@@ -1033,19 +1031,25 @@ def train_one_fold(
 
     test_acc = eval_loop(model, test_loader, device)
 
+    hparams_data = {"hparam/acc/test": test_acc, 'hparam/acc/val': best_val}
+
     if algorithm != 'mlp':
-        cert_names, ac, cert_vals = eval_certified(model, val_loader, device=device, dtype=dtype)
+        cert_names, ac, cert_vals = eval_certified(model, test_loader, device=device, dtype=dtype)
 
         cert_dict_ = convert_cert_vals(cert_names, cert_vals)
 
         for n, v in cert_dict_.items():
             writer.add_scalar(f'best_eval_cert/{n}', v, best_epoch if best_epoch > 0 else 0)
+
+            hparams_data[f'hparam/cert/{n}'] = v
     else:
         cert_dict_ = None
 
     writer.add_scalar("acc/test_final", test_acc, best_epoch if best_epoch > 0 else 0)
     writer.add_text("early_stopping/best_epoch", str(best_epoch), 0)
     writer.add_text("early_stopping/best_val_acc", f"{best_val:.6f}", 0)
+
+    writer.add_hparams(hparams, hparams_data, global_step=best_epoch if best_epoch > 0 else 0)
 
     writer.flush()
     writer.close()
