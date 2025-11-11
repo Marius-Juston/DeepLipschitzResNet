@@ -941,7 +941,7 @@ HEADER = r"""
 """
 
 
-def tex_table_metric_summary(metric_name: str, df: pd.DataFrame, wide: bool = False) -> str:
+def tex_table_metric_summary(metric_name: str, df: pd.DataFrame, wide: bool = False, tight: bool = False) -> str:
     """
     Render a per-metric mean±std table into LaTeX.
 
@@ -982,13 +982,19 @@ def tex_table_metric_summary(metric_name: str, df: pd.DataFrame, wide: bool = Fa
     colspec = "l r l"
     lines = [fr"\begin{{{env}}}[t]",
              r"\centering",
-             r"\begin{threeparttable}",
              rf"\caption{{{cap}}}",
-             rf"\label{{{lab}}}",
-             rf"\begin{{tabular}}{{{colspec}}}",
-             r"\toprule",
-             r"Algorithm & $N$ & Value \\",
-             r"\midrule"]
+             rf"\label{{{lab}}}", '{']
+
+    if tight:
+        lines += [
+            r'\setlength{\tabcolsep}{2pt}'
+        ]
+
+    lines += [r"\begin{threeparttable}",
+              rf"\begin{{tabular}}{{{colspec}}}",
+              r"\toprule",
+              r"Algorithm & $N$ & Value \\",
+              r"\midrule"]
 
     df = df.sort_values(by='Value', ascending=False)
 
@@ -996,6 +1002,7 @@ def tex_table_metric_summary(metric_name: str, df: pd.DataFrame, wide: bool = Fa
         lines.append(rf"{r['Algorithm']} & {int(r['$N$ datasets'])} & {r['Value']} \\")
     lines += [r"\bottomrule",
               r"\end{tabular}",
+              "}",
               r"\end{threeparttable}",
               fr"\end{{{env}}}"]
     return "\n".join(lines)
@@ -1068,7 +1075,8 @@ def get_data_metrics(
         lines.append(" & ".join(data) + r" \\")
 
 
-def tex_table_metric_summary_combined(metric_summary: Mapping[str, pd.DataFrame], wide: bool = True) -> str:
+def tex_table_metric_summary_combined(metric_summary: Mapping[str, pd.DataFrame], wide: bool = True,
+                                      tight: bool = False) -> str:
     """
     Emit a consolidated LaTeX table spanning accuracy and certified metrics.
 
@@ -1108,17 +1116,21 @@ def tex_table_metric_summary_combined(metric_summary: Mapping[str, pd.DataFrame]
     columns = sorted(metric_summary.keys(), key=sorting_key)
 
     colspec = f"l r {'l' * len(columns)}"
-    lines = [fr"\begin{{{env}}}[t]",
+    lines = [fr"\begin{{{env}}}[htb]",
              r"\centering",
-             r"\begin{threeparttable}",
              rf"\caption{{{cap}}}",
              rf"\label{{{lab}}}",
-             rf"\begin{{tabular}}{{{colspec}}}",
-             r"\toprule",
-             r' &  &  & \multicolumn{4}{c}{Certified Accuracy} \\',
-             r'\cmidrule(lr){4-7}',
-             r"Algorithm & $N$ & Accuracy & 36/255 & 72/255 & 108/255 & 255/255 \\",
-             r"\midrule"]
+             '{']
+    if tight:
+        lines += [r'\setlength{\tabcolsep}{2pt}']
+
+    lines += [r"\begin{threeparttable}",
+              rf"\begin{{tabular}}{{{colspec}}}",
+              r"\toprule",
+              r' &  &  & \multicolumn{4}{c}{Certified Accuracy} \\',
+              r'\cmidrule(lr){4-7}',
+              r"Algorithm & $N$ & Accuracy & 36/255 & 72/255 & 108/255 & 255/255 \\",
+              r"\midrule"]
 
     seperate = "LDLT"
 
@@ -1141,11 +1153,12 @@ def tex_table_metric_summary_combined(metric_summary: Mapping[str, pd.DataFrame]
     lines += [r"\bottomrule",
               r"\end{tabular}",
               r"\end{threeparttable}",
+              '}',
               fr"\end{{{env}}}"]
     return "\n".join(lines)
 
 
-def tex_longtable_wilcoxon(metric_name: str, df: pd.DataFrame, span_mode: str = "table*") -> str:
+def tex_longtable_wilcoxon(metric_name: str, df: pd.DataFrame, span_mode: str = "table", wide: bool=True, tight: bool=False) -> str:
     r"""
     Render Wilcoxon pairwise statistics into LaTeX with configurable span modes.
 
@@ -1157,7 +1170,7 @@ def tex_longtable_wilcoxon(metric_name: str, df: pd.DataFrame, span_mode: str = 
         Formatted table returned by :func:`build_wilcoxon_tables`.
     span_mode : {"table*", "longtable", "landscape"}, default="table*"
         Choice of LaTeX environment:
-        ``"table*"`` for wide floats, ``"longtable"`` for multi-page output, or
+        ``"table"`` for wide floats, ``"longtable"`` for multi-page output, or
         ``"landscape"`` to wrap ``table*`` inside ``pdflscape``.
 
     Returns
@@ -1179,7 +1192,7 @@ def tex_longtable_wilcoxon(metric_name: str, df: pd.DataFrame, span_mode: str = 
 
     Examples
     --------
-    >>> tex_longtable_wilcoxon("mean_test_acc", pd.DataFrame(), span_mode="table*")
+    >>> tex_longtable_wilcoxon("mean_test_acc", pd.DataFrame(), span_mode="table")
     '\\\\begin{table*}[t]\\n\\\\centering\\n...'
     """
     cap_base = (r"Wilcoxon signed-rank tests (two-sided) for " + metric_to_name(metric_name) +
@@ -1194,7 +1207,10 @@ def tex_longtable_wilcoxon(metric_name: str, df: pd.DataFrame, span_mode: str = 
     df = df.sort_values(by='W')
 
     if span_mode == "longtable":
-        colspec = "ll r r r r r r r r r r r"
+        if tight:
+            colspec = "@{}llrrrrrrrrrrr@{}"
+        else:
+            colspec = "ll r r r r r r r r r r r"
         lines = [r"\onecolumn",
                  r"\begin{ThreePartTable}",
                  rf"\begin{{TableNotes}}[flushleft]\footnotesize {cap_base}\end{{TableNotes}}",
@@ -1223,36 +1239,53 @@ def tex_longtable_wilcoxon(metric_name: str, df: pd.DataFrame, span_mode: str = 
                   r"\twocolumn"]
         return "\n".join(lines)
 
+    env = "table*" if wide else "table"
+
     # For two-column spanning without page breaks: table* + tabular
-    colspec = "ll r r r r r r r r r r r"
+
+    if tight:
+        colspec = "@{}llrrrrrrrrrrr@{}"
+    else:
+        colspec = "ll r r r r r r r r r r r"
+
     maybe_landscape_begin = r"\begin{landscape}" if span_mode == "landscape" else ""
     maybe_landscape_end = r"\end{landscape}" if span_mode == "landscape" else ""
     lines = [maybe_landscape_begin,
-             r"\begin{table*}[t]",
+             rf"\begin{{{env}}}[htb]",
              r"\centering",
-             r"\begin{threeparttable}",
              rf"\caption[{metric_to_name(metric_name)}]{{{cap_base}}}",
              rf"\label{{{lab}}}",
+             r"\begin{threeparttable}",
              r'\begingroup',
-             r'\setlength{\tabcolsep}{4pt}',
-             rf"\begin{{tabular}}{{{colspec}}}",
-             r"\toprule",
-             head_groups,
-             head,
-             r"\midrule"]
+             fr'\setlength{{\tabcolsep}}{{{'3' if tight else '4'}pt}}']
+    if tight:
+        lines += [r'\footnotesize',
+                  r'\begin{adjustbox}{max width=\linewidth}',
+                  ]
+
+    lines += [rf"\begin{{tabular}}{{{colspec}}}",
+              r"\toprule",
+              head_groups,
+              head,
+              r"\midrule"]
     for _, r in df.iterrows():
         lines.append(
             rf"{r['Alg A']} & {r['Alg B']} & {r['n']} & {r['winsA']} & {r['winsB']} & {r['ties']} & "
             rf"{r['WinRate A']:.4f} & {r['Median AB']:.4f} & {r['W']:.0f} & {r['p']} & "
             rf"{r['p_within']} & {r['p_global']} & {r['r']:.4f} \\")
     lines += [r"\bottomrule",
-              r"\end{tabular}",
-              r'\begin{tablenotes}',
+              r"\end{tabular}"]
+    if tight:
+        lines += [
+            r'\end{adjustbox}',
+        ]
+
+    lines += [r'\endgroup',
+              r'\begin{tablenotes}'
               r'\item Stars mark significance ($^*\,p\!\le\!0.05$, $^{**}\,p\!\le\!0.01$, $^{***}\,p\!\le\!0.001$).',
               r'\end{tablenotes}',
-              r'\endgroup',
               r"\end{threeparttable}",
-              r"\end{table*}",
+              rf"\end{{{env}}}",
               maybe_landscape_end]
     return "\n".join(lines)
 
@@ -1288,18 +1321,18 @@ def tex_model_ranges(df: pd.DataFrame, wide: bool = False) -> str:
     Examples
     --------
     >>> tex_model_ranges(pd.DataFrame(columns=['Algorithm','Width','Depth','Parameters','Padding','Input dim','Output dim']))
-    '\\\\begin{table}[t]\\n\\\\centering\\n...'
+    '\\\\begin{table}[htb]\\n\\\\centering\\n...'
     """
     cap = ("Model dimension ranges (min--max across all datasets and folds). "
            "Input/Output dimensions follow dataset label spaces.")
     lab = "tab:model-ranges"
     env = "table*" if wide else "table"
     colspec = "l r r r r r r"
-    lines = [fr"\begin{{{env}}}[t]",
+    lines = [fr"\begin{{{env}}}[htb]",
              r"\centering",
-             r"\begin{threeparttable}",
              rf"\caption{{{cap}}}",
              rf"\label{{{lab}}}",
+             r"\begin{threeparttable}",
              rf"\begin{{tabular}}{{{colspec}}}",
              r"\toprule",
              r"Algorithm & Width & Depth & Parameters & Padding & Input dim & Output dim \\",
@@ -1351,7 +1384,7 @@ def tex_table_overall_summary(metric_name: str, df: pd.DataFrame, caps: dict[str
     Examples
     --------
     >>> tex_table_overall_summary("mean_test_acc", pd.DataFrame(), {"N":0,"k":0,"F_F":0,"p_F":1,"CD":0})
-    '\\\\begin{table*}[t]\\n\\\\centering\\n...'
+    '\\\\begin{table*}[htb]\\n\\\\centering\\n...'
     """
     env = "table*" if wide else "table"
     cap = (f"Overall comparison on {metric_to_name(metric_name)}: average rank (lower is better) "
@@ -1377,10 +1410,22 @@ def tex_table_overall_summary(metric_name: str, df: pd.DataFrame, caps: dict[str
     #                     rf"{int(row['net_sig_wins'])} & {row['sig_win_share']:.3f} & {row['mean_r_win']:.3f} \\")
 
     lines = [
-        fr"\begin{{{env}}}[t]", r"\centering", r"\begin{threeparttable}", r"{\small",
-        rf"\caption{{{cap}}}", rf"\label{{{lab}}}", r"\setlength{\tabcolsep}{4pt}",
-        rf"\begin{{tabular}}{{{colspec}}}", r"\toprule", header, r"\midrule",
-        *body, r"\bottomrule", r"\end{tabular}", r"}", r"\end{threeparttable}", fr"\end{{{env}}}",
+        fr"\begin{{{env}}}[htb]",
+        r"\centering",
+        rf"\caption{{{cap}}}",
+        rf"\label{{{lab}}}",
+        r"\begin{threeparttable}",
+        r"{\small",
+        r"\setlength{\tabcolsep}{4pt}",
+        rf"\begin{{tabular}}{{{colspec}}}",
+        r"\toprule",
+        header,
+        r"\midrule",
+        *body,
+        r"\bottomrule",
+        r"\end{tabular}", r"}",
+        r"\end{threeparttable}",
+        fr"\end{{{env}}}",
     ]
     return "\n".join(lines)
 
@@ -1422,7 +1467,7 @@ def tex_cd_diagram(metric_name: str, avg_ranks: pd.Series, CD: float, width: flo
     Examples
     --------
     >>> tex_cd_diagram("mean_test_acc", pd.Series([1.0, 2.0], index=["A","B"]), 1.0)
-    '\\\\begin{figure*}[t]\\n\\\\centering\\n...'
+    '\\\\begin{figure*}[htb]\\n\\\\centering\\n...'
     """
     algs = list(avg_ranks.index)
     ranks = avg_ranks.values
@@ -1448,9 +1493,10 @@ def tex_cd_diagram(metric_name: str, avg_ranks: pd.Series, CD: float, width: flo
     cap = (rf"Critical Difference diagram for {metric_to_name(metric_name)} "
            rf"(CD = {CD:.2f}; lower rank = better).")
     lab = f"fig:cd:{metric_name}"
-    lines = [r"\begin{figure*}[t]", r"\centering", r"\begin{threeparttable}",
+    lines = [r"\begin{figure*}[htb]",
+             r"\centering",
+             r"\begin{threeparttable}",
              r"{\small",
-             rf"\label{{{lab}}}",
              r"\begin{tikzpicture}[x=1cm,y=1cm]",
              rf"\draw[thick] (0,0) -- ({width:.3f},0);"]
     for r in range(1, k + 1):
@@ -1475,6 +1521,7 @@ def tex_cd_diagram(metric_name: str, avg_ranks: pd.Series, CD: float, width: flo
     lines += [r"\end{tikzpicture}", r"}",
               r"\end{threeparttable}",
               rf"\caption{{{cap}}}",
+              rf"\label{{{lab}}}",
               r"\end{figure*}"]
     return "\n".join(lines)
 
@@ -1546,9 +1593,17 @@ def tex_significance_matrix(metric_name: str, wilc_df: pd.DataFrame, alpha: floa
     lab = f"tab:signif:{metric_name}"
     header = " & ".join(alg_pretty(a) for a in algs)
 
-    lines = [fr"\begin{{{env}}}[t]", r"\centering", r"\begin{threeparttable}", r"{",
-             rf"\caption{{{cap}}}", rf"\label{{{lab}}}", r"\setlength{\tabcolsep}{3pt}",
-             rf"\begin{{tabular}}{{{colspec}}}", r"\toprule", rf" & {header} \\", r"\midrule"]
+    lines = [fr"\begin{{{env}}}[htb]",
+             r"\centering",
+             rf"\caption{{{cap}}}",
+             rf"\label{{{lab}}}",
+             r"\begin{threeparttable}",
+             r"{",
+             r"\setlength{\tabcolsep}{3pt}",
+             rf"\begin{{tabular}}{{{colspec}}}",
+             r"\toprule",
+             rf" & {header} \\",
+             r"\midrule"]
     for i, a in enumerate(algs):
         row = " & ".join(sym[i])
         lines.append(rf"{alg_pretty(a)} & {row} \\")
@@ -1600,7 +1655,7 @@ def main() -> None:
                     help="Emit model metric summaries as two-column floats (table*).")
     ap.add_argument("--use-per-metrics-summary", type=bool, default=False, action=argparse.BooleanOptionalAction,
                     help="Generate the metric summaries for each metric separately.")
-    ap.add_argument("--wilcoxon-span", choices=["table*", "longtable", "landscape"], default="table*",
+    ap.add_argument("--wilcoxon-span", choices=["table", "longtable", "landscape"], default="table",
                     help="How to span the Wilcoxon tables in two-column docs: 'table*' (default), 'longtable' (forces page breaks via \\onecolumn/\\twocolumn), or 'landscape' (table* inside pdflscape).")
     # NEW flags in argparse:
     ap.add_argument("--emit-overall-summary", action=argparse.BooleanOptionalAction, default=True,
@@ -1609,6 +1664,8 @@ def main() -> None:
                     help="Emit TikZ critical-difference diagrams per metric (requires \\usepackage{tikz}).")
     ap.add_argument("--emit-signif-matrix", action=argparse.BooleanOptionalAction, default=True,
                     help="Emit Wilcoxon significance matrix (▲/▼/·) per metric.")
+    ap.add_argument('--format', default='jmlr', choices=['jmlr', 'ieee'],
+                    help='The formatting default values for IEEE or JMLR')
 
     args = ap.parse_args()
 
@@ -1624,27 +1681,46 @@ def main() -> None:
 
     tex_chunks = [HEADER.strip(), ""]
 
+    tex_table_metric_summary_wide = args.wide_metrics_summary
+    summaries_wide = args.wide_summaries
+    tex_table_metric_summary_combined_wide = False
+
+    if args.format == 'jmlr':
+        tex_table_overall_summary_wide = False
+        tex_significance_wide = False
+        tex_longtable_wilcoxon_wide = False
+        tex_table_metric_summary_wide = False
+        summaries_wide = False
+        tight = True
+    else:
+        tex_table_overall_summary_wide = False
+        tex_significance_wide = False
+        tex_longtable_wilcoxon_wide = True
+        tight = False
+
     # Model ranges first (universally useful)
-    tex_chunks.append(tex_model_ranges(ranges_df, wide=args.wide_summaries))
+    tex_chunks.append(tex_model_ranges(ranges_df, wide=summaries_wide))
     tex_chunks.append("")
 
-    tex_chunks.append(tex_table_metric_summary_combined(metric_tables))
+    tex_chunks.append(tex_table_metric_summary_combined(metric_tables, wide=tex_table_metric_summary_combined_wide,
+                                                        tight=tight))
     tex_chunks.append("")
 
     # Per-metric performance summaries and their Wilcoxon tables
     for m in sorted(metric_tables.keys(), key=sorting_key):
         if args.use_per_metrics_summary:
-            tex_chunks.append(tex_table_metric_summary(m, metric_tables[m], wide=args.wide_metrics_summary))
+            tex_chunks.append(tex_table_metric_summary(m, metric_tables[m], wide=tex_table_metric_summary_wide))
             tex_chunks.append("")
 
     for m in sorted(metric_tables.keys(), key=sorting_key):
         if args.emit_overall_summary and m in overall_tables:
-            tex_chunks.append(tex_table_overall_summary(m, overall_tables[m], overall_caps[m], wide=False))
+            tex_chunks.append(
+                tex_table_overall_summary(m, overall_tables[m], overall_caps[m], wide=tex_table_overall_summary_wide))
             tex_chunks.append("")
 
     for m in sorted(metric_tables.keys(), key=sorting_key):
         if args.emit_signif_matrix and m in wilc_tables:
-            tex_chunks.append(tex_significance_matrix(m, wilc_df, alpha=0.05))
+            tex_chunks.append(tex_significance_matrix(m, wilc_df, alpha=0.05, wide=tex_significance_wide))
             tex_chunks.append("")
 
     for m in sorted(metric_tables.keys(), key=sorting_key):
@@ -1655,7 +1731,9 @@ def main() -> None:
 
     for m in sorted(metric_tables.keys(), key=sorting_key):
         if m in wilc_tables:
-            tex_chunks.append(tex_longtable_wilcoxon(m, wilc_tables[m], span_mode=args.wilcoxon_span))
+            tex_chunks.append(tex_longtable_wilcoxon(m, wilc_tables[m], span_mode=args.wilcoxon_span,
+                                                     wide=tex_longtable_wilcoxon_wide,
+                                                     tight=tight))
             tex_chunks.append("")
 
     out = "\n".join(tex_chunks).strip() + "\n"
