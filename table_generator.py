@@ -1158,7 +1158,8 @@ def tex_table_metric_summary_combined(metric_summary: Mapping[str, pd.DataFrame]
     return "\n".join(lines)
 
 
-def tex_longtable_wilcoxon(metric_name: str, df: pd.DataFrame, span_mode: str = "table", wide: bool=True, tight: bool=False) -> str:
+def tex_longtable_wilcoxon(metric_name: str, df: pd.DataFrame, span_mode: str = "table", wide: bool = True,
+                           tight: bool = False) -> str:
     r"""
     Render Wilcoxon pairwise statistics into LaTeX with configurable span modes.
 
@@ -1430,6 +1431,118 @@ def tex_table_overall_summary(metric_name: str, df: pd.DataFrame, caps: dict[str
     return "\n".join(lines)
 
 
+def tex_table_overall_summary_subtable(metric_names: list[str], dfs: dict[str, pd.DataFrame], capss: dict[str, dict[str, float]],
+                                       wide: bool = False, ncols: int = 2, eps: float = 0.02) -> str:
+    """
+    Render the combined average-rank and Wilcoxon summary table.
+
+    Parameters
+    ----------
+    metric_name : str
+        Metric identifier.
+    df : pandas.DataFrame
+        Table produced by :func:`build_overall_metric_stats`.
+    caps : dict[str, float]
+        Dictionary containing ``N``, ``k``, ``F_F``, ``p_F``, and ``CD`` values for captions.
+    wide : bool, default=True
+        Emit ``table*`` when ``True``.
+    ncols : int, default=2
+        Number of columns the summary subtable should aim to be
+    eps : float, default = 0.02
+        The amount to offset the normalization percentage
+
+    Returns
+    -------
+    latex : str
+        LaTeX source describing the table.
+
+    Raises
+    ------
+    None
+
+    Notes
+    -----
+    Emphasizes lower average ranks and includes explanatory caption text about the
+    Iman–Davenport test.
+
+    Mathematical sketch
+    --------------------
+    Not applicable.
+
+    Examples
+    --------
+    >>> tex_table_overall_summary_subtable(["mean_test_acc", "mean_cert_acc_36"], pd.DataFrame(), {"N":0,"k":0,"F_F":0,"p_F":1,"CD":0})
+    '\\\\begin{table*}[htb]\\n\\\\centering\\n...'
+    """
+    env = "table*" if wide else "table"
+
+    line_width_per = 1 / ncols - eps
+    table_diff = 1/ ncols
+
+    lab = 'tab:overall:mean_cert_acc_group'
+    cap = "Overall comparison on Mean Certified Accuracy at perturbation radii 36/255, 72/255, 108/255 and 255/255."
+
+    lines = [
+        fr"\begin{{{env}}}[htb]",
+        r"\centering",
+        rf"\caption{{{cap}}}",
+        rf"\label{{{lab}}}",
+    ]
+
+    subtables = []
+
+    for metric_name in metric_names:
+        df = dfs[metric_name]
+        caps = capss[metric_name]
+
+        cap = (f"Overall comparison on {metric_to_name(metric_name)}: average rank (lower is better) "
+               f"with Iman--Davenport $F={caps['F_F']:.2f}$ (df={int(caps['k'] - 1)},{int((caps['k'] - 1) * (caps['N'] - 1))}), "
+               f"$p={caps['p_F']:.3g}$; Nemenyi CD$={caps['CD']:.3f}$. "
+               r"Counts are significant wins/losses after Holm within-metric at $\alpha=0.05$.")
+        lab = f"tab:overall:{metric_name}"
+        colspec = "@{}l r r r r r r@{}"
+        header = r"Algorithm & \shortstack{Avg \\ rank} $\downarrow$ & \shortstack{sig \\ wins} & \shortstack{sig \\ losses} & \shortstack{net \\ wins} & \shortstack{win \\ share} & mean $r$ \\"
+
+        body = []
+        upper = df.sort_values(by='Avg rank ↓')
+
+        for idx, row in upper.iterrows():
+            body.append(rf"{idx} & {row['Avg rank ↓']:.3f} & {int(row['sig_wins'])} & {int(row['sig_losses'])} & "
+                        rf"{int(row['net_sig_wins'])} & {row['sig_win_share']:.3f} & {row['mean_r_win']:.3f} \\")
+
+        subtable_lines = [
+            fr"\begin{{subtable}}[t]{{{line_width_per}\linewidth}}",
+            r"\centering",
+            rf"\caption{{{cap}}}",
+            rf"\label{{{lab}}}",
+            r"\begin{threeparttable}",
+            r"{\small",
+            r"\setlength{\tabcolsep}{4pt}",
+            r"\begin{adjustbox}{max width=\linewidth}",
+            rf"\begin{{tabular}}{{{colspec}}}",
+            r"\toprule",
+            header,
+            r"\midrule",
+            *body,
+            r"\bottomrule",
+            r"\end{tabular}",
+            r'\end{adjustbox}'
+            r"}",
+            r"\end{threeparttable}",
+            r"\end{subtable}",
+        ]
+
+        subtables.append("\n".join(subtable_lines))
+
+    lines += ["\n\\hfill\n".join(subtables)]
+
+    lines += [
+        fr"\end{{{env}}}",
+    ]
+
+    return "\n".join(lines)
+
+
 # ---- NEW: critical difference (CD) diagram (TikZ) ----
 def tex_cd_diagram(metric_name: str, avg_ranks: pd.Series, CD: float, width: float = 12.0) -> str:
     """
@@ -1644,7 +1757,7 @@ def main() -> None:
     >>> main()  # doctest: +SKIP
     """
     ap = argparse.ArgumentParser()
-    ap.add_argument("--out-dir", default='runs/UCI', type=Path,
+    ap.add_argument("--out-dir", default='runs/UCI_N4', type=Path,
                     help="The SAME directory you passed as --out to the trainer (contains per-alg subdirs and wilcoxon files).")
     ap.add_argument("--algorithms", nargs="*", default=None,
                     help="Optional explicit list; default is to detect subfolders containing summary.json")
@@ -1665,6 +1778,8 @@ def main() -> None:
     ap.add_argument("--emit-signif-matrix", action=argparse.BooleanOptionalAction, default=True,
                     help="Emit Wilcoxon significance matrix (▲/▼/·) per metric.")
     ap.add_argument('--format', default='jmlr', choices=['jmlr', 'ieee'],
+                    help='The formatting default values for IEEE or JMLR')
+    ap.add_argument('--subtables', action=argparse.BooleanOptionalAction, default=True,
                     help='The formatting default values for IEEE or JMLR')
 
     args = ap.parse_args()
@@ -1735,6 +1850,25 @@ def main() -> None:
                                                      wide=tex_longtable_wilcoxon_wide,
                                                      tight=tight))
             tex_chunks.append("")
+
+    if args.subtables:
+        if args.emit_overall_summary:
+            keys = filter(lambda m: m in overall_tables, sorted(metric_tables.keys(), key=sorting_key))
+            keys = list(keys)
+
+            keys.remove('mean_test_acc')
+
+            tex_chunks.append(tex_table_overall_summary_subtable(keys, overall_tables, overall_caps))
+            tex_chunks.append("")
+
+        # if args.emit_signif_matrix:
+        #     keys = filter(lambda m: m in wilc_tables, sorted(metric_tables.keys(), key=sorting_key))
+        #     keys = list(keys)
+        #
+        #     keys.remove('mean_test_acc')
+        #
+        #     tex_chunks.append(tex_significance_matrix_subtable(keys, wilc_df, alpha=0.05))
+        #     tex_chunks.append("")
 
     out = "\n".join(tex_chunks).strip() + "\n"
     (args.out_dir / Path(args.tex)).write_text(out, encoding="utf-8")
