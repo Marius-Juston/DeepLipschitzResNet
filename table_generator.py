@@ -1776,7 +1776,7 @@ def tex_significance_matrix_subtable(metric_names: list[str], wilc_df: pd.DataFr
     win = r"\textcolor{green}{$\blacktriangle$}"  # ▲
     loss = r"\textcolor{red}{$\blacktriangledown$}"  # ▼
 
-    lab = 'tab:overall:mean_cert_acc_group'
+    lab = 'tab:signif:mean_cert_acc_group'
     cap = f"Overall pairwise Wilcoxon outcomes on Mean Certified Accuracy at perturbation radii 36/255, 72/255, 108/255 and 255/255. row vs. column ({win} win, {loss} loss, {tie} tie)."
 
     lines = [
