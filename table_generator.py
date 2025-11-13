@@ -1431,7 +1431,8 @@ def tex_table_overall_summary(metric_name: str, df: pd.DataFrame, caps: dict[str
     return "\n".join(lines)
 
 
-def tex_table_overall_summary_subtable(metric_names: list[str], dfs: dict[str, pd.DataFrame], capss: dict[str, dict[str, float]],
+def tex_table_overall_summary_subtable(metric_names: list[str], dfs: dict[str, pd.DataFrame],
+                                       capss: dict[str, dict[str, float]],
                                        wide: bool = False, ncols: int = 2, eps: float = 0.02) -> str:
     """
     Render the combined average-rank and Wilcoxon summary table.
@@ -1477,7 +1478,6 @@ def tex_table_overall_summary_subtable(metric_names: list[str], dfs: dict[str, p
     env = "table*" if wide else "table"
 
     line_width_per = 1 / ncols - eps
-    table_diff = 1/ ncols
 
     lab = 'tab:overall:mean_cert_acc_group'
     cap = "Overall comparison on Mean Certified Accuracy at perturbation radii 36/255, 72/255, 108/255 and 255/255."
@@ -1702,7 +1702,7 @@ def tex_significance_matrix(metric_name: str, wilc_df: pd.DataFrame, alpha: floa
     env = "table*" if wide else "table"
     colspec = "@{}l " + " ".join(["c"] * len(algs)) + " @{}"
     cap = (r"Pairwise Wilcoxon outcomes for " + metric_to_name(metric_name) +
-           fr" (Holm within-metric at $\alpha=0.05$): row vs. column ({win} win, {loss} loss, {tie} none).")
+           fr" (Holm within-metric at $\alpha=0.05$): row vs. column ({win} win, {loss} loss, {tie} tie).")
     lab = f"tab:signif:{metric_name}"
     header = " & ".join(alg_pretty(a) for a in algs)
 
@@ -1721,6 +1721,127 @@ def tex_significance_matrix(metric_name: str, wilc_df: pd.DataFrame, alpha: floa
         row = " & ".join(sym[i])
         lines.append(rf"{alg_pretty(a)} & {row} \\")
     lines += [r"\bottomrule", r"\end{tabular}", r"}", r"\end{threeparttable}", fr"\end{{{env}}}"]
+    return "\n".join(lines)
+
+
+def tex_significance_matrix_subtable(metric_names: list[str], wilc_df: pd.DataFrame, alpha: float = 0.05,
+                                     wide: bool = False, ncols: int = 2, eps: float = 0.02) -> str:
+    """
+    Produce a triangular matrix of Wilcoxon outcomes (win/loss/none).
+
+    Parameters
+    ----------
+    metric_names : str
+        Metric key to filter.
+    wilc_df : pandas.DataFrame
+        Wilcoxon results dataframe.
+    alpha : float, default=0.05
+        Holm-adjusted significance level.
+    wide : bool, default=False
+        Emit ``table*`` when ``True``.
+    ncols : int, default=2
+        Number of columns the summary subtable should aim to be
+    eps : float, default = 0.02
+        The amount to offset the normalization percentage
+
+    Returns
+    -------
+    latex : str
+        LaTeX table or a comment when data is missing.
+
+    Raises
+    ------
+    None
+
+    Notes
+    -----
+    Uses colored triangles to indicate whether the row algorithm significantly beats
+    (green) or loses to (red) the column algorithm.
+
+    Mathematical sketch
+    --------------------
+    Not applicable.
+
+    Examples
+    --------
+    >>> tex_significance_matrix_subtable(["mean_test_acc"], pd.DataFrame(), 0.05)
+    '% No Wilcoxon data for this metric.'
+    """
+
+    env = "table*" if wide else "table"
+
+    line_width_per = 1 / ncols - eps
+
+    tie = r"$\cdot$"
+    win = r"\textcolor{green}{$\blacktriangle$}"  # ▲
+    loss = r"\textcolor{red}{$\blacktriangledown$}"  # ▼
+
+    lab = 'tab:overall:mean_cert_acc_group'
+    cap = f"Overall pairwise Wilcoxon outcomes on Mean Certified Accuracy at perturbation radii 36/255, 72/255, 108/255 and 255/255. row vs. column ({win} win, {loss} loss, {tie} tie)."
+
+    lines = [
+        fr"\begin{{{env}}}[htb]",
+        r"\centering",
+        rf"\caption{{{cap}}}",
+        rf"\label{{{lab}}}",
+    ]
+
+    subtables = []
+
+    for metric_name in metric_names:
+        sub = wilc_df[wilc_df["metric"] == metric_name].copy()
+        if sub.empty:
+            return "% No Wilcoxon data for this metric."
+        algs = sorted(set(sub["alg_a"]).union(set(sub["alg_b"])))
+        idx = {a: i for i, a in enumerate(algs)}
+
+        sym = [[tie for _ in algs] for _ in algs]
+
+        for _, r in sub.iterrows():
+            a, b = r["alg_a"], r["alg_b"]
+            pa, med = r["p_holm_within_metric"], r["median_diff_a_minus_b"]
+            i, j = idx[a], idx[b]
+            if pa <= alpha and med > 0:
+                sym[i][j], sym[j][i] = win, loss  # ▲, ▼
+            elif pa <= alpha and med < 0:
+                sym[i][j], sym[j][i] = loss, win  # ▼, ▲
+
+        colspec = "@{}l " + " ".join(["c"] * len(algs)) + " @{}"
+        cap = (r"Pairwise Wilcoxon outcomes for " + metric_to_name(metric_name) +
+               fr" (Holm within-metric at $\alpha=0.05$)")
+        lab = f"tab:signif:{metric_name}"
+        header = " & ".join(alg_pretty(a) for a in algs)
+
+        subtable_lines = [fr"\begin{{subtable}}[t]{{{line_width_per}\linewidth}}",
+                 r"\centering",
+                 rf"\caption{{{cap}}}",
+                 rf"\label{{{lab}}}",
+                 r"\begin{threeparttable}",
+                 r"{",
+                 r"\setlength{\tabcolsep}{3pt}",
+                 r"\begin{adjustbox}{max width=\linewidth}",
+                 rf"\begin{{tabular}}{{{colspec}}}",
+                 r"\toprule",
+                 rf" & {header} \\",
+                 r"\midrule"]
+        for i, a in enumerate(algs):
+            row = " & ".join(sym[i])
+            subtable_lines.append(rf"{alg_pretty(a)} & {row} \\")
+        subtable_lines += [r"\bottomrule",
+                  r"\end{tabular}",
+                  r'\end{adjustbox}'
+                  r"}",
+                  r"\end{threeparttable}",
+                  r"\end{subtable}"]
+
+        subtables.append("\n".join(subtable_lines))
+
+    lines += ["\n\\hfill\n".join(subtables)]
+
+    lines += [
+        fr"\end{{{env}}}",
+    ]
+
     return "\n".join(lines)
 
 
@@ -1861,14 +1982,14 @@ def main() -> None:
             tex_chunks.append(tex_table_overall_summary_subtable(keys, overall_tables, overall_caps))
             tex_chunks.append("")
 
-        # if args.emit_signif_matrix:
-        #     keys = filter(lambda m: m in wilc_tables, sorted(metric_tables.keys(), key=sorting_key))
-        #     keys = list(keys)
-        #
-        #     keys.remove('mean_test_acc')
-        #
-        #     tex_chunks.append(tex_significance_matrix_subtable(keys, wilc_df, alpha=0.05))
-        #     tex_chunks.append("")
+        if args.emit_signif_matrix:
+            keys = filter(lambda m: m in wilc_tables, sorted(metric_tables.keys(), key=sorting_key))
+            keys = list(keys)
+
+            keys.remove('mean_test_acc')
+
+            tex_chunks.append(tex_significance_matrix_subtable(keys, wilc_df, alpha=0.05))
+            tex_chunks.append("")
 
     out = "\n".join(tex_chunks).strip() + "\n"
     (args.out_dir / Path(args.tex)).write_text(out, encoding="utf-8")
