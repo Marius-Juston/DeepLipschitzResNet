@@ -6,8 +6,8 @@ Cross-validated training harness for Lipschitz-constrained models on the JKU UCI
 
 This module prepares tabular datasets, trains a variety of Lipschitz-aware models with
 TensorBoard logging, evaluates both empirical and certified accuracies, and orchestrates
-Wilcoxon signed-rank comparisons across algorithms. Runtime behavior strictly matches the
-original implementation; only documentation and type annotations have been added.
+Wilcoxon signed-rank comparisons across algorithms. Revision protocol 2 uses corrected certificates, disjoint splits, resumable epochs,
+and explicit loss/preprocessing metadata.
 """
 
 import argparse
@@ -36,6 +36,7 @@ from torch.multiprocessing import set_start_method
 from torch.utils.data import Dataset, DataLoader
 from torch.utils.tensorboard import SummaryWriter
 
+from certification import certified_radii, clear_weight_caches, audit_dense_certificate
 from lbdn_models.model import Toy
 from models.linear_model import (
     DeepLipschitzSequential,
@@ -253,8 +254,8 @@ class ArrayDataset(Dataset[tuple[Tensor, Tensor]]):
         >>> (xb.item(), yb.argmax().item())
         (1.0, 1)
         """
-        j = self.idx[i]
-        return self.X[j].squeeze(0), self.y[j].squeeze(0)
+        j = int(self.idx.reshape(-1)[i])
+        return self.X[j], self.y[j]
 
 
 def standardize_inplace(X: FloatArray, train_idx: IntArray, eps: float = 1e-8) -> dict[str, FloatArray]:
@@ -595,6 +596,7 @@ def set_seed(seed: int):
 
 
 @torch.no_grad()
+@torch.no_grad()
 def eval_loop(model: nn.Module, loader: DataLoader[tuple[Tensor, Tensor]], device: torch.device) -> float:
     """
     Evaluate categorical accuracy over a dataloader.
@@ -637,10 +639,11 @@ def eval_loop(model: nn.Module, loader: DataLoader[tuple[Tensor, Tensor]], devic
     1.0
     """
     model.eval()
+    clear_weight_caches(model)
     correct = 0
     total = 0
     for xb, yb in loader:
-        xb = xb.to(device, non_blocking=True)
+        xb = xb.to(device=device, dtype=next(model.parameters()).dtype, non_blocking=True)
         yb = yb.to(device, non_blocking=True)
         logits = model(xb)
         pred = logits.argmax(dim=1)
@@ -744,57 +747,31 @@ def eval_certified(
     ([36.0, 72.0, 108.0, 255.0], 0.0, tensor([0., 0., 0., 0.]))
     """
     cert_values = [36., 72., 108., 255.]
-
-    eps_float = torch.tensor(cert_values, dtype=dtype, device=device) / 255.
     model.eval()
-    running_accuracy = 0
-
-    running_certified = torch.zeros_like(eps_float)
-
-    running_inputs = 0
-    lip_cst = 1.
-
-    if isinstance(model, DeepLipschitzLinearResNetLNN) or isinstance(model, DeepLipschitzSequentialLNN):
-        last_weight = model.last.weight
-        normalized_weight = F.normalize(last_weight, p=2, dim=1)
-    elif isinstance(model, DeepLipschitzSequential):
-        normalized_weight = model.last_weight()
-    elif isinstance(model, DeepLipschitzLinearResNet):
-        normalized_weight = model.last_weight()
-    elif isinstance(model, LipschitzNetworkSequential) or isinstance(model, Toy):
-        last_weight = model.model[-1].weight
-        normalized_weight = F.normalize(last_weight, p=2, dim=1)
+    clear_weight_caches(model)
+    dtype = next(model.parameters()).dtype
+    eps = torch.tensor(cert_values, dtype=dtype, device=device) / 255.
+    total, correct_count = 0, 0
+    counts = torch.zeros_like(eps)
+    if isinstance(model, (DeepLipschitzLinearResNet, DeepLipschitzSequential)):
+        head = model.last_weight()
+        bound = model.lipschitz_constant
+    elif isinstance(model, (LipschitzNetworkSequential, Toy)):
+        layer = model.model[-1]
+        head = F.normalize(layer.weight, p=2, dim=1) * getattr(layer, 'scale', 1.)
+        bound = 1.
     else:
-        raise ValueError("Using unsupported model type for certified evaluation")
-
-    for batch_n, data in enumerate(loader):
-        inputs, labels = data
-        inputs, labels = inputs.to(device=device, dtype=dtype), labels.to(device=device, dtype=dtype)
-        outputs = model(inputs)
-        predicted = outputs.argmax(axis=1)
-        correct = predicted == labels.argmax(axis=1)
-        margins, indices = torch.sort(outputs, 1)
-
-        top_idx = indices[:, -1]
-        other_idx = indices[:, :-1]
-
-        num = margins[:, -1][:, None] - margins[:, :-1]
-
-        w_top = normalized_weight[top_idx]
-        w_oth = normalized_weight[other_idx]
-
-        denom = torch.norm(w_top[:, None, :] - w_oth, dim=-1, p=2).clamp_min(1e-12)
-
-        radii = (num / denom).min(dim=1).values
-
-        certified = radii[:, None] > eps_float * lip_cst
-        running_accuracy += correct.sum()
-        running_certified += torch.sum(torch.unsqueeze(correct, -1) & certified, dim=0)
-        running_inputs += inputs.size(0)
-
-    accuracy = running_accuracy / running_inputs
-    certified = running_certified / running_inputs
-    return cert_values, accuracy, certified
+        raise ValueError('Unsupported model certificate')
+    with torch.no_grad():
+        for inputs, labels in loader:
+            inputs = inputs.to(device=device, dtype=dtype)
+            labels = labels.to(device=device).argmax(dim=1)
+            outputs = model(inputs)
+            radii = certified_radii(outputs, labels, head, bound)
+            counts += (radii[:, None] > eps).sum(dim=0)
+            correct_count += (outputs.argmax(dim=1) == labels).sum().item()
+            total += inputs.shape[0]
+    return cert_values, correct_count / total, counts / total
 
 
 def train_one_fold(
@@ -891,6 +868,12 @@ def train_one_fold(
     ['best_epoch', 'best_val_acc', 'cert_evals', 'depth', 'in_features', 'out_features', 'padding', 'parameters', 'stats', 'test_acc', 'test_size', 'train_size', 'val_size', 'width']
     """
     set_seed(seed)
+    log_dir.mkdir(parents=True, exist_ok=True)
+    torch.set_num_threads(min(8, max(1, (os.cpu_count() or 1) // max(1, torch.cuda.device_count()))))
+    dtype = dtype or torch.float32
+    split_sets = [set(np.asarray(idx).reshape(-1)) for idx in (train_idx, val_idx, test_idx)]
+    if any(not x for x in split_sets) or any(split_sets[i] & split_sets[j] for i in range(3) for j in range(i)):
+        raise ValueError('Train, validation, and test splits must be nonempty and disjoint')
 
     # Standardize
     stats = standardize_inplace(X, train_idx)
@@ -947,7 +930,7 @@ def train_one_fold(
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', factor=0.5, patience=8)
 
     # Limit BLAS threads per process to avoid oversubscription (assumes 4 GPUs, 256 cores)
-    torch.set_num_threads(max(1, os.cpu_count() // torch.cuda.device_count()))
+    # Thread budget is set before model construction.
 
     writer = SummaryWriter(str(log_dir))
     # writer.add_hparams(hparams, {"hparam/acc/val": 0.0, 'hparam/acc/train': 0.0}, global_step=0)
@@ -958,7 +941,22 @@ def train_one_fold(
     epochs_no_improve = 0
 
     global_step = 0
-    for epoch in range(1, max_epochs + 1):
+    first_epoch = 1
+    resume_path = log_dir / 'resume.pth'
+    if resume_path.exists():
+        state = torch.load(resume_path, map_location=device, weights_only=False)
+        if state.get('protocol') != 2 or state.get('hparams') != hparams:
+            raise ValueError('Resume protocol/hyperparameters differ; use a new output directory')
+        model.load_state_dict(state['model'])
+        optimizer.load_state_dict(state['optimizer'])
+        scheduler.load_state_dict(state['scheduler'])
+        best_state, best_val = state['best_state'], state['best_val']
+        best_epoch, epochs_no_improve = state['best_epoch'], state['epochs_no_improve']
+        first_epoch, global_step = state['epoch'] + 1, state['global_step']
+        torch.set_rng_state(state['rng'].cpu())
+        if device.type == 'cuda':
+            torch.cuda.set_rng_state(state['cuda_rng'].cpu(), device)
+    for epoch in range(first_epoch, max_epochs + 1):
         model.train()
         epoch_loss = 0.0
         epoch_correct = 0
@@ -974,7 +972,11 @@ def train_one_fold(
                 continue
 
             logits = model(xb)
-            loss = criterion(logits, yb)
+            offset = float(hparams.get('offset', 0.))
+            temperature = float(hparams.get('temperature', 1.))
+            loss = temperature * criterion((logits - offset * yb) / temperature, yb)
+            if not torch.isfinite(loss):
+                raise RuntimeError('Nonfinite loss; no result is certified')
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=5.0)
             optimizer.step()
@@ -1021,6 +1023,16 @@ def train_one_fold(
         else:
             epochs_no_improve += 1
 
+        snapshot = dict(protocol=2, hparams=hparams, model=model.state_dict(),
+                        optimizer=optimizer.state_dict(), scheduler=scheduler.state_dict(),
+                        best_state=best_state, best_val=best_val, best_epoch=best_epoch,
+                        epochs_no_improve=epochs_no_improve, epoch=epoch, global_step=global_step,
+                        rng=torch.get_rng_state(),
+                        cuda_rng=torch.cuda.get_rng_state(device) if device.type == 'cuda' else None)
+        torch.save(snapshot, log_dir / 'resume.tmp')
+        (log_dir / 'resume.tmp').replace(resume_path)
+        (log_dir / 'progress.json').write_text(json.dumps(dict(epoch=epoch, max_epochs=max_epochs,
+                                                              best_epoch=best_epoch, best_validation=best_val)))
         if epochs_no_improve >= patience:
             logger.warning(f"Early stopping due to no improvements to the validation accuracy for {patience} epochs")
             break
@@ -1029,6 +1041,7 @@ def train_one_fold(
     if best_state is not None:
         model.load_state_dict(best_state)
 
+    certificate_audit = audit_dense_certificate(model) if algorithm.startswith("ldlt") else {"type": "published_baseline_construction"}
     test_acc = eval_loop(model, test_loader, device)
 
     hparams_data = {"hparam/acc/test": test_acc, 'hparam/acc/val': best_val}
@@ -1055,6 +1068,13 @@ def train_one_fold(
     writer.close()
 
     return {
+        "certificate_audit": certificate_audit,
+        "protocol_version": 2,
+        "parameterization_version": 2 if algorithm.startswith('ldlt') else None,
+        "radius_coordinates": "train-standardized features",
+        "split_policy": "test_mask_one",
+        "loss_offset": float(hparams.get('offset', 0.)),
+        "loss_temperature": float(hparams.get('temperature', 1.)),
         "best_epoch": int(best_epoch),
         "best_val_acc": float(best_val),
         "test_acc": float(test_acc),
@@ -1072,7 +1092,24 @@ def train_one_fold(
     }
 
 
-# ------------- Worker: trains one dataset for one repeat (10 folds) ------------- #
+def split_indices(folds, validation_folds, k):
+    """Interpret one supplied split: mask-one is test, validation-one is validation.
+
+    Source convention: UCI_classification/datasets.py, load_trn/load_tst.
+    We retain the supplied paired columns, not the legacy reversed train/test
+    interpretation. Columns need not form a disjoint partition across repeats.
+    """
+    test = folds[:, k] == 1
+    validation = validation_folds[:, k] == 1
+    if np.any(test & validation):
+        raise ValueError('Test and validation masks overlap')
+    training = ~(test | validation)
+    if not all(np.any(mask) for mask in (training, validation, test)):
+        raise ValueError('Empty training, validation, or test split')
+    return tuple(np.flatnonzero(mask) for mask in (training, validation, test))
+
+
+# ------------- Worker: trains one dataset for one repeat (all supplied split repetitions) ------------- #
 
 def load_dataset_bundle(dataset_dir: Path) -> tuple[FloatArray, IntArray, IntArray, IntArray]:
     """
@@ -1090,7 +1127,7 @@ def load_dataset_bundle(dataset_dir: Path) -> tuple[FloatArray, IntArray, IntArr
     y : (n_samples,) int64 ndarray
         Class labels.
     folds : (n_samples, n_folds) int64 ndarray
-        Binary fold assignment matrix where `1` denotes training membership.
+        Binary split matrix where `1` denotes held-out test membership.
     val_map_folds : (n_samples, n_folds) int64 ndarray
         Binary matrix marking validation splits.
 
@@ -1109,7 +1146,7 @@ def load_dataset_bundle(dataset_dir: Path) -> tuple[FloatArray, IntArray, IntArr
     Mathematical sketch
     --------------------
     Treat folds as indicator matrices `F` and validation map as `V`; constraints ensure
-    `F_ik + V_ik ∈ {0, 1}` so the implicit test set is their complement.
+    `F_ik + V_ik ∈ {0, 1}` so the implicit training set is their complement.
 
     Examples
     --------
@@ -1183,8 +1220,9 @@ def _run_task(pack: tuple[Path, str, str, int, str, int, argparse.Namespace]) ->
     dataset_dir, dataset_name, algorithm_name, gpu_id, out_dir, base_seed, args = pack
     try:
         # Pin this task to a specific GPU
-        os.environ["CUDA_VISIBLE_DEVICES"] = str(gpu_id)
-        device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+        device = torch.device(f"cuda:{gpu_id}" if torch.cuda.is_available() else "cpu")
+        if device.type == 'cuda':
+            torch.cuda.set_device(device)
 
         X, y, folds, val_map_folds = load_dataset_bundle(dataset_dir)
         K = folds.shape[1]
@@ -1205,9 +1243,7 @@ def _run_task(pack: tuple[Path, str, str, int, str, int, argparse.Namespace]) ->
         for k in range(K):
             X = X_master.copy()
 
-            train_idx = np.argwhere(folds[:, k] == 1)
-            val_idx = np.argwhere(val_map_folds[:, k] == 1)
-            test_idx = np.argwhere(folds[:, k] + val_map_folds[:, k] == 0)
+            train_idx, val_idx, test_idx = split_indices(folds, val_map_folds, k)
 
             # Build hparams log
             fold_seed = int(base_seed + k)
@@ -1223,7 +1259,11 @@ def _run_task(pack: tuple[Path, str, str, int, str, int, argparse.Namespace]) ->
                 max_epochs=args.max_epochs,
                 patience=args.patience,
                 depth=args.depth,
-                gpu_id=gpu_id
+                gpu_id=gpu_id,
+                offset=getattr(args, 'offset', 0.),
+                temperature=getattr(args, 'temperature', 1.),
+                protocol_version=2,
+                split_policy="test_mask_one"
             )
 
             log_dir = run_root / f"fold_{k}"
@@ -1235,6 +1275,10 @@ def _run_task(pack: tuple[Path, str, str, int, str, int, argparse.Namespace]) ->
                     f"Skipping the training for {algorithm_name}:{dataset_name}:{k} and loading from {str(results_json)}")
                 with open(results_json, "r") as f:
                     res = json.load(f)
+                if res.get('protocol_version') != 2 or res.get('split_policy') != 'test_mask_one':
+                    raise ValueError('Legacy result requires revalidation; use a fresh output directory')
+                if res.get('loss_offset') != getattr(args, 'offset', 0.) or res.get('loss_temperature') != getattr(args, 'temperature', 1.):
+                    raise ValueError('Loss configuration changed; use a fresh output directory')
             else:
                 res = train_one_fold(
                     X, y,
@@ -1622,7 +1666,7 @@ def schedule_and_run(datasets: list[Path], args: argparse.Namespace, out_dir: Pa
 
         summary['metadata'].update({'gpus': ngpus, 'n_tasks': total, 'run_dir': os.getcwd()})
 
-        alg_summary[alg] = summary.copy()
+        alg_summary[alg] = {"metadata": dict(summary["metadata"]), "datasets": {}, "overall": {}}
 
     del summary
 
@@ -1677,7 +1721,7 @@ def parse_args() -> argparse.Namespace:
     --------
     >>> _ = parse_args()  # doctest: +SKIP
     """
-    p = argparse.ArgumentParser(description="Train MLP on JKU UCI collection with 10-fold CV and TensorBoard logging.")
+    p = argparse.ArgumentParser(description="Train MLP on JKU UCI collection with supplied split repetitions and TensorBoard logging.")
     p.add_argument("--data-root", type=str, default='../data/UCI',
                    help="Root directory with data/<dataset_name>/ subfolders.")
     p.add_argument("--out", type=str, default='../runs/UCI', help="Output directory for TensorBoard runs and JSON.")
@@ -1697,6 +1741,8 @@ def parse_args() -> argparse.Namespace:
                    default=['sdp', 'ldlt', 'ldlt-resnet', 'aol', 'ortho', 'sandwich'],
                    choices=['sdp', 'ldlt', 'ldlt-resnet', 'aol', 'ortho', 'sandwich'])
 
+    p.add_argument("--offset", type=float, default=0.)
+    p.add_argument("--temperature", type=float, default=1.)
     p.add_argument("--depth", type=int, default=4, help="The depth of the networks")
 
     return p.parse_args()

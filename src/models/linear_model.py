@@ -21,8 +21,10 @@ are built from :mod:`models.linear_layers` primitives.
 
 Mathematical Sketch
 -------------------
-Each architecture composes Lipschitz-normalized blocks, yielding global bounds
-of the form \(L = \prod_i L_i\) with each \(L_i \leq 1\).
+Version 2 jointly certifies each residual or sequential feature module using
+the exact structured construction in models.certified_ldl. Individual internal
+weights need not have spectral norm at most one. A separate normalized head
+is accounted for through its row differences during classification certification.
 
 Examples
 --------
@@ -43,12 +45,13 @@ from torch.nn import ModuleList, ReLU
 from lbdn_models.layers import LinearNormalized
 from models.linear_layers import FirstLipschitzLinearLayer, LastLipschitzLinearLayer, InnerWeightLipschitzLinearLayer, \
     LinearLipschitz
-from utils import safe_cholesky
+from models.certified_ldl import residual_weights
+from models.certificate_version import CertificateVersion, validate_activation
 
 type ActivationSpec = Union[nn.Module, list[nn.Module]]
 
 
-class DeepLipschitzLinearResNet(nn.Module):
+class DeepLipschitzLinearResNet(CertificateVersion, nn.Module):
     r"""Residual linear network with explicit Lipschitz control.
 
     Parameters
@@ -64,7 +67,7 @@ class DeepLipschitzLinearResNet(nn.Module):
     enable_alpha : bool, default=True
         Whether to learn the relaxation parameters.
     use_safe_cholesky : bool, default=False
-        Use :func:`utils.safe_cholesky` instead of :func:`torch.linalg.cholesky`.
+        Retained for constructor compatibility; True is rejected by version 2.
     device : str or torch.device, default="cuda"
         Device hosting the layers.
     dtype : torch.dtype, optional
@@ -146,12 +149,14 @@ class DeepLipschitzLinearResNet(nn.Module):
         DeepLipschitzLinearResNet(...)
         """
         super().__init__()
+        self.register_buffer("_parameterization_version", torch.tensor(2, dtype=torch.int64))
 
         assert len(layers_widths) >= 1, "This deep network assumes that the number of layers is greater "
         assert in_features > 0, "The input width needs to be larger than 0"
         assert out_features > 0, "The output width needs to be larger than 0"
 
-        self.cholesky_function = safe_cholesky if use_safe_cholesky else torch.linalg.cholesky
+        if use_safe_cholesky:
+            raise ValueError("Certificate version 2 does not permit matrix-changing Cholesky repair")
         self.enable_alpha = enable_alpha
         self.lipschitz_constant = lipschitz_constant
         self.lipschitz_constant_sq = lipschitz_constant * lipschitz_constant
@@ -170,6 +175,7 @@ class DeepLipschitzLinearResNet(nn.Module):
         else:
             self.activation = activation
 
+        validate_activation(self.activation)
         self.generate_layers()
 
     def reset_parameters(self) -> None:
@@ -263,210 +269,34 @@ class DeepLipschitzLinearResNet(nn.Module):
 
         # self.spectral_norm = SpectralNorm(self.B.identity)
 
-    def compute_b(self, x: Tensor, sigma_lower: Tensor, a_weight: Tensor, prev_alpha: Tensor, prev_omega_r: Tensor):
-        """
-        Compute the residual contribution of the last block.
+    def normalized_weights(self):
+        """Return the corrected version-2 residual certificate weights."""
+        return residual_weights(self.A.weight, [layer.weight for layer in self.layers],
+                                self.B.weight, bound=self.lipschitz_constant,
+                                alphas=[self.A.alpha, *[layer.alpha for layer in self.layers], self.B.alpha])
 
-        Parameters
-        ----------
-        x : Tensor
-            Activation after the residual stack.
-        sigma_lower : Tensor
-            Accumulated Cholesky factor.
-        a_weight : Tensor
-            Weight matrix from the first layer.
-        prev_alpha, prev_omega_r : Tensor
-            Factors from the last inner layer.
-
-        Returns
-        -------
-        tuple
-            Output activations and normalized weights for the final block.
-
-        Raises
-        ------
-        RuntimeError
-            Propagated if Cholesky decompositions fail.
-
-        Notes
-        -----
-        Solves for the sigma factor by combining the first-layer weights with
-        the accumulated ``sigma_lower``.
-
-        Mathematical Sketch
-        -------------------
-        Computes ``R_sigma = chol(I + A σ σ^T A^T)`` before passing values to the
-        last layer.
-
-        Examples
-        --------
-        >>> net = DeepLipschitzLinearResNet(4, 2, layers_widths=[4])
-        >>> x = torch.randn(2, 4)
-        >>> first, a_weight, d_inv, alpha, omega_r, constant = net.A(x)
-        >>> sigma_lower = net.A.identity @ d_inv
-        >>> net.compute_b(x, sigma_lower, a_weight, alpha, omega_r)[0].shape
-        torch.Size([2, 2])
-        """
-        # inner_inverse = torch.cholesky_inverse(prev_r, upper=True)
-        # max_singular = torch.sqrt(2 * self.spectral_norm(inner_inverse))
-
-        left = a_weight @ sigma_lower
-
-        scaling = self.B.identity_out + left @ left.T
-
-        R_sigma = self.cholesky_function(scaling, upper=True)
-
-        second, b_weight = self.B(x, R_sigma, prev_alpha, prev_omega_r)
-
-        return second, b_weight
 
     def forward(self, x: Tensor) -> Tensor:
-        r"""Run the residual linear network.
+        """Evaluate the corrected residual block; factorization failure is fatal."""
+        weights = self.normalized_weights()
+        hidden = x
+        for i, (layer, c) in enumerate(zip(self.layers, weights.cs)):
+            activation = self.activation[i] if isinstance(self.activation, (list, nn.ModuleList)) else self.activation
+            hidden = activation(torch.nn.functional.linear(hidden, c, layer.bias))
+        return (torch.nn.functional.linear(x, weights.a, self.A.bias)
+                + torch.nn.functional.linear(hidden, weights.b, self.B.bias))
 
-        Parameters
-        ----------
-        x : (B, in_features) tensor
-            Input batch.
 
-        Returns
-        -------
-        logits : (B, out_features) tensor
-            Output logits respecting the Lipschitz bound.
+    def last_weight(self) -> Tensor:
+        """Return the identity head on the certified output feature map.
 
-        Raises
-        ------
-        RuntimeError
-            Propagated from submodules if triangular solves or Cholesky
-            operations fail.
-
-        Notes
-        -----
-        Iteratively updates ``sigma_lower`` to aggregate diagonal factors before
-        calling :meth:`compute_b`.
-
-        Mathematical Sketch
-        -------------------
-        Implements \(f(x) = A(x) + B(h_{L-1}(x))\) where ``A`` and ``B`` are the
-        first/last Lipschitz blocks and ``h`` denotes the inner residual stack.
-
-        Examples
-        --------
-        >>> import torch
-        >>> net = DeepLipschitzLinearResNet(8, 4, layers_widths=[8])
-        >>> net(torch.randn(2, 8)).shape
-        torch.Size([2, 4])
+        Concatenating A and B does not give a head with a 1-Lipschitz feature
+        map: the stacked input/hidden state has no such established bound.
         """
-        first, a_weight, d_inv, prev_alpha, prev_omega_r, prev_constant = self.A(x)
+        if hasattr(self, 'last'):
+            return torch.nn.functional.normalize(self.last.weight, p=2, dim=1)
+        return torch.eye(self.out_features, device=self.A.weight.device, dtype=self.A.weight.dtype)
 
-        gamma = self.A.identity
-        sigma_lower = None
-
-        current_input = x
-
-        # for i, layer in enumerate(self.layers):
-        for layer in self.layers:
-            T = gamma @ d_inv
-
-            # d_inv_prev = d_inv
-
-            current_input, c_weight, d_inv, prev_alpha, prev_omega_r, prev_constant = layer(current_input, prev_alpha,
-                                                                                            prev_omega_r, prev_constant)
-
-            # with torch.no_grad():
-            #     R_inv = torch.linalg.solve_triangular(prev_layer.omega_r, layer.identity, upper=True)
-            #
-            #     scale = prev_layer.alpha.sqrt() * prev_layer.constant
-            #
-            #     temp = scale * R_inv
-            #     result = temp.T @ d_inv_prev @ temp
-            #
-            #     assert torch.allclose(layer.identity, result)
-
-            # with torch.no_grad():
-            #     val = c_weight @ d_inv_prev @ c_weight.T
-            #     eigenvals = torch.linalg.eigvalsh(val)
-            #     max_val = eigenvals.max().item()
-            #     min_val = eigenvals.min().item()
-            #
-            #     print(i, max_val <= 2.0, max_val, min_val)
-
-            if sigma_lower is None:
-                sigma_lower = T
-            else:
-                # Instead of using custom CholeskyRankK update this is computationally much faster
-                sigma_lower = safe_cholesky(sigma_lower @ sigma_lower.T + T @ T.T, upper=False)
-                # sigma_lower = cholesky_rank_k(sigma_lower, T)
-
-            gamma = T @ c_weight.T
-
-            current_input = self.activation(current_input)
-
-        second, b_weight = self.compute_b(current_input, sigma_lower, a_weight, prev_alpha, prev_omega_r)
-
-        return first + second
-
-    def last_weight(self) -> torch.Tensor:
-        """Return the concatenated last-layer weights for certification.
-
-        Parameters
-        ----------
-        None
-
-        Returns
-        -------
-        weights : (out_features, in_features + out_features) tensor
-            Concatenation of first/last block weights as expected by
-            certification utilities.
-
-        Raises
-        ------
-        RuntimeError
-            Propagated if submodules fail during the forward-like pass.
-
-        Notes
-        -----
-        Recomputes a dummy forward pass with zeros to retrieve normalized
-        weights without gradient tracking.
-
-        Mathematical Sketch
-        -------------------
-        The concatenation corresponds to the certificate structure that maps
-        both initial and terminal weights.
-
-        Examples
-        --------
-        >>> net = DeepLipschitzLinearResNet(4, 2, layers_widths=[4])
-        >>> W = net.last_weight()
-        >>> W.shape[0] == net.out_features
-        True
-        """
-        x = torch.zeros((1, self.in_features), **self.factory_kwargs)
-
-        first, a_weight, d_inv, prev_alpha, prev_omega_r, prev_constant = self.A(x)
-
-        gamma = self.A.identity
-        sigma_lower = None
-
-        current_input = x
-
-        for layer in self.layers:
-            T = gamma @ d_inv
-
-            current_input, c_weight, d_inv, prev_alpha, prev_omega_r, prev_constant = layer(current_input, prev_alpha,
-                                                                                            prev_omega_r, prev_constant)
-
-            if sigma_lower is None:
-                sigma_lower = T
-            else:
-                sigma_lower = safe_cholesky(sigma_lower @ sigma_lower.T + T @ T.T, upper=False)
-
-            gamma = T @ c_weight.T
-
-            current_input = self.activation(current_input)
-
-        second, b_weight = self.compute_b(current_input, sigma_lower, a_weight, prev_alpha, prev_omega_r)
-
-        return torch.cat([a_weight, b_weight], dim=1)
 
 
 class DeepLipschitzLinearResNetLNN(DeepLipschitzLinearResNet):
@@ -569,7 +399,7 @@ class DeepLipschitzLinearResNetLNN(DeepLipschitzLinearResNet):
         return self.last(x)
 
 
-class DeepLipschitzSequential(nn.Module):
+class DeepLipschitzSequential(CertificateVersion, nn.Module):
     """Sequential linear network composed of ``LinearLipschitz`` blocks.
 
     Parameters
@@ -654,7 +484,10 @@ class DeepLipschitzSequential(nn.Module):
         DeepLipschitzSequential(...)
         """
         super().__init__()
+        self.register_buffer("_parameterization_version", torch.tensor(2, dtype=torch.int64))
 
+        if dropout:
+            raise ValueError("Dropout is not supported by the version-2 training certificate")
         self.dropout = dropout
         assert len(layers_widths) >= 1, "This deep network assumes that the number of layers is greater "
         assert in_features > 0, "The input width needs to be larger than 0"
@@ -677,6 +510,7 @@ class DeepLipschitzSequential(nn.Module):
         else:
             self.activation = activation
 
+        validate_activation(self.activation)
         self.generate_layers()
 
     def reset_parameters(self) -> None:
@@ -756,108 +590,31 @@ class DeepLipschitzSequential(nn.Module):
 
         self.layers = ModuleList(layer)
 
+    def normalized_weights(self):
+        """Use the same exact certificate with the feed-through fixed to zero."""
+        layers = list(self.layers)
+        a = layers[0].weight.new_zeros(layers[-1].out_features, self.in_features)
+        return residual_weights(a, [layer.weight for layer in layers[:-1]],
+                                layers[-1].weight, bound=self.lipschitz_constant,
+                                alphas=[1.0, *[layer.alpha for layer in layers]])
+
     def forward(self, x: Tensor) -> Tensor:
-        r"""Run the sequential linear network.
+        """Evaluate a jointly certified sequential feature map."""
+        weights = self.normalized_weights()
+        for layer, c in zip(self.layers[:-1], weights.cs):
+            x = torch.nn.functional.linear(x, c, layer.bias)
+            if layer.activation is not None:
+                x = layer.activation(x)
+        return torch.nn.functional.linear(x, weights.b, self.layers[-1].bias)
 
-        Parameters
-        ----------
-        x : (B, in_features) tensor
-            Input batch.
-
-        Returns
-        -------
-        logits : (B, out_features) tensor
-            Output logits after all layers.
-
-        Raises
-        ------
-        RuntimeError
-            Propagated when submodules encounter invalid shapes.
-
-        Notes
-        -----
-        Maintains ``d_sqrt`` (diagonal factor), ``prev_alpha``, and
-        ``prev_const`` across layers to ensure global Lipschitz control.
-
-        Mathematical Sketch
-        -------------------
-        Sequentially applies normalized linear blocks so that
-        \(L = L_1 L_2 \cdots L_n\) with all \(L_i \leq 1\).
-
-        Examples
-        --------
-        >>> import torch
-        >>> net = DeepLipschitzSequential(8, 2, layers_widths=[8, 8])
-        >>> net(torch.randn(1, 8)).shape
-        torch.Size([1, 2])
-        """
-        current_input = x
-        d_sqrt = self.lipschitz_constant * self.layers[0].identity
-        prev_alpha = torch.tensor(1.0, **self.factory_kwargs)
-        prev_const = torch.tensor(1.0, **self.factory_kwargs)
-
-        for layer in self.layers:
-            if isinstance(layer, nn.Dropout):
-                current_input = layer(current_input)
-            else:
-                layer: LinearLipschitz
-
-                current_input, d_sqrt, _ = layer(current_input, d_sqrt, prev_alpha, prev_const)
-
-                prev_const = layer.constant
-                prev_alpha = layer.alpha
-
-        return current_input
 
     def last_weight(self) -> Tensor:
-        """Retrieve the final normalized weights for certification.
+        """Return the actual normalized head, or identity on the certified output."""
+        if hasattr(self, 'last'):
+            return torch.nn.functional.normalize(self.last.weight, p=2, dim=1)
+        last = self.layers[-1].weight
+        return torch.eye(self.out_features, device=last.device, dtype=last.dtype)
 
-        Parameters
-        ----------
-        None
-
-        Returns
-        -------
-        weights : (out_features, prev_features) tensor
-            Final normalized weight matrix.
-
-        Raises
-        ------
-        RuntimeError
-            Propagated when submodules fail during the dummy forward pass.
-
-        Notes
-        -----
-        Mirrors the main forward loop but captures the last normalized ``W``
-        instead of producing logits.
-
-        Mathematical Sketch
-        -------------------
-        The output corresponds to the final Lipschitz-normalized affine map.
-
-        Examples
-        --------
-        >>> net = DeepLipschitzSequential(4, 2, layers_widths=[4])
-        >>> net.last_weight().shape[0] == net.out_features
-        True
-        """
-        x = torch.zeros((1, self.in_features), **self.factory_kwargs)
-
-        d_sqrt = self.lipschitz_constant * self.layers[0].identity
-        prev_alpha = torch.tensor(1.0, **self.factory_kwargs)
-        prev_const = torch.tensor(1.0, **self.factory_kwargs)
-
-        for layer in self.layers:
-            if isinstance(layer, nn.Dropout):
-                x = layer(x)
-            else:
-                layer: LinearLipschitz
-                x, d_sqrt, W = layer(x, d_sqrt, prev_alpha, prev_const)
-
-                prev_const = layer.constant
-                prev_alpha = layer.alpha
-
-        return W
 
 
 class DeepLipschitzSequentialLNN(DeepLipschitzSequential):

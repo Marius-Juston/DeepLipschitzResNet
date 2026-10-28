@@ -1,0 +1,250 @@
+{
+  "source_sha256": "c166abe4c304f936b8ec9d5e652951d1387f0aa83c987d2060e3ed1437d0701b",
+  "device": "cuda:0",
+  "torch": "2.8.0+cu128",
+  "complete": true,
+  "rows": [
+    {
+      "job": "cifar10-ldlt-resnet-margin-42",
+      "clean": 0.5465,
+      "certified": {
+        "36": 0.4721,
+        "72": 0.3958,
+        "108": 0.3292
+      },
+      "max_metric_difference": 1.0347366352636556e-08,
+      "independent_lmi_minima": [
+        0.00027442985251615074,
+        9.692313470542059e-05,
+        8.778992631859734e-05
+      ],
+      "checkpoint_sha256": "13a3130449b4ae393ac87571064e4ce40edfb2a64df9f2da9fb87ff72e568563"
+    },
+    {
+      "job": "cifar10-sandwich-margin-42",
+      "clean": 0.5456,
+      "certified": {
+        "36": 0.4729,
+        "72": 0.4027,
+        "108": 0.3308
+      },
+      "max_metric_difference": 6.961822507367543e-09,
+      "independent_lmi_minima": [],
+      "checkpoint_sha256": "d1337dbc7b4168de7926dd126f3e22df94a954e3434e865043aaf1e5a5e7e0f6"
+    },
+    {
+      "job": "cifar10-sdp-margin-42",
+      "clean": 0.539,
+      "certified": {
+        "36": 0.4683,
+        "72": 0.4021,
+        "108": 0.3377
+      },
+      "max_metric_difference": 1.4734268194427358e-08,
+      "independent_lmi_minima": [],
+      "checkpoint_sha256": "d2766a7d60966487a88a4636faf049de1468444d253bfa35c2b0496649dc037b"
+    },
+    {
+      "job": "cifar10-ldlt-resnet-ce-42",
+      "clean": 0.5445,
+      "certified": {
+        "36": 0.4676,
+        "72": 0.3948,
+        "108": 0.3268
+      },
+      "max_metric_difference": 1.201629640235069e-08,
+      "independent_lmi_minima": [
+        0.0001716273580011504,
+        7.005257463698489e-05,
+        8.368872061228327e-05
+      ],
+      "checkpoint_sha256": "cc6e465ff17cb5e6927e9696bf2c11b95b54200b19c3353240e6071beefe6c9b"
+    },
+    {
+      "job": "cifar10-sandwich-ce-42",
+      "clean": 0.5421,
+      "certified": {
+        "36": 0.4697,
+        "72": 0.3975,
+        "108": 0.3299
+      },
+      "max_metric_difference": 8.630752557081678e-09,
+      "independent_lmi_minima": [],
+      "checkpoint_sha256": "4b936fcb31a9372df7a7326d3a4bc6cdecbcf4afbf4186e1ef25e2fd69581907"
+    },
+    {
+      "job": "cifar10-sdp-ce-42",
+      "clean": 0.5349,
+      "certified": {
+        "36": 0.465,
+        "72": 0.3999,
+        "108": 0.3374
+      },
+      "max_metric_difference": 1.0633468605636409e-08,
+      "independent_lmi_minima": [],
+      "checkpoint_sha256": "72c65cfe005c0a6ac6d1d95d4d7b191875f62e93cc0f38068cc4128943c12ee7"
+    },
+    {
+      "job": "cifar10-ldlt-resnet-margin-43",
+      "clean": 0.537,
+      "certified": {
+        "36": 0.4663,
+        "72": 0.3944,
+        "108": 0.3283
+      },
+      "max_metric_difference": 1.0681152351477152e-08,
+      "independent_lmi_minima": [
+        0.00021544592968464246,
+        0.00024393352033112373,
+        9.815055901699724e-05
+      ],
+      "checkpoint_sha256": "4cf3ef303aab9e39d2ea0c55759290bf94515d8e8da5befc2a6058871f842e78"
+    },
+    {
+      "job": "cifar10-sandwich-margin-43",
+      "clean": 0.5416,
+      "certified": {
+        "36": 0.471,
+        "72": 0.401,
+        "108": 0.3337
+      },
+      "max_metric_difference": 1.4066696141235013e-08,
+      "independent_lmi_minima": [],
+      "checkpoint_sha256": "dd9d449635ea5569d5b477732ab979d1340e34d509b23aa1dd1f272e7cd2bdde"
+    },
+    {
+      "job": "cifar10-sdp-margin-43",
+      "clean": 0.541,
+      "certified": {
+        "36": 0.47,
+        "72": 0.4018,
+        "108": 0.336
+      },
+      "max_metric_difference": 6.628036508526947e-09,
+      "independent_lmi_minima": [],
+      "checkpoint_sha256": "3a9c384526673361a1b3ad5ce186035a228dc21e95014a5baf441b39ad3cfb9c"
+    },
+    {
+      "job": "cifar10-ldlt-resnet-ce-43",
+      "clean": 0.5409,
+      "certified": {
+        "36": 0.465,
+        "72": 0.3963,
+        "108": 0.3301
+      },
+      "max_metric_difference": 1.1968612656509947e-08,
+      "independent_lmi_minima": [
+        0.00020759420784853118,
+        0.00015115800224429568,
+        0.00010810343386729157
+      ],
+      "checkpoint_sha256": "06e6470639ce00deccffcab4a7c55e3de819899540756941389bd883990b757f"
+    },
+    {
+      "job": "cifar10-sandwich-ce-43",
+      "clean": 0.5421,
+      "certified": {
+        "36": 0.4695,
+        "72": 0.4036,
+        "108": 0.3353
+      },
+      "max_metric_difference": 7.29560850620814e-09,
+      "independent_lmi_minima": [],
+      "checkpoint_sha256": "7c4975522e429d491f964313a88cda0a8a412e63349a06326fecafcfedec92d7"
+    },
+    {
+      "job": "cifar10-sdp-ce-43",
+      "clean": 0.533,
+      "certified": {
+        "36": 0.4651,
+        "72": 0.3917,
+        "108": 0.3299
+      },
+      "max_metric_difference": 9.632110609114619e-09,
+      "independent_lmi_minima": [],
+      "checkpoint_sha256": "06ac409ea9ab26339c008defa27029d79e3c5b5424a2201259799424e843fbe7"
+    },
+    {
+      "job": "cifar10-ldlt-resnet-margin-44",
+      "clean": 0.5354,
+      "certified": {
+        "36": 0.4655,
+        "72": 0.3952,
+        "108": 0.3316
+      },
+      "max_metric_difference": 1.4114379887075756e-08,
+      "independent_lmi_minima": [
+        0.00046519748064924993,
+        0.00024935096864337413,
+        8.589770680776394e-05
+      ],
+      "checkpoint_sha256": "4a4a4dbff2fcfb4a228f34fe0aafd4ae4618233a17e136f601ddd2cc0596c1b7"
+    },
+    {
+      "job": "cifar10-sandwich-margin-44",
+      "clean": 0.5371,
+      "certified": {
+        "36": 0.4696,
+        "72": 0.3941,
+        "108": 0.3272
+      },
+      "max_metric_difference": 1.0395050042966147e-08,
+      "independent_lmi_minima": [],
+      "checkpoint_sha256": "08f2c80c496828828cf9d2de01ea05b4e219d3b4d6f843d6a260bdd5ece7d9ed"
+    },
+    {
+      "job": "cifar10-sdp-margin-44",
+      "clean": 0.5451,
+      "certified": {
+        "36": 0.4748,
+        "72": 0.4045,
+        "108": 0.3386
+      },
+      "max_metric_difference": 9.679794299444211e-09,
+      "independent_lmi_minima": [],
+      "checkpoint_sha256": "148034108da94eeea132bd0a735c5dba7a61914bfd4691f597e2b7d16dd13b41"
+    },
+    {
+      "job": "cifar10-ldlt-resnet-ce-44",
+      "clean": 0.5396,
+      "certified": {
+        "36": 0.4671,
+        "72": 0.3926,
+        "108": 0.3256
+      },
+      "max_metric_difference": 5.5789947661644135e-09,
+      "independent_lmi_minima": [
+        0.0002560747664094211,
+        0.00012101419655147718,
+        0.00011440394564673653
+      ],
+      "checkpoint_sha256": "43b33fb8157b48e99ace0cb92b26100768d3e1b417a482cf977efb328347340d"
+    },
+    {
+      "job": "cifar10-sandwich-ce-44",
+      "clean": 0.5397,
+      "certified": {
+        "36": 0.4689,
+        "72": 0.3969,
+        "108": 0.3337
+      },
+      "max_metric_difference": 4.911422712972069e-09,
+      "independent_lmi_minima": [],
+      "checkpoint_sha256": "988e8406775b572ae62b0007e76b8fe2a4a4a4860ebdfe27e17ba2edddced397"
+    },
+    {
+      "job": "cifar10-sdp-ce-44",
+      "clean": 0.5343,
+      "certified": {
+        "36": 0.4645,
+        "72": 0.3974,
+        "108": 0.3318
+      },
+      "max_metric_difference": 1.378059388823516e-08,
+      "independent_lmi_minima": [],
+      "checkpoint_sha256": "2549a3390c1320e1bc79139bf660293b6d3a7106a00bd4d96d74c69022c9a3a5"
+    }
+  ],
+  "method": "Fresh state_dict loads; explicit competing-class radii in float64; independent original-QC block assembly on effective weights.",
+  "elapsed_seconds": 46.00802174024284
+}

@@ -17,7 +17,10 @@ class Evaluator:
     """Evaluate a Pytorch Model."""
 
     def __init__(self, config):
-        self.config = config
+        raise RuntimeError(
+            "Legacy CNN certificates have not been validated after the LDL correction. "
+            "Use revision_experiments.py and src/revision_image.py for the audited protocol."
+        )
 
     def load(self):
         checkpoints_path = join(self.config.train_dir, 'checkpoints', str(self.config.seed), 'best_model.pth')

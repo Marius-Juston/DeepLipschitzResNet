@@ -1,0 +1,51 @@
+[
+  {
+    "job": "uci-iris-ldlt-resnet-ce",
+    "existing": true
+  },
+  {
+    "job": "uci-iris-ldlt-ce",
+    "exit_code": 0,
+    "seconds": 9.382833419367671
+  },
+  {
+    "job": "uci-iris-sandwich-ce",
+    "exit_code": 0,
+    "seconds": 7.829590262845159
+  },
+  {
+    "job": "uci-iris-sdp-ce",
+    "exit_code": 0,
+    "seconds": 7.327947437763214
+  },
+  {
+    "job": "uci-iris-aol-ce",
+    "exit_code": 0,
+    "seconds": 5.325381079688668
+  },
+  {
+    "job": "uci-iris-ortho-ce",
+    "exit_code": 0,
+    "seconds": 6.580475106835365
+  },
+  {
+    "job": "uci-iris-ldlt-resnet-margin",
+    "exit_code": 0,
+    "seconds": 9.78759036026895
+  },
+  {
+    "job": "uci-iris-ldlt-margin",
+    "exit_code": 0,
+    "seconds": 9.381278110668063
+  },
+  {
+    "job": "uci-iris-sandwich-margin",
+    "exit_code": 0,
+    "seconds": 7.0268461387604475
+  },
+  {
+    "job": "uci-iris-sdp-margin",
+    "exit_code": 0,
+    "seconds": 7.278824361041188
+  }
+]

@@ -1,0 +1,46 @@
+{
+  "date": "2026-10-28",
+  "tests_passed": 60,
+  "test_device": "cpu",
+  "test_warnings": [
+    "NVML unavailable in test environment",
+    "CPU dataloader pin_memory has no accelerator"
+  ],
+  "paper_consistency": {
+    "paper_repository": "https://github.com/Marius-Juston/LDL-Lipschitz-ResNet-LMI",
+    "paper_commit": "897f4550d93adf75e991d833e4f5ccaf4df7dac1",
+    "scope": "Exact source parity for the three mathematical constructions; experiment applications differ between repositories.",
+    "files": [
+      {
+        "code_path": "src/models/certified_ldl.py",
+        "paper_path": "automatica/reproducibility/certified_ldl.py",
+        "sha256": "e355b69560ffdd90682c20ae36cb194703ba52dc4e54475f06cd0ea791fafcfa"
+      },
+      {
+        "code_path": "research/acyclic.py",
+        "paper_path": "automatica/reproducibility/acyclic.py",
+        "sha256": "120143df96035a9c8c7c39abb7828a89dedc573012e70dab41c0e13ef25a12b2"
+      },
+      {
+        "code_path": "research/fixed_multiplier_bound.py",
+        "paper_path": "automatica/reproducibility/fixed_multiplier_bound.py",
+        "sha256": "da50482075e84a3c9bfa106469b47ce9c5f20886e0eff9f557141842e9a89cff"
+      }
+    ]
+  },
+  "campaign": {
+    "jobs": 792,
+    "uci_splits": 3096,
+    "source_sha256": "c166abe4c304f936b8ec9d5e652951d1387f0aa83c987d2060e3ed1437d0701b",
+    "original_result_hashes_verified": 792,
+    "positive_recorded_certificates": 1082,
+    "minimum_recorded_eigenvalue": 1.1220479424104882e-05,
+    "scope": "Saved-result provenance and split means, not a new checkpoint reevaluation or interval proof"
+  },
+  "numerical_stress": {
+    "cases": 32,
+    "positive": 22,
+    "note": "Expected near-boundary failures; numerical diagnostics are not formal interval certificates"
+  },
+  "training_rerun": false
+}

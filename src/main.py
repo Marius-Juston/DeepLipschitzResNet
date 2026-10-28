@@ -120,7 +120,7 @@ if __name__ == '__main__':
     parser.add_argument("--linear_conv", type=bool, default=True, action=argparse.BooleanOptionalAction,
                         help="Use linear Lipschitz layers rather ResNet layers for better stability")
 
-    parser.add_argument("--discord", type=bool, default=True, action=argparse.BooleanOptionalAction,
+    parser.add_argument("--discord", type=bool, default=False, action=argparse.BooleanOptionalAction,
                         help="Enable discord notifications functionality")
     parser.add_argument("--discord_new_best", type=bool, default=True,
                         action=argparse.BooleanOptionalAction, help="Enable notifications for new best accuracy")
@@ -182,7 +182,7 @@ if __name__ == '__main__':
                         help="As stated in the paper, the normalization parameter was initially wrongly implemented "
                              "for the convolutional network which no longer necessarily made the system be 1-Lipschitz")
 
-    parser.add_argument("--log_wandb", type=bool, default=True, action=argparse.BooleanOptionalAction,
+    parser.add_argument("--log_wandb", type=bool, default=False, action=argparse.BooleanOptionalAction,
                         help="Log using WanDB")
 
     parser.add_argument("--log_tensorboard_grad", type=bool, default=True, action=argparse.BooleanOptionalAction,

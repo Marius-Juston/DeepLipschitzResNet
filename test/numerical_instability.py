@@ -30,6 +30,7 @@ def main():
     xv, yv = np.meshgrid(x, y)
 
     for n in range(3, 5 + 1):
+        plt.figure()
         zs = func(xv, yv, epsilon, n)
         zs = np.log10(zs)
 
@@ -37,13 +38,15 @@ def main():
         plt.xlabel(r'$\alpha$')
         plt.ylabel(r'$\beta$')
         plt.contourf(x, y, zs, levels=50)
-        plt.colorbar()
+        colorbar = plt.colorbar()
+        if colorbar.solids is not None:
+            colorbar.solids.set_rasterized(False)
         plt.contour(x, y, zs, levels=[0], colors='black', linewidths=1.2)
         plt.axis('equal')
         plt.tight_layout()
 
-        plt.savefig('numerical_stability_n_' + str(n) + '.png', dpi=600)
-        plt.show()
+        plt.savefig('numerical_stability_n_' + str(n) + '.pdf')
+        plt.close()
 
 
 if __name__ == '__main__':

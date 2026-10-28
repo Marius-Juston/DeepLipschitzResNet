@@ -1,0 +1,78 @@
+{
+  "device": "cpu",
+  "torch": "2.8.0+cu129",
+  "steps": 2,
+  "note": "Training-mode forward/backward including factorization; no optimizer step. Warmup 3 iterations. CPU memory not measured.",
+  "rows": [
+    {
+      "name": "dense-w8-d2",
+      "shape": [
+        64,
+        8
+      ],
+      "parameters": 284,
+      "median_forward_backward_seconds": 0.0032252008095383644,
+      "min_forward_backward_seconds": 0.0032161399722099304,
+      "max_forward_backward_seconds": 0.0032342616468667984,
+      "gradient_norms": [
+        0.32176855085958356,
+        0.32176855085958356
+      ],
+      "peak_allocated_bytes": null
+    },
+    {
+      "name": "image-ldlt-resnet",
+      "shape": [
+        2,
+        3,
+        32,
+        32
+      ],
+      "parameters": 93166,
+      "median_forward_backward_seconds": 0.7695746049284935,
+      "min_forward_backward_seconds": 0.7662987913936377,
+      "max_forward_backward_seconds": 0.7728504184633493,
+      "gradient_norms": [
+        0.24451900465199822,
+        0.24451900465199822
+      ],
+      "peak_allocated_bytes": null
+    },
+    {
+      "name": "image-sandwich",
+      "shape": [
+        2,
+        3,
+        32,
+        32
+      ],
+      "parameters": 101456,
+      "median_forward_backward_seconds": 0.28391641844064,
+      "min_forward_backward_seconds": 0.2680655587464571,
+      "max_forward_backward_seconds": 0.29976727813482285,
+      "gradient_norms": [
+        0.2855636613101801,
+        0.2855636613101801
+      ],
+      "peak_allocated_bytes": null
+    },
+    {
+      "name": "image-sdp",
+      "shape": [
+        2,
+        3,
+        32,
+        32
+      ],
+      "parameters": 84042,
+      "median_forward_backward_seconds": 0.01413810532540083,
+      "min_forward_backward_seconds": 0.012695157900452614,
+      "max_forward_backward_seconds": 0.015581052750349045,
+      "gradient_norms": [
+        3.831923261236908,
+        3.831923261236908
+      ],
+      "peak_allocated_bytes": null
+    }
+  ]
+}

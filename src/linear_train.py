@@ -135,7 +135,7 @@ def train(x, y, model: DeepLipschitzLinearResNet, learning_prefix='sine', batch_
                 plt.legend()
                 plt.tight_layout()
 
-                plt.savefig(os.path.join(save_folder, f'truth{epoch}.png'), dpi=DPI)
+                plt.savefig(os.path.join(save_folder, f'truth{epoch}.pdf'), dpi=DPI)
                 plt.close()
             else:
                 y_pred = model(x)

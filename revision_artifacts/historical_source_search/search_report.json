@@ -1,0 +1,96 @@
+{
+  "search_root": "/home/mjuston2/Documents",
+  "original_checkout": "/home/mjuston2/Documents/DeepLipschitzResNet",
+  "historical_data_present": {
+    "uci_runs": [
+      "runs/UCI_N4",
+      "runs/UCI_N6"
+    ],
+    "image_checkpoint_count_in_trained_models": 1395,
+    "checkpoint_examples": [
+      "/home/mjuston2/Documents/DeepLipschitzResNet/trained_models/small_model_t/cifar10/checkpoints/43/model.ckpt-18925.pth",
+      "/home/mjuston2/Documents/DeepLipschitzResNet/trained_models/small_model_t/cifar10/checkpoints/43/model.ckpt-17620.pth",
+      "/home/mjuston2/Documents/DeepLipschitzResNet/trained_models/small_model_t/cifar10/checkpoints/43/model.ckpt-16315.pth"
+    ]
+  },
+  "sine_generator": "/home/mjuston2/Documents/DeepLipschitzResNet/src/linear_train.py:237",
+  "sine_plot_checkpoint_reference": "/home/mjuston2/Documents/DeepLipschitzResNet/test/model_lmi.py:574",
+  "referenced_run": "/home/mjuston2/Documents/DeepLipschitzResNet/runs/sine_trainer_20250923_003644",
+  "referenced_run_exists": false,
+  "source_file_paths_enumerated": 19247,
+  "source_search_patterns": [
+    "gersh",
+    "gerhgorin",
+    "trained_network",
+    "sine_trainer",
+    "output_optimizers",
+    "loss_optimizers"
+  ],
+  "git_history_scope": "17 original/related repository roots, excluding the active review checkout; no Gershgorin-name/optimizer-filename matches in plotting-code history",
+  "png_exact_matches": {
+    "LDL-Lipschitz-ResNet-LMI/Figures/Gershgorin/GerhgorinResNet-Backwards_pass.png": [
+      "/home/mjuston2/Documents/LDL-Lipschitz-ResNet-LMI-Review/LDL-Lipschitz-ResNet-LMI/Figures/Gershgorin/GerhgorinResNet-Backwards_pass.png",
+      "/home/mjuston2/Documents/LDL-Lipschitz-ResNet-LMI/Figures/Gershgorin/GerhgorinResNet-Backwards_pass.png"
+    ],
+    "LDL-Lipschitz-ResNet-LMI/Figures/Gershgorin/GerhgorinResNet-Forward_Pass.png": [
+      "/home/mjuston2/Documents/LDL-Lipschitz-ResNet-LMI-Review/LDL-Lipschitz-ResNet-LMI/Figures/Gershgorin/GerhgorinResNet-Forward_Pass.png",
+      "/home/mjuston2/Documents/LDL-Lipschitz-ResNet-LMI/Figures/Gershgorin/GerhgorinResNet-Forward_Pass.png"
+    ],
+    "LDL-Lipschitz-ResNet-LMI/Figures/Gershgorin/eigenvalue_distribution.png": [
+      "/home/mjuston2/Documents/LDL-Lipschitz-ResNet-LMI-Review/LDL-Lipschitz-ResNet-LMI/Figures/Gershgorin/eigenvalue_distribution.png",
+      "/home/mjuston2/Documents/LDL-Lipschitz-ResNet-LMI/Figures/Gershgorin/eigenvalue_distribution.png"
+    ],
+    "LDL-Lipschitz-ResNet-LMI/Figures/Gershgorin/gershgorin_circles.png": [
+      "/home/mjuston2/Documents/LDL-Lipschitz-ResNet-LMI-Review/LDL-Lipschitz-ResNet-LMI/Figures/Gershgorin/gershgorin_circles.png",
+      "/home/mjuston2/Documents/LDL-Lipschitz-ResNet-LMI/Figures/Gershgorin/gershgorin_circles.png"
+    ],
+    "LDL-Lipschitz-ResNet-LMI/Figures/Gershgorin/loss_optimizers.png": [
+      "/home/mjuston2/Documents/LDL-Lipschitz-ResNet-LMI-Review/LDL-Lipschitz-ResNet-LMI/Figures/Gershgorin/loss_optimizers.png",
+      "/home/mjuston2/Documents/LDL-Lipschitz-ResNet-LMI/Figures/Gershgorin/loss_optimizers.png"
+    ],
+    "LDL-Lipschitz-ResNet-LMI/Figures/Gershgorin/output_optimizers.png": [
+      "/home/mjuston2/Documents/LDL-Lipschitz-ResNet-LMI-Review/LDL-Lipschitz-ResNet-LMI/Figures/Gershgorin/output_optimizers.png",
+      "/home/mjuston2/Documents/LDL-Lipschitz-ResNet-LMI/Figures/Gershgorin/output_optimizers.png"
+    ],
+    "LDL-Lipschitz-ResNet-LMI/Figures/LDL/Linear/trained_network.png": [
+      "/home/mjuston2/Documents/LDL-Lipschitz-ResNet-LMI-Review/LDL-Lipschitz-ResNet-LMI/Figures/LDL/Linear/trained_network.png",
+      "/home/mjuston2/Documents/LDL-Lipschitz-ResNet-LMI/Figures/LDL/Linear/trained_network.png"
+    ],
+    "LDL-Lipschitz-ResNet-LMI/Figures/LDL/Linear/sine_ldlt_decomposition_l.png": [
+      "/home/mjuston2/Documents/LDL-Lipschitz-ResNet-LMI-Review/LDL-Lipschitz-ResNet-LMI/Figures/LDL/Linear/sine_ldlt_decomposition_l.png",
+      "/home/mjuston2/Documents/LDL-Lipschitz-ResNet-LMI/Figures/LDL/Linear/sine_ldlt_decomposition_l.png"
+    ],
+    "LDL-Lipschitz-ResNet-LMI/Figures/LDL/Linear/sine_inplace_zoomed_in_b.png": [
+      "/home/mjuston2/Documents/LDL-Lipschitz-ResNet-LMI-Review/LDL-Lipschitz-ResNet-LMI/Figures/LDL/Linear/sine_inplace_zoomed_in_b.png",
+      "/home/mjuston2/Documents/LDL-Lipschitz-ResNet-LMI/Figures/LDL/Linear/sine_inplace_zoomed_in_b.png"
+    ]
+  },
+  "archive_check": "Three source ZIP archives in LDLTLipschitzInitializationReview inspected by member names; no relevant filenames found",
+  "conclusion": "Historical UCI and CIFAR data exist. The exact six Gershgorin and three trained/sine figure sources/checkpoints were not located; exact PNG copies are confined to the original and review paper repositories in this scan.",
+  "limits": "Skipped dependency/build/cache environments and Git object directories in the filesystem content scan; Git histories of relevant repositories searched separately. A permission-denied generated CPython test directory was unrelated to the research and not escalated. Filename/content searches cannot prove that differently named data are absent.",
+  "followup_apecs": {
+    "path": "apecs_library",
+    "result": "User-supplied checkout contains plotting generators, exact matches for three original PNGs, four native-vector PDFs with different plotted content, and eigenvalue arrays. See recovered/apecs/provenance.json. Earlier source-not-found conclusion is superseded for these generators.",
+    "artifact_history": {
+      "tests/circles.pdf": [
+        "7af3c0e6db0547235c25746bc9afe9e204f75a8c"
+      ],
+      "tests/optimizers.pdf": [
+        "7af3c0e6db0547235c25746bc9afe9e204f75a8c"
+      ],
+      "tests/loss_optimizers.pdf": [
+        "7af3c0e6db0547235c25746bc9afe9e204f75a8c"
+      ],
+      "tests/eigenvalue_distribution.pdf": [
+        "7af3c0e6db0547235c25746bc9afe9e204f75a8c"
+      ],
+      "tests/eigenvals.txt": [
+        "b077968395fc8d1a3aac2e82f1e678baf1145240"
+      ],
+      "tests/eigen_distribution.npz": [
+        "7af3c0e6db0547235c25746bc9afe9e204f75a8c"
+      ]
+    },
+    "history_conclusion": "Each recovered PDF and each saved eigenvalue dataset has only one recorded version. PDFs first appeared in 7af3c0e (2026), whereas the exact original optimizer/eigenvalue PNGs appeared in b077968 (2025). No earlier matching PDF/data version is available in this Git history."
+  }
+}

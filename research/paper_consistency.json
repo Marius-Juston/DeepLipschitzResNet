@@ -1,0 +1,22 @@
+{
+  "paper_repository": "https://github.com/Marius-Juston/LDL-Lipschitz-ResNet-LMI",
+  "paper_commit": "897f4550d93adf75e991d833e4f5ccaf4df7dac1",
+  "scope": "Exact source parity for the three mathematical constructions; experiment applications differ between repositories.",
+  "files": [
+    {
+      "code_path": "src/models/certified_ldl.py",
+      "paper_path": "automatica/reproducibility/certified_ldl.py",
+      "sha256": "e355b69560ffdd90682c20ae36cb194703ba52dc4e54475f06cd0ea791fafcfa"
+    },
+    {
+      "code_path": "research/acyclic.py",
+      "paper_path": "automatica/reproducibility/acyclic.py",
+      "sha256": "120143df96035a9c8c7c39abb7828a89dedc573012e70dab41c0e13ef25a12b2"
+    },
+    {
+      "code_path": "research/fixed_multiplier_bound.py",
+      "paper_path": "automatica/reproducibility/fixed_multiplier_bound.py",
+      "sha256": "da50482075e84a3c9bfa106469b47ce9c5f20886e0eff9f557141842e9a89cff"
+    }
+  ]
+}

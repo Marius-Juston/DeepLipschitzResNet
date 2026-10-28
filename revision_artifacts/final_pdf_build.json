@@ -1,0 +1,25 @@
+{
+  "main_jmlr_short": {
+    "pdf": "LDL-Lipschitz-ResNet-LMI/main_jmlr_short.pdf",
+    "sha256": "0d6e2ffb6082be65f04d959c0b4e85e5d6b131a57ebdcb72d51d3e0f96e93801",
+    "pages": "25",
+    "raster_images": 0,
+    "latex_issues": []
+  },
+  "main_jmlr": {
+    "pdf": "LDL-Lipschitz-ResNet-LMI/main_jmlr.pdf",
+    "sha256": "983bafda1416f797c5b226534163d19096b4fb1fa63d21337ee5c4b6d9ec07fb",
+    "pages": "26",
+    "raster_images": 0,
+    "latex_issues": []
+  },
+  "reviewer_response": {
+    "pdf": "LDL-Lipschitz-ResNet-LMI/reviewer_response.pdf",
+    "sha256": "cd2a296f3b47c1d6cf8a1faa2f8d5b05937071fe4327006e72e953f4324ff76c",
+    "pages": "5",
+    "raster_images": 0,
+    "latex_issues": []
+  },
+  "visual_review": "Inspected contact sheets for all short-manuscript pages, long-version extended notes and final response page; no visible clipping. Corrected long-version running author header to match short version.",
+  "comment_audit_rebuild": "Rebuilt after explicit CIFAR-100/conditioning limitations and old-lemma cross-reference response were added. No LaTeX warnings, overfull boxes or raster images."
+}
