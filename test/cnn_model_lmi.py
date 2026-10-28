@@ -9,7 +9,7 @@ from model_lmi import block, E_real, plot_histogram, plot_singular_extremes, plo
 
 DEFAULT_DPI = 600
 
-OUTPUT_FORMAT = 'png'
+OUTPUT_FORMAT = 'pdf'
 
 
 def main_real(A: torch.Tensor, B: torch.Tensor, Cs: List[torch.Tensor], Ls: List[torch.Tensor], Lms, dimensions,

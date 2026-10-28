@@ -1,0 +1,800 @@
+{
+  "datasets": [
+    "iris",
+    "abalone",
+    "letter",
+    "semeion"
+  ],
+  "planned_jobs": 28,
+  "device": "cuda:1",
+  "source_sha256": "c166abe4c304f936b8ec9d5e652951d1387f0aa83c987d2060e3ed1437d0701b",
+  "complete": true,
+  "rows": [
+    {
+      "job": "uci-abalone-ldlt-resnet-ce",
+      "fold": 0,
+      "max_metric_difference": 1.335966176574388e-08,
+      "independent_lmi_minimum": 0.011262084196077937,
+      "checkpoint_sha256": "b70d3406bec641ed1503ecc810b47dc6c4ce8fde3fa36ae3318a8a38598119f4"
+    },
+    {
+      "job": "uci-abalone-ldlt-resnet-ce",
+      "fold": 1,
+      "max_metric_difference": 1.335966176574388e-08,
+      "independent_lmi_minimum": 0.025434183263469287,
+      "checkpoint_sha256": "ccc5f7021538b23d758c32934147661649f7cb79ee2916e614e16b3dde09c324"
+    },
+    {
+      "job": "uci-abalone-ldlt-resnet-ce",
+      "fold": 2,
+      "max_metric_difference": 3.85945784220354e-08,
+      "independent_lmi_minimum": 0.016428635519930856,
+      "checkpoint_sha256": "4601b859e38207489a09c65443d2acc03c13deedc74ebcf284ae15cdd0bc4a30"
+    },
+    {
+      "job": "uci-abalone-ldlt-resnet-ce",
+      "fold": 3,
+      "max_metric_difference": 1.3702217194211386e-08,
+      "independent_lmi_minimum": 0.00815410087955902,
+      "checkpoint_sha256": "25c42c91da170079804b393a7a3dd8ed2e077dc2577e846aaab62c4ab58aff2e"
+    },
+    {
+      "job": "uci-abalone-ldlt-ce",
+      "fold": 0,
+      "max_metric_difference": 1.5300809175222696e-08,
+      "independent_lmi_minimum": 0.017921513869285914,
+      "checkpoint_sha256": "7dbc9042f147a5864ded9ec177ddc495c5cb6b76536ee0236099f556ae53893e"
+    },
+    {
+      "job": "uci-abalone-ldlt-ce",
+      "fold": 1,
+      "max_metric_difference": 3.85945784220354e-08,
+      "independent_lmi_minimum": 0.015858590688064125,
+      "checkpoint_sha256": "09422b8ff31e90d736fa9aff857070771f9c77104935f1fd47d9186b773503d6"
+    },
+    {
+      "job": "uci-abalone-ldlt-ce",
+      "fold": 2,
+      "max_metric_difference": 2.0553325819072654e-08,
+      "independent_lmi_minimum": 0.01933775392466728,
+      "checkpoint_sha256": "97862e4ab0a5a9bb9e53d3faa50dd1c189fd96ab3fcfa864d63b7008b1d78143"
+    },
+    {
+      "job": "uci-abalone-ldlt-ce",
+      "fold": 3,
+      "max_metric_difference": 4.1106651527123006e-08,
+      "independent_lmi_minimum": 0.013844009909628346,
+      "checkpoint_sha256": "dae7f6c4f6b59f6c17fa27222f48c812867a485337693a2652ef40262d3d8ae9"
+    },
+    {
+      "job": "uci-abalone-sandwich-ce",
+      "fold": 0,
+      "max_metric_difference": 3.082998867309783e-08,
+      "independent_lmi_minimum": null,
+      "checkpoint_sha256": "7b5728d363127aa00f95aa94b1e0c84b806732f2476feca3bd3ad33775ada1cd"
+    },
+    {
+      "job": "uci-abalone-sandwich-ce",
+      "fold": 1,
+      "max_metric_difference": 1.8612178354082687e-08,
+      "independent_lmi_minimum": null,
+      "checkpoint_sha256": "2560928bb5b1c8495229a94ec9652e8cedeafb3aee374cec7d14d46ae455648d"
+    },
+    {
+      "job": "uci-abalone-sandwich-ce",
+      "fold": 2,
+      "max_metric_difference": 1.8612178354082687e-08,
+      "independent_lmi_minimum": null,
+      "checkpoint_sha256": "e02c376d1bc85783b6d73cf1b77ad1245cee65e2d6b8bab80683187adff638c0"
+    },
+    {
+      "job": "uci-abalone-sandwich-ce",
+      "fold": 3,
+      "max_metric_difference": 1.7127771478886444e-08,
+      "independent_lmi_minimum": null,
+      "checkpoint_sha256": "79889ecfdfd9daefe68489b524585a85c2904f9019459aa06791e6934b996fa1"
+    },
+    {
+      "job": "uci-abalone-sdp-ce",
+      "fold": 0,
+      "max_metric_difference": 1.4615698318287684e-08,
+      "independent_lmi_minimum": null,
+      "checkpoint_sha256": "3c11ade086889f16ba57182823c94c8decf66ac53ef828be69be63c82ddacbe5"
+    },
+    {
+      "job": "uci-abalone-sdp-ce",
+      "fold": 1,
+      "max_metric_difference": 2.5577472140270174e-08,
+      "independent_lmi_minimum": null,
+      "checkpoint_sha256": "ff58f840678fac655ca9814973445e58035004fbd1b80e85e0bd985762a6f0d4"
+    },
+    {
+      "job": "uci-abalone-sdp-ce",
+      "fold": 2,
+      "max_metric_difference": 1.5186624069407628e-08,
+      "independent_lmi_minimum": null,
+      "checkpoint_sha256": "53771d342ff84951f28c7d0f613e8b75e9db7b678700724ca43b3f99c898c048"
+    },
+    {
+      "job": "uci-abalone-sdp-ce",
+      "fold": 3,
+      "max_metric_difference": 1.2902921175950155e-08,
+      "independent_lmi_minimum": null,
+      "checkpoint_sha256": "ecb152147639352319f4d2392906cde50852559180502fd64a90ce6becec3f4b"
+    },
+    {
+      "job": "uci-abalone-aol-ce",
+      "fold": 0,
+      "max_metric_difference": 3.334206177818544e-08,
+      "independent_lmi_minimum": null,
+      "checkpoint_sha256": "2a8e9bcce324defd6ea9baa740d33b9d0cb9db261ca5d2a69072cb4b86a226bf"
+    },
+    {
+      "job": "uci-abalone-aol-ce",
+      "fold": 1,
+      "max_metric_difference": 1.1589792042743241e-08,
+      "independent_lmi_minimum": null,
+      "checkpoint_sha256": "b5beb52404b770631f4648c7cae4b3b3c874aec1cda08e91b46db0b2cd418126"
+    },
+    {
+      "job": "uci-abalone-aol-ce",
+      "fold": 2,
+      "max_metric_difference": 3.105835899575027e-08,
+      "independent_lmi_minimum": null,
+      "checkpoint_sha256": "e26e8703fbeff06e647e75064910a44dedfead090fda86debc5e0488f1d3d18b"
+    },
+    {
+      "job": "uci-abalone-aol-ce",
+      "fold": 3,
+      "max_metric_difference": 1.4844068640940122e-08,
+      "independent_lmi_minimum": null,
+      "checkpoint_sha256": "89f2c335891b344db086098cf9adb19b4a85c2989c23a92a09b05b02591fb11e"
+    },
+    {
+      "job": "uci-abalone-ortho-ce",
+      "fold": 0,
+      "max_metric_difference": 3.334206177818544e-08,
+      "independent_lmi_minimum": null,
+      "checkpoint_sha256": "374dda87c769994d66d9a8ec2aab66d782c130f45d8b2f360754fdac9ceac0e9"
+    },
+    {
+      "job": "uci-abalone-ortho-ce",
+      "fold": 1,
+      "max_metric_difference": 2.831791556801022e-08,
+      "independent_lmi_minimum": null,
+      "checkpoint_sha256": "073f99e882e1a9f8044193537a9bbacb0d64f668a239b9cddef01e89ab89a423"
+    },
+    {
+      "job": "uci-abalone-ortho-ce",
+      "fold": 2,
+      "max_metric_difference": 1.0505033176677614e-08,
+      "independent_lmi_minimum": null,
+      "checkpoint_sha256": "af1fc6fe5e8050294f9e1d5282c1e4c4d87fb3820a52fa2f55a2e644f0a5e2e4"
+    },
+    {
+      "job": "uci-abalone-ortho-ce",
+      "fold": 3,
+      "max_metric_difference": 2.5577472140270174e-08,
+      "independent_lmi_minimum": null,
+      "checkpoint_sha256": "f8237cbe3452ba088f78ca8d74b2953f1f45f7db1f852342b6c54ecefb55b812"
+    },
+    {
+      "job": "uci-iris-ldlt-resnet-ce",
+      "fold": 0,
+      "max_metric_difference": 4.1884344992304534e-08,
+      "independent_lmi_minimum": 0.02803257282505404,
+      "checkpoint_sha256": "abca3381f3b596ea0cdfa514f412fb07f2de3fb2773786e73e59c35533d6744a"
+    },
+    {
+      "job": "uci-iris-ldlt-resnet-ce",
+      "fold": 1,
+      "max_metric_difference": 4.1884344992304534e-08,
+      "independent_lmi_minimum": 0.023118664958307927,
+      "checkpoint_sha256": "26bce6e8eff72083a5321c8283d6dcdb0e723d7a9b9605fb2de26c1e23bba8c4"
+    },
+    {
+      "job": "uci-iris-ldlt-resnet-ce",
+      "fold": 2,
+      "max_metric_difference": 8.860149891543045e-09,
+      "independent_lmi_minimum": 0.0279713116401258,
+      "checkpoint_sha256": "fc2608e6d82f0d7382fc16ccfe62737adfec97e88a0940d0e84304e3faefa472"
+    },
+    {
+      "job": "uci-iris-ldlt-resnet-ce",
+      "fold": 3,
+      "max_metric_difference": 3.7051535950460845e-08,
+      "independent_lmi_minimum": 0.027175327102377404,
+      "checkpoint_sha256": "011943b87e5427cbfaeb5aa1720216bee2a727b64c1a06b9ba3359a936c560ac"
+    },
+    {
+      "job": "uci-iris-ldlt-ce",
+      "fold": 0,
+      "max_metric_difference": 1.772029978308609e-08,
+      "independent_lmi_minimum": 0.05508074401811857,
+      "checkpoint_sha256": "266d12a00d1f40dfdbda85dcc3b345d0cccc82f49be2318be29313f693ac7a65"
+    },
+    {
+      "job": "uci-iris-ldlt-ce",
+      "fold": 1,
+      "max_metric_difference": 1.4498427125531066e-08,
+      "independent_lmi_minimum": 0.0889895969745808,
+      "checkpoint_sha256": "3f94f9520ef6230d7a9bff6e687e9af040e4635f7d2026d566d5c756ca40d794"
+    },
+    {
+      "job": "uci-iris-ldlt-ce",
+      "fold": 2,
+      "max_metric_difference": 2.4164045153707292e-08,
+      "independent_lmi_minimum": 0.10401807713844564,
+      "checkpoint_sha256": "36e54db998c7619b09d984eb3b3467b04e9235bde89b2370beb11655e99fad5c"
+    },
+    {
+      "job": "uci-iris-ldlt-ce",
+      "fold": 3,
+      "max_metric_difference": 3.544059956617218e-08,
+      "independent_lmi_minimum": 0.10342391337277451,
+      "checkpoint_sha256": "7f1f8f481ea9afd0a898ed72a68904e41eb537b2416e7e63aad3aad8747669d2"
+    },
+    {
+      "job": "uci-iris-sandwich-ce",
+      "fold": 0,
+      "max_metric_difference": 0.0,
+      "independent_lmi_minimum": null,
+      "checkpoint_sha256": "a34325b39e3cb4a7f41dd36c1989b2dd649acd6431ddc9a512a5789b9b8b6775"
+    },
+    {
+      "job": "uci-iris-sandwich-ce",
+      "fold": 1,
+      "max_metric_difference": 1.2887490741242402e-08,
+      "independent_lmi_minimum": null,
+      "checkpoint_sha256": "aaa1aad3702f5eec47ea9b8027be7d519cca646ef603979cc384be22cfb30d97"
+    },
+    {
+      "job": "uci-iris-sandwich-ce",
+      "fold": 2,
+      "max_metric_difference": 4.1884344992304534e-08,
+      "independent_lmi_minimum": null,
+      "checkpoint_sha256": "93a942b35e76c54dbb27545abd9da7a389c429c722f7f97ea358a343d278fa15"
+    },
+    {
+      "job": "uci-iris-sandwich-ce",
+      "fold": 3,
+      "max_metric_difference": 3.221872713066176e-09,
+      "independent_lmi_minimum": null,
+      "checkpoint_sha256": "fccdbe7cd4d312bf7ff0592dba35be037f4f8ba5d0a272ea259e40441c7a2fb0"
+    },
+    {
+      "job": "uci-iris-sdp-ce",
+      "fold": 0,
+      "max_metric_difference": 1.0471086220320558e-08,
+      "independent_lmi_minimum": null,
+      "checkpoint_sha256": "e94501ecad528c2bc9af551aec86ab87e27427bc260ddf5110eef5dde4bcb252"
+    },
+    {
+      "job": "uci-iris-sdp-ce",
+      "fold": 1,
+      "max_metric_difference": 1.772029978308609e-08,
+      "independent_lmi_minimum": null,
+      "checkpoint_sha256": "e86710764859ce4210297c5397cb37483922f3c4136d0b3688851f57ee316777"
+    },
+    {
+      "job": "uci-iris-sdp-ce",
+      "fold": 2,
+      "max_metric_difference": 2.5774981482484804e-08,
+      "independent_lmi_minimum": null,
+      "checkpoint_sha256": "915103ca0e717938cca8b161a047493a98adf13f39a681e3ed9e29d4cb4dab32"
+    },
+    {
+      "job": "uci-iris-sdp-ce",
+      "fold": 3,
+      "max_metric_difference": 1.9331236167374755e-08,
+      "independent_lmi_minimum": null,
+      "checkpoint_sha256": "d0a2241e089df9aea929aa5bedbc624f919164f15490c808578ef9c82c80b3a9"
+    },
+    {
+      "job": "uci-iris-aol-ce",
+      "fold": 0,
+      "max_metric_difference": 1.5303895262164247e-08,
+      "independent_lmi_minimum": null,
+      "checkpoint_sha256": "0c447b7a0240e2a3dccda4fb28f2ed0d70cf44fdae29d086f936e3d93d6fa4f9"
+    },
+    {
+      "job": "uci-iris-aol-ce",
+      "fold": 1,
+      "max_metric_difference": 0.0,
+      "independent_lmi_minimum": null,
+      "checkpoint_sha256": "64a1cc6faeb23fb98caadb36c3f831b962063382e2434441f2bf4270f11366f3"
+    },
+    {
+      "job": "uci-iris-aol-ce",
+      "fold": 2,
+      "max_metric_difference": 1.5303895262164247e-08,
+      "independent_lmi_minimum": null,
+      "checkpoint_sha256": "0c09bf57cfc22ce39139c0dc2815fd6f05603cd5d763dc413425030670c9b8b2"
+    },
+    {
+      "job": "uci-iris-aol-ce",
+      "fold": 3,
+      "max_metric_difference": 8.054681921443319e-10,
+      "independent_lmi_minimum": null,
+      "checkpoint_sha256": "39564afadade7629fb6152002a9f4cfd96b41d67b000c322d369e2eaa9e82436"
+    },
+    {
+      "job": "uci-iris-ortho-ce",
+      "fold": 0,
+      "max_metric_difference": 6.443745370621201e-09,
+      "independent_lmi_minimum": null,
+      "checkpoint_sha256": "36ee10ef203dcdd47ba9536c131089c2af21819eb8f16f621598059084294ca4"
+    },
+    {
+      "job": "uci-iris-ortho-ce",
+      "fold": 1,
+      "max_metric_difference": 1.5303895262164247e-08,
+      "independent_lmi_minimum": null,
+      "checkpoint_sha256": "c7fe848a477534630c23bedaca7edf3c79227faec2bc618fcaaf648af01d5e04"
+    },
+    {
+      "job": "uci-iris-ortho-ce",
+      "fold": 2,
+      "max_metric_difference": 8.054681921443319e-10,
+      "independent_lmi_minimum": null,
+      "checkpoint_sha256": "0e783852621ef91dcbf67727d90e1c1f744ded3ca10fb4da284f81104249cd05"
+    },
+    {
+      "job": "uci-iris-ortho-ce",
+      "fold": 3,
+      "max_metric_difference": 8.054681921443319e-10,
+      "independent_lmi_minimum": null,
+      "checkpoint_sha256": "72b110f61834cb803e83cdecfed1948e5395d362f1ee82497d59df0cbc8af1eb"
+    },
+    {
+      "job": "uci-letter-ldlt-resnet-ce",
+      "fold": 0,
+      "max_metric_difference": 1.9454956035058757e-08,
+      "independent_lmi_minimum": 0.00018885669407468918,
+      "checkpoint_sha256": "719c70164bd123d739f56c3baa0f8bf2e5d17a3abf0bedc707945750882ae896"
+    },
+    {
+      "job": "uci-letter-ldlt-resnet-ce",
+      "fold": 1,
+      "max_metric_difference": 2.5177001927723097e-08,
+      "independent_lmi_minimum": 0.0001189956877412639,
+      "checkpoint_sha256": "f49d1d893c1768dd89d3b7167ad7d5632c4bdb629823e93ff902e61df11d4c00"
+    },
+    {
+      "job": "uci-letter-ldlt-resnet-ce",
+      "fold": 2,
+      "max_metric_difference": 4.549026488831487e-08,
+      "independent_lmi_minimum": 0.00016624525339967663,
+      "checkpoint_sha256": "b5aff48564220fa393184a5131a70cff1cfc3cf00da47b8ceffefcf8c5afbd68"
+    },
+    {
+      "job": "uci-letter-ldlt-resnet-ce",
+      "fold": 3,
+      "max_metric_difference": 4.301071165890846e-08,
+      "independent_lmi_minimum": 7.162222711914523e-05,
+      "checkpoint_sha256": "8377025c18dc0600a4a40f8408cb86bec7483e31c3a3bb025ecf00917bb641cc"
+    },
+    {
+      "job": "uci-letter-ldlt-ce",
+      "fold": 0,
+      "max_metric_difference": 4.281997678656779e-08,
+      "independent_lmi_minimum": 0.00019311690279372317,
+      "checkpoint_sha256": "d7dbeb2cb9dbed3bd8b4500d146babf808e3b49d2474be71b1b2ed92f4e9c9bb"
+    },
+    {
+      "job": "uci-letter-ldlt-ce",
+      "fold": 1,
+      "max_metric_difference": 1.9454956035058757e-08,
+      "independent_lmi_minimum": 0.00023617730936819955,
+      "checkpoint_sha256": "d2d4162560128f697b573ff599e83e574659cba9cdd052e75e4eb85acb9ac16c"
+    },
+    {
+      "job": "uci-letter-ldlt-ce",
+      "fold": 2,
+      "max_metric_difference": 4.234313966122727e-08,
+      "independent_lmi_minimum": 0.0001610574977760643,
+      "checkpoint_sha256": "353610941927bc854c91a40977350f06adbacde3c9eaefd564de1f52b3f87760"
+    },
+    {
+      "job": "uci-letter-ldlt-ce",
+      "fold": 3,
+      "max_metric_difference": 1.1157989532328827e-08,
+      "independent_lmi_minimum": 0.00019541635664837355,
+      "checkpoint_sha256": "46d8f8fff7e43cf216445f3788eaa3c591bf12d4fff79fecb76cc2b68aa16355"
+    },
+    {
+      "job": "uci-letter-sandwich-ce",
+      "fold": 0,
+      "max_metric_difference": 4.005432130416153e-08,
+      "independent_lmi_minimum": null,
+      "checkpoint_sha256": "b0996aadc7758804d6c145f651aa10ccefdf0d231fc0708c781b72484218a6b5"
+    },
+    {
+      "job": "uci-letter-sandwich-ce",
+      "fold": 1,
+      "max_metric_difference": 1.339912414355382e-08,
+      "independent_lmi_minimum": null,
+      "checkpoint_sha256": "b976a6d2f9f231258cbb283205ba6f0dcde2404a42060faa1d7209fce037b4a7"
+    },
+    {
+      "job": "uci-letter-sandwich-ce",
+      "fold": 2,
+      "max_metric_difference": 2.269744869831669e-08,
+      "independent_lmi_minimum": null,
+      "checkpoint_sha256": "09f3b584e2ddecc653d9409df3f59d0a947cda06832c3c30267912b6ac7b5adc"
+    },
+    {
+      "job": "uci-letter-sandwich-ce",
+      "fold": 3,
+      "max_metric_difference": 3.013610838653591e-08,
+      "independent_lmi_minimum": null,
+      "checkpoint_sha256": "6e1d4642ac7ea1bcf61e4f900a57ed0ca5ba60b875939deec1482a1c14ce007d"
+    },
+    {
+      "job": "uci-letter-sdp-ce",
+      "fold": 0,
+      "max_metric_difference": 3.814697269177714e-08,
+      "independent_lmi_minimum": null,
+      "checkpoint_sha256": "5ce49a95a28b4397d29a5f406d2a66ebf2144d29572af30b0272ca5ac435b619"
+    },
+    {
+      "job": "uci-letter-sdp-ce",
+      "fold": 1,
+      "max_metric_difference": 2.1362304702954305e-08,
+      "independent_lmi_minimum": null,
+      "checkpoint_sha256": "c699aad381828022114a0827b7c747edb1540bd99ae2fc79a934184d11965490"
+    },
+    {
+      "job": "uci-letter-sdp-ce",
+      "fold": 2,
+      "max_metric_difference": 3.2234191871260975e-08,
+      "independent_lmi_minimum": null,
+      "checkpoint_sha256": "e1fa82ef2ec2a00b8c1256a76e01dba12f23813426d8e92c1018e5efbd59c271"
+    },
+    {
+      "job": "uci-letter-sdp-ce",
+      "fold": 3,
+      "max_metric_difference": 1.6689300497141346e-08,
+      "independent_lmi_minimum": null,
+      "checkpoint_sha256": "c91afa7f61c246335483ad7b0e6cfcf093904b53362878106a2569cbe6fc193f"
+    },
+    {
+      "job": "uci-letter-aol-ce",
+      "fold": 0,
+      "max_metric_difference": 1.6498565624800676e-08,
+      "independent_lmi_minimum": null,
+      "checkpoint_sha256": "41e9e8d3f2047dfc395985dcc2cba9af5041a4dcd8885a1b7729e686d76422c1"
+    },
+    {
+      "job": "uci-letter-aol-ce",
+      "fold": 1,
+      "max_metric_difference": 1.1348724404669497e-08,
+      "independent_lmi_minimum": null,
+      "checkpoint_sha256": "7a7ee376c6abc84dc4f7c5ab211f80647202489cea23b5bcdeaf1bc3e41a5d25"
+    },
+    {
+      "job": "uci-letter-aol-ce",
+      "fold": 2,
+      "max_metric_difference": 2.5367736800063767e-08,
+      "independent_lmi_minimum": null,
+      "checkpoint_sha256": "3f8713ccccebfa8b412a43a72c7eea2c437d52a0b93ef13e9eeebac8ba2bed1b"
+    },
+    {
+      "job": "uci-letter-aol-ce",
+      "fold": 3,
+      "max_metric_difference": 3.452301022832671e-08,
+      "independent_lmi_minimum": null,
+      "checkpoint_sha256": "7a1a632024e307a012d44c715108d5b119689947a3e338f29e4fb8ba28917ccd"
+    },
+    {
+      "job": "uci-letter-ortho-ce",
+      "fold": 0,
+      "max_metric_difference": 4.2057037408227416e-08,
+      "independent_lmi_minimum": null,
+      "checkpoint_sha256": "1ad003a865d89085f1558556904d241fde400a7b828bf1e2ea3bbafa6b7ccfad"
+    },
+    {
+      "job": "uci-letter-ortho-ce",
+      "fold": 1,
+      "max_metric_difference": 4.291534427824928e-08,
+      "independent_lmi_minimum": null,
+      "checkpoint_sha256": "6934267b7387f238639537b9b93a1d28c6a04599847c69f9ff33e7c8c37710ce"
+    },
+    {
+      "job": "uci-letter-ortho-ce",
+      "fold": 2,
+      "max_metric_difference": 3.39508056113047e-08,
+      "independent_lmi_minimum": null,
+      "checkpoint_sha256": "483995c2aa379e63096a3692e0af1221658ac33e9e0c5b67150ede2a7966a66a"
+    },
+    {
+      "job": "uci-letter-ortho-ce",
+      "fold": 3,
+      "max_metric_difference": 3.547668459003006e-08,
+      "independent_lmi_minimum": null,
+      "checkpoint_sha256": "1a5599ae107f78cac529f67aae9a210e936cd41b14246f2623fb91afc9c15b6d"
+    },
+    {
+      "job": "uci-semeion-ldlt-resnet-ce",
+      "fold": 0,
+      "max_metric_difference": 1.3478437255187714e-08,
+      "independent_lmi_minimum": 0.01381456455201034,
+      "checkpoint_sha256": "79e84a315dfeecba745f0f4679934c105c9aa280be0338513ff7fb31a50412f7"
+    },
+    {
+      "job": "uci-semeion-ldlt-resnet-ce",
+      "fold": 1,
+      "max_metric_difference": 2.6657353657810745e-08,
+      "independent_lmi_minimum": 0.009644618716319506,
+      "checkpoint_sha256": "914ef0473aa21ebe686f910db4abb8b5f86d4b8d809e61a10000f8f9d95d5107"
+    },
+    {
+      "job": "uci-semeion-ldlt-resnet-ce",
+      "fold": 2,
+      "max_metric_difference": 2.9353041108848288e-08,
+      "independent_lmi_minimum": 0.019455760249858782,
+      "checkpoint_sha256": "becd8888dd826c9e1be93c28ebfc3745f30753ad4c5e4e1c5a059641b995438f"
+    },
+    {
+      "job": "uci-semeion-ldlt-resnet-ce",
+      "fold": 3,
+      "max_metric_difference": 1.7971249710591053e-08,
+      "independent_lmi_minimum": 0.017091849879979137,
+      "checkpoint_sha256": "15834d98f2ac937d34fe738ceedd1e49e1fbc29a2002d6f7a8dffa40a0fd05c2"
+    },
+    {
+      "job": "uci-semeion-ldlt-ce",
+      "fold": 0,
+      "max_metric_difference": 1.4976041406988827e-08,
+      "independent_lmi_minimum": 0.020907559096152675,
+      "checkpoint_sha256": "1db865c75bbbfdeeb4dbe7f52c7816e5bce4374d3d083c61ea5a83cea94d1d3c"
+    },
+    {
+      "job": "uci-semeion-ldlt-ce",
+      "fold": 1,
+      "max_metric_difference": 1.88698121572628e-08,
+      "independent_lmi_minimum": 0.01813853539222657,
+      "checkpoint_sha256": "0d4cca54185bfd2f0a931d7f1ab50baddb773530984ee91863c54ced97fac5c0"
+    },
+    {
+      "job": "uci-semeion-ldlt-ce",
+      "fold": 2,
+      "max_metric_difference": 3.7440103461960916e-08,
+      "independent_lmi_minimum": 0.015524128622798788,
+      "checkpoint_sha256": "0bd0851b9e97cd4cf420feec9120fcefa0fbdf5b0dc964ca92368be57346cd9b"
+    },
+    {
+      "job": "uci-semeion-ldlt-ce",
+      "fold": 3,
+      "max_metric_difference": 1.6174124706225257e-08,
+      "independent_lmi_minimum": 0.017833948375128316,
+      "checkpoint_sha256": "e09ef67dca83dc389e2651365ea1ab1cd60a24d3a9227555dfea83088dce20df"
+    },
+    {
+      "job": "uci-semeion-sandwich-ce",
+      "fold": 0,
+      "max_metric_difference": 2.456070791190257e-08,
+      "independent_lmi_minimum": null,
+      "checkpoint_sha256": "31b882d06db6d4acf61fc26490bc97ef0ee0935e9069ed161293b47aa4f8ff20"
+    },
+    {
+      "job": "uci-semeion-sandwich-ce",
+      "fold": 1,
+      "max_metric_difference": 3.803914516709028e-08,
+      "independent_lmi_minimum": null,
+      "checkpoint_sha256": "2712a1fbd28e65a8bd7f8a27b34f01d30f1676061592b93820bad7db4627141a"
+    },
+    {
+      "job": "uci-semeion-sandwich-ce",
+      "fold": 2,
+      "max_metric_difference": 2.9952082813977654e-08,
+      "independent_lmi_minimum": null,
+      "checkpoint_sha256": "1444aa3044d8b229c39f072471649c900541033cc7f6fac02c8fceeb647211ec"
+    },
+    {
+      "job": "uci-semeion-sandwich-ce",
+      "fold": 3,
+      "max_metric_difference": 1.527556225955351e-08,
+      "independent_lmi_minimum": null,
+      "checkpoint_sha256": "85e3e504867404641a546634584b4defbb76030f9358fb6ceb1e8d9eb4f57633"
+    },
+    {
+      "job": "uci-semeion-sdp-ce",
+      "fold": 0,
+      "max_metric_difference": 3.7440103461960916e-08,
+      "independent_lmi_minimum": null,
+      "checkpoint_sha256": "faa408cfac004d6c78f6191d4d6d8001ac8f6c3fb62cb8d1d7ca322e9154f3b5"
+    },
+    {
+      "job": "uci-semeion-sdp-ce",
+      "fold": 1,
+      "max_metric_difference": 1.9169333009827483e-08,
+      "independent_lmi_minimum": null,
+      "checkpoint_sha256": "22ae86d3ffe0938adfa1d1d5ce3deeb102f33fa62e9a5f793669d3b75ee78cc4"
+    },
+    {
+      "job": "uci-semeion-sdp-ce",
+      "fold": 2,
+      "max_metric_difference": 3.4744416010923374e-08,
+      "independent_lmi_minimum": null,
+      "checkpoint_sha256": "1549402074f25fdbd6ea73f8dee003018ff7bb44d1b50762e55875d3686b573f"
+    },
+    {
+      "job": "uci-semeion-sdp-ce",
+      "fold": 3,
+      "max_metric_difference": 3.803914516709028e-08,
+      "independent_lmi_minimum": null,
+      "checkpoint_sha256": "7d22a7ee4286dd55e945aa7e77b70e8745200fb1bbb72765ae14465c21a867ff"
+    },
+    {
+      "job": "uci-semeion-aol-ce",
+      "fold": 0,
+      "max_metric_difference": 3.4744416010923374e-08,
+      "independent_lmi_minimum": null,
+      "checkpoint_sha256": "bd858830db471a064b47e95316b79664d8d83d5ae534b22d5269dbec68bd3c2d"
+    },
+    {
+      "job": "uci-semeion-aol-ce",
+      "fold": 1,
+      "max_metric_difference": 3.803914516709028e-08,
+      "independent_lmi_minimum": null,
+      "checkpoint_sha256": "7c92dde038fe82e843a690f8bedc0df6690eacb5402b3bba15f397a517ed81a5"
+    },
+    {
+      "job": "uci-semeion-aol-ce",
+      "fold": 2,
+      "max_metric_difference": 3.4744416010923374e-08,
+      "independent_lmi_minimum": null,
+      "checkpoint_sha256": "163722d39f0fc70a178eea193cce7a19abe26fa55db2002d72ab9c0e907b4ef4"
+    },
+    {
+      "job": "uci-semeion-aol-ce",
+      "fold": 3,
+      "max_metric_difference": 3.26477702650152e-08,
+      "independent_lmi_minimum": null,
+      "checkpoint_sha256": "372485455b7f401c27dce2b2dbb864820c5602a52bdf30b457d03fd9793db3e3"
+    },
+    {
+      "job": "uci-semeion-ortho-ce",
+      "fold": 0,
+      "max_metric_difference": 3.204872855988583e-08,
+      "independent_lmi_minimum": null,
+      "checkpoint_sha256": "1770734c9aaaccbf1ff9d00e6c436ee91d780062e6e354004d977525fa36c370"
+    },
+    {
+      "job": "uci-semeion-ortho-ce",
+      "fold": 1,
+      "max_metric_difference": 1.767172885802637e-08,
+      "independent_lmi_minimum": null,
+      "checkpoint_sha256": "274763789c7c363e45cc6b3186f8e4da261aeb191b9afc328c1fa46df64f2bcd"
+    },
+    {
+      "job": "uci-semeion-ortho-ce",
+      "fold": 2,
+      "max_metric_difference": 3.803914516709028e-08,
+      "independent_lmi_minimum": null,
+      "checkpoint_sha256": "7e11a20b87d618d716954fe4887bf0b6c42484dfa2e1609e146a41e1b61434ff"
+    },
+    {
+      "job": "uci-semeion-ortho-ce",
+      "fold": 3,
+      "max_metric_difference": 2.246406205497209e-08,
+      "independent_lmi_minimum": null,
+      "checkpoint_sha256": "0c868cc628218c857b4cd8ac7558c446fe2ecd03669bddcf0d1c314d420f9cd5"
+    },
+    {
+      "job": "uci-abalone-ldlt-resnet-margin",
+      "fold": 0,
+      "max_metric_difference": 1.986821490662649e-08,
+      "independent_lmi_minimum": 0.03682123066466189,
+      "checkpoint_sha256": "70863872e6c1d1a61dd585215bfef3f8e8a7d7d0794719224cb5ebe4b1be33c3"
+    },
+    {
+      "job": "uci-abalone-ldlt-resnet-margin",
+      "fold": 1,
+      "max_metric_difference": 2.6034212674552748e-08,
+      "independent_lmi_minimum": 0.02213635360656171,
+      "checkpoint_sha256": "ea6a4ca72c8a4e14142ceea2ee06ac3ee8d4a53ff59f753ae97a3c361c24f763"
+    },
+    {
+      "job": "uci-abalone-ldlt-resnet-margin",
+      "fold": 2,
+      "max_metric_difference": 6.7369234635350495e-09,
+      "independent_lmi_minimum": 0.03824829877986144,
+      "checkpoint_sha256": "9a7583a5197a165982695849add88616afb6a9ef737e76ba375dd6e94fb34970"
+    },
+    {
+      "job": "uci-abalone-ldlt-resnet-margin",
+      "fold": 3,
+      "max_metric_difference": 1.8041252602962743e-08,
+      "independent_lmi_minimum": 0.019979928452513743,
+      "checkpoint_sha256": "8c26096ad83b59940eeae9553e71168054cffdd2aff8d7bfe179cfdc70ec3d24"
+    },
+    {
+      "job": "uci-abalone-ldlt-margin",
+      "fold": 0,
+      "max_metric_difference": 9.363181729948877e-09,
+      "independent_lmi_minimum": 0.027340454654036454,
+      "checkpoint_sha256": "982740e3621261654117cefe8810fe2fd758a47dc58ac6e511f8496072af8b0c"
+    },
+    {
+      "job": "uci-abalone-ldlt-margin",
+      "fold": 1,
+      "max_metric_difference": 2.3522139513953988e-08,
+      "independent_lmi_minimum": 0.02360105899702397,
+      "checkpoint_sha256": "d2c95676312e9aaaf79afae7f2e12f49cbe8c7a0c79195b6a8bb306d884dca3a"
+    },
+    {
+      "job": "uci-abalone-ldlt-margin",
+      "fold": 2,
+      "max_metric_difference": 1.7127771478886444e-08,
+      "independent_lmi_minimum": 0.023929744486080495,
+      "checkpoint_sha256": "28420a02f493dedfb7386d6247fe7782f91a137843e7f39cccf6a19e620b4a46"
+    },
+    {
+      "job": "uci-abalone-ldlt-margin",
+      "fold": 3,
+      "max_metric_difference": 1.0276662909536327e-08,
+      "independent_lmi_minimum": 0.02759556354148762,
+      "checkpoint_sha256": "48b427d35f809187dc8a9572faf8c79b0c1aced56752c9254acb68a297104045"
+    },
+    {
+      "job": "uci-abalone-sandwich-margin",
+      "fold": 0,
+      "max_metric_difference": 1.0276662909536327e-08,
+      "independent_lmi_minimum": null,
+      "checkpoint_sha256": "2a68c41af5a6f502cbd26e7131f3b7772be2298166c4e1fde2135fedd17b0bd2"
+    },
+    {
+      "job": "uci-abalone-sandwich-margin",
+      "fold": 1,
+      "max_metric_difference": 1.3017106337276374e-08,
+      "independent_lmi_minimum": null,
+      "checkpoint_sha256": "16aa949cec54ac5c4d2c54ba012ba7b9ed394ef808f63f9feb6a1b114a09db7f"
+    },
+    {
+      "job": "uci-abalone-sandwich-margin",
+      "fold": 2,
+      "max_metric_difference": 1.7127771478886444e-08,
+      "independent_lmi_minimum": null,
+      "checkpoint_sha256": "e7dda664512348dea3d95dba26279b5e0d5cf921e2f0d82441ad38afc30c2ffb"
+    },
+    {
+      "job": "uci-abalone-sandwich-margin",
+      "fold": 3,
+      "max_metric_difference": 2.078169608621394e-08,
+      "independent_lmi_minimum": null,
+      "checkpoint_sha256": "fe8afed61519d468536e678e1ba04783fd7abdcd33425d7712267a8f32edd3b0"
+    },
+    {
+      "job": "uci-abalone-sdp-margin",
+      "fold": 0,
+      "max_metric_difference": 2.089588119202901e-08,
+      "independent_lmi_minimum": null,
+      "checkpoint_sha256": "62fc26964e73ac026affbb131b505fef1e04ac06c685fc782926027a1efd71fb"
+    },
+    {
+      "job": "uci-abalone-sdp-margin",
+      "fold": 1,
+      "max_metric_difference": 2.2266102905899032e-08,
+      "independent_lmi_minimum": null,
+      "checkpoint_sha256": "37102a59f34ead40ce7ec0f53011ed2970a6989e3c126d32619d5db2e61398f1"
+    },
+    {
+      "job": "uci-abalone-sdp-margin",
+      "fold": 2,
+      "max_metric_difference": 1.335966176574388e-08,
+      "independent_lmi_minimum": null,
+      "checkpoint_sha256": "2f6cf7433c1ae6d3d6ec7fd3fa9e9213f48b6997843d7197131a437512b659d5"
+    },
+    {
+      "job": "uci-abalone-sdp-margin",
+      "fold": 3,
+      "max_metric_difference": 1.986821490662649e-08,
+      "independent_lmi_minimum": null,
+      "checkpoint_sha256": "1e3ff0d0f7aa439ba5c161bbc67afd961d4564515b898bcad7fceac9cb1697f7"
+    }
+  ],
+  "scope": "Fresh loads for selected datasets, all available methods/losses and four splits; not all UCI checkpoints.",
+  "elapsed_seconds": 4.345453215762973
+}

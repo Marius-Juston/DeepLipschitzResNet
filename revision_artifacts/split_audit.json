@@ -1,0 +1,3152 @@
+{
+  "datasets": 121,
+  "supplied_splits": 484,
+  "rows": [
+    {
+      "dataset": "abalone",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          2503,
+          630,
+          1044
+        ],
+        [
+          2505,
+          628,
+          1044
+        ],
+        [
+          2532,
+          601,
+          1044
+        ],
+        [
+          2526,
+          607,
+          1044
+        ]
+      ]
+    },
+    {
+      "dataset": "acute-inflammation",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          74,
+          16,
+          30
+        ],
+        [
+          72,
+          18,
+          30
+        ],
+        [
+          70,
+          20,
+          30
+        ],
+        [
+          69,
+          21,
+          30
+        ]
+      ]
+    },
+    {
+      "dataset": "acute-nephritis",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          73,
+          17,
+          30
+        ],
+        [
+          76,
+          14,
+          30
+        ],
+        [
+          79,
+          11,
+          30
+        ],
+        [
+          71,
+          19,
+          30
+        ]
+      ]
+    },
+    {
+      "dataset": "adult",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          25999,
+          6562,
+          16281
+        ],
+        [
+          26017,
+          6544,
+          16281
+        ],
+        [
+          26084,
+          6477,
+          16281
+        ],
+        [
+          25954,
+          6607,
+          16281
+        ]
+      ]
+    },
+    {
+      "dataset": "annealing",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          630,
+          168,
+          100
+        ],
+        [
+          637,
+          161,
+          100
+        ],
+        [
+          627,
+          171,
+          100
+        ],
+        [
+          631,
+          167,
+          100
+        ]
+      ]
+    },
+    {
+      "dataset": "arrhythmia",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          260,
+          79,
+          113
+        ],
+        [
+          282,
+          57,
+          113
+        ],
+        [
+          274,
+          65,
+          113
+        ],
+        [
+          272,
+          67,
+          113
+        ]
+      ]
+    },
+    {
+      "dataset": "audiology-std",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          140,
+          31,
+          25
+        ],
+        [
+          138,
+          33,
+          25
+        ],
+        [
+          146,
+          25,
+          25
+        ],
+        [
+          141,
+          30,
+          25
+        ]
+      ]
+    },
+    {
+      "dataset": "balance-scale",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          386,
+          83,
+          156
+        ],
+        [
+          372,
+          97,
+          156
+        ],
+        [
+          376,
+          93,
+          156
+        ],
+        [
+          377,
+          92,
+          156
+        ]
+      ]
+    },
+    {
+      "dataset": "balloons",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          8,
+          4,
+          4
+        ],
+        [
+          10,
+          2,
+          4
+        ],
+        [
+          11,
+          1,
+          4
+        ],
+        [
+          11,
+          1,
+          4
+        ]
+      ]
+    },
+    {
+      "dataset": "bank",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          2690,
+          701,
+          1130
+        ],
+        [
+          2721,
+          670,
+          1130
+        ],
+        [
+          2698,
+          693,
+          1130
+        ],
+        [
+          2728,
+          663,
+          1130
+        ]
+      ]
+    },
+    {
+      "dataset": "blood",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          439,
+          122,
+          187
+        ],
+        [
+          445,
+          116,
+          187
+        ],
+        [
+          451,
+          110,
+          187
+        ],
+        [
+          443,
+          118,
+          187
+        ]
+      ]
+    },
+    {
+      "dataset": "breast-cancer",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          181,
+          34,
+          71
+        ],
+        [
+          169,
+          46,
+          71
+        ],
+        [
+          185,
+          30,
+          71
+        ],
+        [
+          169,
+          46,
+          71
+        ]
+      ]
+    },
+    {
+      "dataset": "breast-cancer-wisc",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          406,
+          118,
+          175
+        ],
+        [
+          410,
+          114,
+          175
+        ],
+        [
+          417,
+          107,
+          175
+        ],
+        [
+          431,
+          93,
+          175
+        ]
+      ]
+    },
+    {
+      "dataset": "breast-cancer-wisc-diag",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          347,
+          80,
+          142
+        ],
+        [
+          345,
+          82,
+          142
+        ],
+        [
+          339,
+          88,
+          142
+        ],
+        [
+          346,
+          81,
+          142
+        ]
+      ]
+    },
+    {
+      "dataset": "breast-cancer-wisc-prog",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          127,
+          22,
+          49
+        ],
+        [
+          119,
+          30,
+          49
+        ],
+        [
+          112,
+          37,
+          49
+        ],
+        [
+          124,
+          25,
+          49
+        ]
+      ]
+    },
+    {
+      "dataset": "breast-tissue",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          64,
+          16,
+          26
+        ],
+        [
+          63,
+          17,
+          26
+        ],
+        [
+          58,
+          22,
+          26
+        ],
+        [
+          68,
+          12,
+          26
+        ]
+      ]
+    },
+    {
+      "dataset": "car",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          1026,
+          270,
+          432
+        ],
+        [
+          1042,
+          254,
+          432
+        ],
+        [
+          1046,
+          250,
+          432
+        ],
+        [
+          1023,
+          273,
+          432
+        ]
+      ]
+    },
+    {
+      "dataset": "cardiotocography-10clases",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          1276,
+          319,
+          531
+        ],
+        [
+          1266,
+          329,
+          531
+        ],
+        [
+          1258,
+          337,
+          531
+        ],
+        [
+          1279,
+          316,
+          531
+        ]
+      ]
+    },
+    {
+      "dataset": "cardiotocography-3clases",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          1272,
+          323,
+          531
+        ],
+        [
+          1269,
+          326,
+          531
+        ],
+        [
+          1265,
+          330,
+          531
+        ],
+        [
+          1282,
+          313,
+          531
+        ]
+      ]
+    },
+    {
+      "dataset": "chess-krvk",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          16816,
+          4226,
+          7014
+        ],
+        [
+          16813,
+          4229,
+          7014
+        ],
+        [
+          16836,
+          4206,
+          7014
+        ],
+        [
+          16772,
+          4270,
+          7014
+        ]
+      ]
+    },
+    {
+      "dataset": "chess-krvkp",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          1933,
+          464,
+          799
+        ],
+        [
+          1946,
+          451,
+          799
+        ],
+        [
+          1922,
+          475,
+          799
+        ],
+        [
+          1939,
+          458,
+          799
+        ]
+      ]
+    },
+    {
+      "dataset": "congressional-voting",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          269,
+          57,
+          109
+        ],
+        [
+          262,
+          64,
+          109
+        ],
+        [
+          273,
+          53,
+          109
+        ],
+        [
+          255,
+          71,
+          109
+        ]
+      ]
+    },
+    {
+      "dataset": "conn-bench-sonar-mines-rocks",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          123,
+          33,
+          52
+        ],
+        [
+          127,
+          29,
+          52
+        ],
+        [
+          123,
+          33,
+          52
+        ],
+        [
+          123,
+          33,
+          52
+        ]
+      ]
+    },
+    {
+      "dataset": "conn-bench-vowel-deterding",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          427,
+          101,
+          462
+        ],
+        [
+          420,
+          108,
+          462
+        ],
+        [
+          427,
+          101,
+          462
+        ],
+        [
+          421,
+          107,
+          462
+        ]
+      ]
+    },
+    {
+      "dataset": "connect-4",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          40417,
+          10251,
+          16889
+        ],
+        [
+          40512,
+          10156,
+          16889
+        ],
+        [
+          40438,
+          10230,
+          16889
+        ],
+        [
+          40642,
+          10026,
+          16889
+        ]
+      ]
+    },
+    {
+      "dataset": "contrac",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          894,
+          211,
+          368
+        ],
+        [
+          895,
+          210,
+          368
+        ],
+        [
+          857,
+          248,
+          368
+        ],
+        [
+          874,
+          231,
+          368
+        ]
+      ]
+    },
+    {
+      "dataset": "credit-approval",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          418,
+          100,
+          172
+        ],
+        [
+          425,
+          93,
+          172
+        ],
+        [
+          411,
+          107,
+          172
+        ],
+        [
+          412,
+          106,
+          172
+        ]
+      ]
+    },
+    {
+      "dataset": "cylinder-bands",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          302,
+          82,
+          128
+        ],
+        [
+          312,
+          72,
+          128
+        ],
+        [
+          309,
+          75,
+          128
+        ],
+        [
+          310,
+          74,
+          128
+        ]
+      ]
+    },
+    {
+      "dataset": "dermatology",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          217,
+          58,
+          91
+        ],
+        [
+          220,
+          55,
+          91
+        ],
+        [
+          214,
+          61,
+          91
+        ],
+        [
+          223,
+          52,
+          91
+        ]
+      ]
+    },
+    {
+      "dataset": "echocardiogram",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          78,
+          20,
+          33
+        ],
+        [
+          75,
+          23,
+          33
+        ],
+        [
+          78,
+          20,
+          33
+        ],
+        [
+          89,
+          9,
+          33
+        ]
+      ]
+    },
+    {
+      "dataset": "ecoli",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          198,
+          54,
+          84
+        ],
+        [
+          195,
+          57,
+          84
+        ],
+        [
+          196,
+          56,
+          84
+        ],
+        [
+          198,
+          54,
+          84
+        ]
+      ]
+    },
+    {
+      "dataset": "energy-y1",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          472,
+          104,
+          192
+        ],
+        [
+          444,
+          132,
+          192
+        ],
+        [
+          457,
+          119,
+          192
+        ],
+        [
+          462,
+          114,
+          192
+        ]
+      ]
+    },
+    {
+      "dataset": "energy-y2",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          460,
+          116,
+          192
+        ],
+        [
+          454,
+          122,
+          192
+        ],
+        [
+          454,
+          122,
+          192
+        ],
+        [
+          463,
+          113,
+          192
+        ]
+      ]
+    },
+    {
+      "dataset": "fertility",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          57,
+          18,
+          25
+        ],
+        [
+          61,
+          14,
+          25
+        ],
+        [
+          55,
+          20,
+          25
+        ],
+        [
+          64,
+          11,
+          25
+        ]
+      ]
+    },
+    {
+      "dataset": "flags",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          119,
+          27,
+          48
+        ],
+        [
+          117,
+          29,
+          48
+        ],
+        [
+          120,
+          26,
+          48
+        ],
+        [
+          115,
+          31,
+          48
+        ]
+      ]
+    },
+    {
+      "dataset": "glass",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          124,
+          37,
+          53
+        ],
+        [
+          131,
+          30,
+          53
+        ],
+        [
+          135,
+          26,
+          53
+        ],
+        [
+          133,
+          28,
+          53
+        ]
+      ]
+    },
+    {
+      "dataset": "haberman-survival",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          184,
+          46,
+          76
+        ],
+        [
+          187,
+          43,
+          76
+        ],
+        [
+          177,
+          53,
+          76
+        ],
+        [
+          193,
+          37,
+          76
+        ]
+      ]
+    },
+    {
+      "dataset": "hayes-roth",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          98,
+          34,
+          28
+        ],
+        [
+          107,
+          25,
+          28
+        ],
+        [
+          104,
+          28,
+          28
+        ],
+        [
+          104,
+          28,
+          28
+        ]
+      ]
+    },
+    {
+      "dataset": "heart-cleveland",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          173,
+          54,
+          76
+        ],
+        [
+          184,
+          43,
+          76
+        ],
+        [
+          170,
+          57,
+          76
+        ],
+        [
+          190,
+          37,
+          76
+        ]
+      ]
+    },
+    {
+      "dataset": "heart-hungarian",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          187,
+          34,
+          73
+        ],
+        [
+          182,
+          39,
+          73
+        ],
+        [
+          179,
+          42,
+          73
+        ],
+        [
+          177,
+          44,
+          73
+        ]
+      ]
+    },
+    {
+      "dataset": "heart-switzerland",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          74,
+          18,
+          31
+        ],
+        [
+          74,
+          18,
+          31
+        ],
+        [
+          68,
+          24,
+          31
+        ],
+        [
+          78,
+          14,
+          31
+        ]
+      ]
+    },
+    {
+      "dataset": "heart-va",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          113,
+          37,
+          50
+        ],
+        [
+          120,
+          30,
+          50
+        ],
+        [
+          123,
+          27,
+          50
+        ],
+        [
+          120,
+          30,
+          50
+        ]
+      ]
+    },
+    {
+      "dataset": "hepatitis",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          93,
+          23,
+          39
+        ],
+        [
+          90,
+          26,
+          39
+        ],
+        [
+          98,
+          18,
+          39
+        ],
+        [
+          90,
+          26,
+          39
+        ]
+      ]
+    },
+    {
+      "dataset": "hill-valley",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          480,
+          126,
+          606
+        ],
+        [
+          485,
+          121,
+          606
+        ],
+        [
+          486,
+          120,
+          606
+        ],
+        [
+          492,
+          114,
+          606
+        ]
+      ]
+    },
+    {
+      "dataset": "horse-colic",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          234,
+          66,
+          68
+        ],
+        [
+          228,
+          72,
+          68
+        ],
+        [
+          237,
+          63,
+          68
+        ],
+        [
+          250,
+          50,
+          68
+        ]
+      ]
+    },
+    {
+      "dataset": "ilpd-indian-liver",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          351,
+          86,
+          146
+        ],
+        [
+          368,
+          69,
+          146
+        ],
+        [
+          349,
+          88,
+          146
+        ],
+        [
+          353,
+          84,
+          146
+        ]
+      ]
+    },
+    {
+      "dataset": "image-segmentation",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          160,
+          50,
+          2100
+        ],
+        [
+          163,
+          47,
+          2100
+        ],
+        [
+          167,
+          43,
+          2100
+        ],
+        [
+          174,
+          36,
+          2100
+        ]
+      ]
+    },
+    {
+      "dataset": "ionosphere",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          216,
+          47,
+          88
+        ],
+        [
+          208,
+          55,
+          88
+        ],
+        [
+          204,
+          59,
+          88
+        ],
+        [
+          209,
+          54,
+          88
+        ]
+      ]
+    },
+    {
+      "dataset": "iris",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          92,
+          21,
+          37
+        ],
+        [
+          84,
+          29,
+          37
+        ],
+        [
+          90,
+          23,
+          37
+        ],
+        [
+          79,
+          34,
+          37
+        ]
+      ]
+    },
+    {
+      "dataset": "led-display",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          594,
+          156,
+          250
+        ],
+        [
+          609,
+          141,
+          250
+        ],
+        [
+          593,
+          157,
+          250
+        ],
+        [
+          584,
+          166,
+          250
+        ]
+      ]
+    },
+    {
+      "dataset": "lenses",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          14,
+          4,
+          6
+        ],
+        [
+          14,
+          4,
+          6
+        ],
+        [
+          16,
+          2,
+          6
+        ],
+        [
+          14,
+          4,
+          6
+        ]
+      ]
+    },
+    {
+      "dataset": "letter",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          11941,
+          3059,
+          5000
+        ],
+        [
+          11889,
+          3111,
+          5000
+        ],
+        [
+          12100,
+          2900,
+          5000
+        ],
+        [
+          12005,
+          2995,
+          5000
+        ]
+      ]
+    },
+    {
+      "dataset": "libras",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          222,
+          48,
+          90
+        ],
+        [
+          214,
+          56,
+          90
+        ],
+        [
+          214,
+          56,
+          90
+        ],
+        [
+          225,
+          45,
+          90
+        ]
+      ]
+    },
+    {
+      "dataset": "low-res-spect",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          316,
+          82,
+          133
+        ],
+        [
+          329,
+          69,
+          133
+        ],
+        [
+          304,
+          94,
+          133
+        ],
+        [
+          308,
+          90,
+          133
+        ]
+      ]
+    },
+    {
+      "dataset": "lung-cancer",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          20,
+          4,
+          8
+        ],
+        [
+          20,
+          4,
+          8
+        ],
+        [
+          16,
+          8,
+          8
+        ],
+        [
+          17,
+          7,
+          8
+        ]
+      ]
+    },
+    {
+      "dataset": "lymphography",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          91,
+          20,
+          37
+        ],
+        [
+          83,
+          28,
+          37
+        ],
+        [
+          86,
+          25,
+          37
+        ],
+        [
+          93,
+          18,
+          37
+        ]
+      ]
+    },
+    {
+      "dataset": "magic",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          11412,
+          2853,
+          4755
+        ],
+        [
+          11405,
+          2860,
+          4755
+        ],
+        [
+          11400,
+          2865,
+          4755
+        ],
+        [
+          11445,
+          2820,
+          4755
+        ]
+      ]
+    },
+    {
+      "dataset": "mammographic",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          575,
+          146,
+          240
+        ],
+        [
+          571,
+          150,
+          240
+        ],
+        [
+          575,
+          146,
+          240
+        ],
+        [
+          585,
+          136,
+          240
+        ]
+      ]
+    },
+    {
+      "dataset": "miniboone",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          77904,
+          19644,
+          32516
+        ],
+        [
+          77896,
+          19652,
+          32516
+        ],
+        [
+          78034,
+          19514,
+          32516
+        ],
+        [
+          78002,
+          19546,
+          32516
+        ]
+      ]
+    },
+    {
+      "dataset": "molec-biol-promoter",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          64,
+          16,
+          26
+        ],
+        [
+          65,
+          15,
+          26
+        ],
+        [
+          68,
+          12,
+          26
+        ],
+        [
+          69,
+          11,
+          26
+        ]
+      ]
+    },
+    {
+      "dataset": "molec-biol-splice",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          1913,
+          480,
+          797
+        ],
+        [
+          1937,
+          456,
+          797
+        ],
+        [
+          1871,
+          522,
+          797
+        ],
+        [
+          1918,
+          475,
+          797
+        ]
+      ]
+    },
+    {
+      "dataset": "monks-1",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          89,
+          35,
+          432
+        ],
+        [
+          101,
+          23,
+          432
+        ],
+        [
+          95,
+          29,
+          432
+        ],
+        [
+          101,
+          23,
+          432
+        ]
+      ]
+    },
+    {
+      "dataset": "monks-2",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          139,
+          30,
+          432
+        ],
+        [
+          143,
+          26,
+          432
+        ],
+        [
+          140,
+          29,
+          432
+        ],
+        [
+          140,
+          29,
+          432
+        ]
+      ]
+    },
+    {
+      "dataset": "monks-3",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          90,
+          32,
+          432
+        ],
+        [
+          104,
+          18,
+          432
+        ],
+        [
+          98,
+          24,
+          432
+        ],
+        [
+          93,
+          29,
+          432
+        ]
+      ]
+    },
+    {
+      "dataset": "mushroom",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          4889,
+          1204,
+          2031
+        ],
+        [
+          4839,
+          1254,
+          2031
+        ],
+        [
+          4811,
+          1282,
+          2031
+        ],
+        [
+          4849,
+          1244,
+          2031
+        ]
+      ]
+    },
+    {
+      "dataset": "musk-1",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          281,
+          76,
+          119
+        ],
+        [
+          275,
+          82,
+          119
+        ],
+        [
+          293,
+          64,
+          119
+        ],
+        [
+          285,
+          72,
+          119
+        ]
+      ]
+    },
+    {
+      "dataset": "musk-2",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          3998,
+          951,
+          1649
+        ],
+        [
+          3922,
+          1027,
+          1649
+        ],
+        [
+          3965,
+          984,
+          1649
+        ],
+        [
+          3976,
+          973,
+          1649
+        ]
+      ]
+    },
+    {
+      "dataset": "nursery",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          7802,
+          1918,
+          3240
+        ],
+        [
+          7753,
+          1967,
+          3240
+        ],
+        [
+          7810,
+          1910,
+          3240
+        ],
+        [
+          7796,
+          1924,
+          3240
+        ]
+      ]
+    },
+    {
+      "dataset": "oocytes_merluccius_nucleus_4d",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          606,
+          161,
+          255
+        ],
+        [
+          637,
+          130,
+          255
+        ],
+        [
+          596,
+          171,
+          255
+        ],
+        [
+          601,
+          166,
+          255
+        ]
+      ]
+    },
+    {
+      "dataset": "oocytes_merluccius_states_2f",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          632,
+          135,
+          255
+        ],
+        [
+          616,
+          151,
+          255
+        ],
+        [
+          611,
+          156,
+          255
+        ],
+        [
+          603,
+          164,
+          255
+        ]
+      ]
+    },
+    {
+      "dataset": "oocytes_trisopterus_nucleus_2f",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          573,
+          111,
+          228
+        ],
+        [
+          554,
+          130,
+          228
+        ],
+        [
+          546,
+          138,
+          228
+        ],
+        [
+          530,
+          154,
+          228
+        ]
+      ]
+    },
+    {
+      "dataset": "oocytes_trisopterus_states_5b",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          555,
+          129,
+          228
+        ],
+        [
+          534,
+          150,
+          228
+        ],
+        [
+          560,
+          124,
+          228
+        ],
+        [
+          554,
+          130,
+          228
+        ]
+      ]
+    },
+    {
+      "dataset": "optical",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          3060,
+          763,
+          1797
+        ],
+        [
+          3057,
+          766,
+          1797
+        ],
+        [
+          3072,
+          751,
+          1797
+        ],
+        [
+          3088,
+          735,
+          1797
+        ]
+      ]
+    },
+    {
+      "dataset": "ozone",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          1543,
+          359,
+          634
+        ],
+        [
+          1499,
+          403,
+          634
+        ],
+        [
+          1519,
+          383,
+          634
+        ],
+        [
+          1495,
+          407,
+          634
+        ]
+      ]
+    },
+    {
+      "dataset": "page-blocks",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          3306,
+          799,
+          1368
+        ],
+        [
+          3286,
+          819,
+          1368
+        ],
+        [
+          3288,
+          817,
+          1368
+        ],
+        [
+          3275,
+          830,
+          1368
+        ]
+      ]
+    },
+    {
+      "dataset": "parkinsons",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          114,
+          32,
+          49
+        ],
+        [
+          117,
+          29,
+          49
+        ],
+        [
+          115,
+          31,
+          49
+        ],
+        [
+          113,
+          33,
+          49
+        ]
+      ]
+    },
+    {
+      "dataset": "pendigits",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          5996,
+          1498,
+          3498
+        ],
+        [
+          5937,
+          1557,
+          3498
+        ],
+        [
+          5985,
+          1509,
+          3498
+        ],
+        [
+          6048,
+          1446,
+          3498
+        ]
+      ]
+    },
+    {
+      "dataset": "pima",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          459,
+          117,
+          192
+        ],
+        [
+          441,
+          135,
+          192
+        ],
+        [
+          456,
+          120,
+          192
+        ],
+        [
+          463,
+          113,
+          192
+        ]
+      ]
+    },
+    {
+      "dataset": "pittsburg-bridges-MATERIAL",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          60,
+          20,
+          26
+        ],
+        [
+          61,
+          19,
+          26
+        ],
+        [
+          64,
+          16,
+          26
+        ],
+        [
+          63,
+          17,
+          26
+        ]
+      ]
+    },
+    {
+      "dataset": "pittsburg-bridges-REL-L",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          64,
+          13,
+          26
+        ],
+        [
+          62,
+          15,
+          26
+        ],
+        [
+          61,
+          16,
+          26
+        ],
+        [
+          63,
+          14,
+          26
+        ]
+      ]
+    },
+    {
+      "dataset": "pittsburg-bridges-SPAN",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          55,
+          14,
+          23
+        ],
+        [
+          61,
+          8,
+          23
+        ],
+        [
+          53,
+          16,
+          23
+        ],
+        [
+          59,
+          10,
+          23
+        ]
+      ]
+    },
+    {
+      "dataset": "pittsburg-bridges-T-OR-D",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          61,
+          16,
+          25
+        ],
+        [
+          58,
+          19,
+          25
+        ],
+        [
+          63,
+          14,
+          25
+        ],
+        [
+          65,
+          12,
+          25
+        ]
+      ]
+    },
+    {
+      "dataset": "pittsburg-bridges-TYPE",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          61,
+          18,
+          26
+        ],
+        [
+          58,
+          21,
+          26
+        ],
+        [
+          66,
+          13,
+          26
+        ],
+        [
+          60,
+          19,
+          26
+        ]
+      ]
+    },
+    {
+      "dataset": "planning",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          110,
+          27,
+          45
+        ],
+        [
+          101,
+          36,
+          45
+        ],
+        [
+          113,
+          24,
+          45
+        ],
+        [
+          114,
+          23,
+          45
+        ]
+      ]
+    },
+    {
+      "dataset": "plant-margin",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          958,
+          242,
+          400
+        ],
+        [
+          966,
+          234,
+          400
+        ],
+        [
+          970,
+          230,
+          400
+        ],
+        [
+          947,
+          253,
+          400
+        ]
+      ]
+    },
+    {
+      "dataset": "plant-shape",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          986,
+          214,
+          400
+        ],
+        [
+          954,
+          246,
+          400
+        ],
+        [
+          965,
+          235,
+          400
+        ],
+        [
+          973,
+          227,
+          400
+        ]
+      ]
+    },
+    {
+      "dataset": "plant-texture",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          950,
+          249,
+          400
+        ],
+        [
+          946,
+          253,
+          400
+        ],
+        [
+          949,
+          250,
+          400
+        ],
+        [
+          956,
+          243,
+          400
+        ]
+      ]
+    },
+    {
+      "dataset": "post-operative",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          55,
+          13,
+          22
+        ],
+        [
+          50,
+          18,
+          22
+        ],
+        [
+          59,
+          9,
+          22
+        ],
+        [
+          54,
+          14,
+          22
+        ]
+      ]
+    },
+    {
+      "dataset": "primary-tumor",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          197,
+          51,
+          82
+        ],
+        [
+          198,
+          50,
+          82
+        ],
+        [
+          198,
+          50,
+          82
+        ],
+        [
+          212,
+          36,
+          82
+        ]
+      ]
+    },
+    {
+      "dataset": "ringnorm",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          4423,
+          1127,
+          1850
+        ],
+        [
+          4462,
+          1088,
+          1850
+        ],
+        [
+          4475,
+          1075,
+          1850
+        ],
+        [
+          4475,
+          1075,
+          1850
+        ]
+      ]
+    },
+    {
+      "dataset": "seeds",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          128,
+          30,
+          52
+        ],
+        [
+          120,
+          38,
+          52
+        ],
+        [
+          124,
+          34,
+          52
+        ],
+        [
+          124,
+          34,
+          52
+        ]
+      ]
+    },
+    {
+      "dataset": "semeion",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          933,
+          262,
+          398
+        ],
+        [
+          987,
+          208,
+          398
+        ],
+        [
+          944,
+          251,
+          398
+        ],
+        [
+          984,
+          211,
+          398
+        ]
+      ]
+    },
+    {
+      "dataset": "soybean",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          248,
+          59,
+          376
+        ],
+        [
+          256,
+          51,
+          376
+        ],
+        [
+          251,
+          56,
+          376
+        ],
+        [
+          244,
+          63,
+          376
+        ]
+      ]
+    },
+    {
+      "dataset": "spambase",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          2726,
+          725,
+          1150
+        ],
+        [
+          2715,
+          736,
+          1150
+        ],
+        [
+          2752,
+          699,
+          1150
+        ],
+        [
+          2774,
+          677,
+          1150
+        ]
+      ]
+    },
+    {
+      "dataset": "spect",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          69,
+          10,
+          186
+        ],
+        [
+          62,
+          17,
+          186
+        ],
+        [
+          59,
+          20,
+          186
+        ],
+        [
+          61,
+          18,
+          186
+        ]
+      ]
+    },
+    {
+      "dataset": "spectf",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          59,
+          21,
+          187
+        ],
+        [
+          61,
+          19,
+          187
+        ],
+        [
+          60,
+          20,
+          187
+        ],
+        [
+          62,
+          18,
+          187
+        ]
+      ]
+    },
+    {
+      "dataset": "statlog-australian-credit",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          412,
+          106,
+          172
+        ],
+        [
+          421,
+          97,
+          172
+        ],
+        [
+          428,
+          90,
+          172
+        ],
+        [
+          415,
+          103,
+          172
+        ]
+      ]
+    },
+    {
+      "dataset": "statlog-german-credit",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          606,
+          144,
+          250
+        ],
+        [
+          585,
+          165,
+          250
+        ],
+        [
+          599,
+          151,
+          250
+        ],
+        [
+          600,
+          150,
+          250
+        ]
+      ]
+    },
+    {
+      "dataset": "statlog-heart",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          165,
+          38,
+          67
+        ],
+        [
+          152,
+          51,
+          67
+        ],
+        [
+          157,
+          46,
+          67
+        ],
+        [
+          163,
+          40,
+          67
+        ]
+      ]
+    },
+    {
+      "dataset": "statlog-image",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          1371,
+          362,
+          577
+        ],
+        [
+          1417,
+          316,
+          577
+        ],
+        [
+          1356,
+          377,
+          577
+        ],
+        [
+          1397,
+          336,
+          577
+        ]
+      ]
+    },
+    {
+      "dataset": "statlog-landsat",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          3533,
+          902,
+          2000
+        ],
+        [
+          3515,
+          920,
+          2000
+        ],
+        [
+          3516,
+          919,
+          2000
+        ],
+        [
+          3531,
+          904,
+          2000
+        ]
+      ]
+    },
+    {
+      "dataset": "statlog-shuttle",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          34726,
+          8774,
+          14500
+        ],
+        [
+          34972,
+          8528,
+          14500
+        ],
+        [
+          34830,
+          8670,
+          14500
+        ],
+        [
+          34609,
+          8891,
+          14500
+        ]
+      ]
+    },
+    {
+      "dataset": "statlog-vehicle",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          514,
+          121,
+          211
+        ],
+        [
+          515,
+          120,
+          211
+        ],
+        [
+          506,
+          129,
+          211
+        ],
+        [
+          508,
+          127,
+          211
+        ]
+      ]
+    },
+    {
+      "dataset": "steel-plates",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          1151,
+          305,
+          485
+        ],
+        [
+          1172,
+          284,
+          485
+        ],
+        [
+          1158,
+          298,
+          485
+        ],
+        [
+          1172,
+          284,
+          485
+        ]
+      ]
+    },
+    {
+      "dataset": "synthetic-control",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          368,
+          82,
+          150
+        ],
+        [
+          367,
+          83,
+          150
+        ],
+        [
+          356,
+          94,
+          150
+        ],
+        [
+          361,
+          89,
+          150
+        ]
+      ]
+    },
+    {
+      "dataset": "teaching",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          91,
+          22,
+          38
+        ],
+        [
+          97,
+          16,
+          38
+        ],
+        [
+          89,
+          24,
+          38
+        ],
+        [
+          95,
+          18,
+          38
+        ]
+      ]
+    },
+    {
+      "dataset": "thyroid",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          2993,
+          779,
+          3428
+        ],
+        [
+          3003,
+          769,
+          3428
+        ],
+        [
+          2970,
+          802,
+          3428
+        ],
+        [
+          3067,
+          705,
+          3428
+        ]
+      ]
+    },
+    {
+      "dataset": "tic-tac-toe",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          573,
+          146,
+          239
+        ],
+        [
+          575,
+          144,
+          239
+        ],
+        [
+          588,
+          131,
+          239
+        ],
+        [
+          581,
+          138,
+          239
+        ]
+      ]
+    },
+    {
+      "dataset": "titanic",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          1296,
+          355,
+          550
+        ],
+        [
+          1302,
+          349,
+          550
+        ],
+        [
+          1334,
+          317,
+          550
+        ],
+        [
+          1308,
+          343,
+          550
+        ]
+      ]
+    },
+    {
+      "dataset": "trains",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          3,
+          5,
+          2
+        ],
+        [
+          4,
+          4,
+          2
+        ],
+        [
+          6,
+          2,
+          2
+        ],
+        [
+          6,
+          2,
+          2
+        ]
+      ]
+    },
+    {
+      "dataset": "twonorm",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          4461,
+          1089,
+          1850
+        ],
+        [
+          4412,
+          1138,
+          1850
+        ],
+        [
+          4432,
+          1118,
+          1850
+        ],
+        [
+          4430,
+          1120,
+          1850
+        ]
+      ]
+    },
+    {
+      "dataset": "vertebral-column-2clases",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          174,
+          59,
+          77
+        ],
+        [
+          191,
+          42,
+          77
+        ],
+        [
+          182,
+          51,
+          77
+        ],
+        [
+          187,
+          46,
+          77
+        ]
+      ]
+    },
+    {
+      "dataset": "vertebral-column-3clases",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          189,
+          44,
+          77
+        ],
+        [
+          179,
+          54,
+          77
+        ],
+        [
+          177,
+          56,
+          77
+        ],
+        [
+          180,
+          53,
+          77
+        ]
+      ]
+    },
+    {
+      "dataset": "wall-following",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          3272,
+          820,
+          1364
+        ],
+        [
+          3293,
+          799,
+          1364
+        ],
+        [
+          3251,
+          841,
+          1364
+        ],
+        [
+          3268,
+          824,
+          1364
+        ]
+      ]
+    },
+    {
+      "dataset": "waveform",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          2992,
+          758,
+          1250
+        ],
+        [
+          3016,
+          734,
+          1250
+        ],
+        [
+          3002,
+          748,
+          1250
+        ],
+        [
+          3019,
+          731,
+          1250
+        ]
+      ]
+    },
+    {
+      "dataset": "waveform-noise",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          2979,
+          771,
+          1250
+        ],
+        [
+          2983,
+          767,
+          1250
+        ],
+        [
+          3028,
+          722,
+          1250
+        ],
+        [
+          2995,
+          755,
+          1250
+        ]
+      ]
+    },
+    {
+      "dataset": "wine",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          100,
+          34,
+          44
+        ],
+        [
+          107,
+          27,
+          44
+        ],
+        [
+          105,
+          29,
+          44
+        ],
+        [
+          103,
+          31,
+          44
+        ]
+      ]
+    },
+    {
+      "dataset": "wine-quality-red",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          956,
+          243,
+          400
+        ],
+        [
+          963,
+          236,
+          400
+        ],
+        [
+          960,
+          239,
+          400
+        ],
+        [
+          959,
+          240,
+          400
+        ]
+      ]
+    },
+    {
+      "dataset": "wine-quality-white",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          2939,
+          735,
+          1224
+        ],
+        [
+          2933,
+          741,
+          1224
+        ],
+        [
+          2949,
+          725,
+          1224
+        ],
+        [
+          2965,
+          709,
+          1224
+        ]
+      ]
+    },
+    {
+      "dataset": "yeast",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          901,
+          212,
+          371
+        ],
+        [
+          882,
+          231,
+          371
+        ],
+        [
+          896,
+          217,
+          371
+        ],
+        [
+          890,
+          223,
+          371
+        ]
+      ]
+    },
+    {
+      "dataset": "zoo",
+      "splits": 4,
+      "train_validation_test_sizes": [
+        [
+          62,
+          14,
+          25
+        ],
+        [
+          64,
+          12,
+          25
+        ],
+        [
+          64,
+          12,
+          25
+        ],
+        [
+          57,
+          19,
+          25
+        ]
+      ]
+    }
+  ]
+}

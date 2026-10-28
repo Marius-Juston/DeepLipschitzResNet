@@ -1,0 +1,210 @@
+{
+  "code_sha256": "60a6349a3debe7bee1aa09e9c8566e5188032e79c9ca88105de6704d02725fb9",
+  "planned_datasets": [
+    "iris"
+  ],
+  "common_complete_datasets": [
+    "iris"
+  ],
+  "complete_ablation": true,
+  "rows": [
+    {
+      "algorithm": "ldlt-resnet",
+      "datasets": [
+        "iris"
+      ],
+      "n": 1,
+      "metrics": {
+        "mean_test_acc": {
+          "ce": 0.8851351351351351,
+          "margin": 0.9054054054054055,
+          "paired_mean_difference": 0.020270270270270396,
+          "per_dataset_difference": {
+            "iris": 0.020270270270270396
+          }
+        },
+        "mean_cert_acc_36": {
+          "ce": 0.7567567676305771,
+          "margin": 0.6756756752729416,
+          "paired_mean_difference": -0.0810810923576355,
+          "per_dataset_difference": {
+            "iris": -0.0810810923576355
+          }
+        },
+        "mean_cert_acc_72": {
+          "ce": 0.614864856004715,
+          "margin": 0.47297296673059464,
+          "paired_mean_difference": -0.14189188927412033,
+          "per_dataset_difference": {
+            "iris": -0.14189188927412033
+          }
+        },
+        "mean_cert_acc_108": {
+          "ce": 0.4256756789982319,
+          "margin": 0.3310810811817646,
+          "paired_mean_difference": -0.09459459781646729,
+          "per_dataset_difference": {
+            "iris": -0.09459459781646729
+          }
+        },
+        "mean_cert_acc_255": {
+          "ce": 0.18918918818235397,
+          "margin": 0.0,
+          "paired_mean_difference": -0.18918918818235397,
+          "per_dataset_difference": {
+            "iris": -0.18918918818235397
+          }
+        }
+      }
+    },
+    {
+      "algorithm": "ldlt",
+      "datasets": [
+        "iris"
+      ],
+      "n": 1,
+      "metrics": {
+        "mean_test_acc": {
+          "ce": 0.8783783783783784,
+          "margin": 0.8581081081081081,
+          "paired_mean_difference": -0.020270270270270285,
+          "per_dataset_difference": {
+            "iris": -0.020270270270270285
+          }
+        },
+        "mean_cert_acc_36": {
+          "ce": 0.736486479640007,
+          "margin": 0.4324324354529381,
+          "paired_mean_difference": -0.30405404418706894,
+          "per_dataset_difference": {
+            "iris": -0.30405404418706894
+          }
+        },
+        "mean_cert_acc_72": {
+          "ce": 0.5743243247270584,
+          "margin": 0.3445945829153061,
+          "paired_mean_difference": -0.22972974181175232,
+          "per_dataset_difference": {
+            "iris": -0.22972974181175232
+          }
+        },
+        "mean_cert_acc_108": {
+          "ce": 0.4864864945411682,
+          "margin": 0.17567566875368357,
+          "paired_mean_difference": -0.31081082578748465,
+          "per_dataset_difference": {
+            "iris": -0.31081082578748465
+          }
+        },
+        "mean_cert_acc_255": {
+          "ce": 0.027027027681469917,
+          "margin": 0.0,
+          "paired_mean_difference": -0.027027027681469917,
+          "per_dataset_difference": {
+            "iris": -0.027027027681469917
+          }
+        }
+      }
+    },
+    {
+      "algorithm": "sandwich",
+      "datasets": [
+        "iris"
+      ],
+      "n": 1,
+      "metrics": {
+        "mean_test_acc": {
+          "ce": 0.7027027027027029,
+          "margin": 0.8108108108108109,
+          "paired_mean_difference": 0.108108108108108,
+          "per_dataset_difference": {
+            "iris": 0.108108108108108
+          }
+        },
+        "mean_cert_acc_36": {
+          "ce": 0.486486479640007,
+          "margin": 0.4999999925494194,
+          "paired_mean_difference": 0.013513512909412384,
+          "per_dataset_difference": {
+            "iris": 0.013513512909412384
+          }
+        },
+        "mean_cert_acc_72": {
+          "ce": 0.3378378376364708,
+          "margin": 0.3378378264605999,
+          "paired_mean_difference": -1.1175870895385742e-08,
+          "per_dataset_difference": {
+            "iris": -1.1175870895385742e-08
+          }
+        },
+        "mean_cert_acc_108": {
+          "ce": 0.29054054617881775,
+          "margin": 0.25675675831735134,
+          "paired_mean_difference": -0.03378378786146641,
+          "per_dataset_difference": {
+            "iris": -0.03378378786146641
+          }
+        },
+        "mean_cert_acc_255": {
+          "ce": 0.12837837915867567,
+          "margin": 0.006756756920367479,
+          "paired_mean_difference": -0.12162162223830819,
+          "per_dataset_difference": {
+            "iris": -0.12162162223830819
+          }
+        }
+      }
+    },
+    {
+      "algorithm": "sdp",
+      "datasets": [
+        "iris"
+      ],
+      "n": 1,
+      "metrics": {
+        "mean_test_acc": {
+          "ce": 0.8513513513513514,
+          "margin": 0.8581081081081081,
+          "paired_mean_difference": 0.006756756756756688,
+          "per_dataset_difference": {
+            "iris": 0.006756756756756688
+          }
+        },
+        "mean_cert_acc_36": {
+          "ce": 0.5945946052670479,
+          "margin": 0.6216216161847115,
+          "paired_mean_difference": 0.027027010917663574,
+          "per_dataset_difference": {
+            "iris": 0.027027010917663574
+          }
+        },
+        "mean_cert_acc_72": {
+          "ce": 0.4256756789982319,
+          "margin": 0.5202702805399895,
+          "paired_mean_difference": 0.09459460154175758,
+          "per_dataset_difference": {
+            "iris": 0.09459460154175758
+          }
+        },
+        "mean_cert_acc_108": {
+          "ce": 0.2229729751124978,
+          "margin": 0.3175675612874329,
+          "paired_mean_difference": 0.0945945861749351,
+          "per_dataset_difference": {
+            "iris": 0.0945945861749351
+          }
+        },
+        "mean_cert_acc_255": {
+          "ce": 0.07432432472705841,
+          "margin": 0.0,
+          "paired_mean_difference": -0.07432432472705841,
+          "per_dataset_difference": {
+            "iris": -0.07432432472705841
+          }
+        }
+      }
+    }
+  ],
+  "interpretation": "Dataset means are paired before aggregation. This descriptive ablation does not establish significance, causality across architectures, or full benchmark coverage.",
+  "input_coordinates": "train-standardized feature Euclidean norm"
+}

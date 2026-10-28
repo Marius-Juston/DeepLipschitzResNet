@@ -6,6 +6,35 @@ This repository reproduces the experiments from the paper and provides ready-mad
 utilities for CIFAR-10/100, Tiny-ImageNet, UCI tabular suites, and profiling of
 compiled Lipschitz networks.
 
+## Current revision (parameterization version 2)
+
+The corrected mathematical construction matches the final Automatica paper's
+[immutable source package](https://github.com/Marius-Juston/LDL-Lipschitz-ResNet-LMI/tree/897f4550d93adf75e991d833e4f5ccaf4df7dac1/automatica).
+The chain, full acyclic, and fixed-multiplier implementations are identical.
+The Automatica identification experiments and their saved models live in that
+standalone package; this repository also contains the earlier audited UCI/CIFAR
+revision workflow. They are different experiments, not interchangeable results.
+
+Use Python 3.12 and the locked `uv` environment:
+
+```bash
+uv sync --locked
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 uv run --locked python -m pytest -q
+uv run --locked python research/verify_paper_consistency.py
+uv run --locked python research/verify_revision_results.py
+```
+
+See [REVISION_RUNBOOK.txt](REVISION_RUNBOOK.txt) for the current entry points,
+completed-run provenance, and certificate limitations. Legacy checkpoints are
+not assigned version-2 guarantees. The old CNN evaluator intentionally refuses
+to certify them; use `revision_experiments.py` and `src/revision_image.py`.
+The commands and broad architecture descriptions below include historical
+utilities and are not evidence that each legacy configuration is certified.
+
+Successful Cholesky factorization alone does not validate floating-point
+weights. The strict guarantee is mathematical; numerical certificate checks are
+not interval proofs. The final paper documents failures near the boundary.
+
 ## Table of Contents
 
 1. [Background](#background)
@@ -36,7 +65,8 @@ If you use this repository, please cite the accompanying paper in the
 
 ## Installation
 
-> Requires Python ≥ 3.10 and PyTorch ≥ 2.8 (nightly 2.10 for compiled CNN support).
+> The revision requires Python 3.12 and the versions pinned in `uv.lock`.
+> The following manual installation notes describe historical utilities.
 
 ```bash
 git clone https://github.com/<your-org>/DeepLipschitzResNet.git

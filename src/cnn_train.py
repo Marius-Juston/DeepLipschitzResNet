@@ -120,7 +120,7 @@ def visualize_lipschitz_pairs(model, X, n_pairs=500, name="lipschitz_pairs.png")
     plt.xlabel("||x_i - x_j|| (input distance)")
     plt.ylabel("|f(x_i)-f(x_j)| / ||x_i - x_j|| (Lipschitz ratio)")
     plt.title("Finite-difference Lipschitz scatter")
-    plt.savefig(name, dpi=600)
+    plt.savefig(os.path.splitext(name)[0] + '.pdf')
     plt.close()
 
 

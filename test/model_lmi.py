@@ -18,7 +18,8 @@ from models.linear_model import DeepLipschitzLinearResNet, DeepLipschitzSequenti
 
 DEFAULT_DPI = 600
 
-OUTPUT_FORMAT = 'png'
+OUTPUT_FORMAT = 'pdf'
+plt.rcParams['pdf.fonttype'] = 42
 
 
 def block(tensors: Sequence[Sequence[torch.Tensor]]) -> torch.Tensor:
@@ -186,50 +187,37 @@ def extract_lmi_constants_deep_linear(model: DeepLipschitzSequential):
 
 
 def extract_lmi_constants(model):
-    if isinstance(model, DeepLipschitzLinearResNet):
-        return extract_lmi_constants_deep_resnet_new(model)
-    else:
-        return extract_lmi_constants_deep_linear(model)
+    weights = model.normalized_weights()
+    return (weights.a, weights.b, list(weights.cs),
+            [torch.diag(v) for v in weights.multipliers],
+            [[1, 0] for _ in weights.cs],
+            [weights.a.shape[-1], *[c.shape[-2] for c in weights.cs]])
 
 
 def plot_matrix(M: torch.Tensor, fig_name: str = None, dpi: int = DEFAULT_DPI, mask: bool = True,
                 normalize: bool = True, ax: Optional[Axes] = None):
+    """Vector quadrilaterals, including in PDF output; no embedded bitmap."""
+    values = M.detach().to(dtype=torch.float64).cpu().numpy().copy()
     if mask:
-        masked_zerp = torch.abs(M) <= torch.finfo(M.dtype).eps
-        no_mask = torch.logical_not(masked_zerp)
-
-        min, max = M[no_mask].min(), M[no_mask].max()
-    else:
-        min, max = M.min(), M.max()
-
-    vmin, vmax = min, max
-
-    if normalize:
-        if vmin == vmin:
-            normalized = M / vmax  * 255
-        else:
-            normalized = (M - min) / (max - min) * 255
-
-        normalized = normalized.round()
-        vmin = 0
-        vmax = 255
-    else:
-        normalized = M
-
-    if mask:
-        normalized[masked_zerp] = torch.nan
-
-    normalized = normalized.cpu().numpy()
-
-    if ax is None:
+        values[np.abs(values) <= np.finfo(values.dtype).eps] = np.nan
+    finite = values[np.isfinite(values)]
+    if normalize and finite.size:
+        low, high = finite.min(), finite.max()
+        values = (values-low)/(high-low) if high > low else values*0
+    own = ax is None
+    if own:
         fig, ax = plt.subplots(figsize=(8, 8))
-        im = ax.matshow(normalized, cmap='viridis', vmin=vmin, vmax=vmax)
+    im = ax.pcolormesh(np.arange(values.shape[1]+1)-.5,
+                       np.arange(values.shape[0]+1)-.5,
+                       np.ma.masked_invalid(values), cmap='viridis',
+                       shading='flat', rasterized=False, edgecolors='none')
+    ax.set_aspect('equal')
+    ax.set_ylim(values.shape[0]-.5, -.5)
+    ax.xaxis.tick_top()
+    if own:
         fig.tight_layout()
-        fig.savefig(f"{fig_name}.{OUTPUT_FORMAT}", dpi=dpi)
-        plt.close()
-    else:
-        im = ax.matshow(normalized, cmap='viridis', vmin=vmin, vmax=vmax)
-
+        fig.savefig(f"{fig_name}.{OUTPUT_FORMAT}")
+        plt.close(fig)
     return im
 
 
@@ -267,7 +255,7 @@ def singular_extremes(M: torch.Tensor):
 
 
 def plot_singular_extremes(a_weight, b_weight, Cs, fig_name: str, dpi=DEFAULT_DPI):
-    matrices = [a_weight] + Cs + [b_weight]
+    matrices = [a_weight] + list(Cs) + [b_weight]
     labels = ["A"] + [f"C{i + 1}" for i in range(len(Cs))] + ["B"]
 
     sigmas_min, sigmas_max = [], []
@@ -333,6 +321,8 @@ def add_colorbar(fig: Figure, ax: Axes, im: AxesImage, n_bins=10):
     cax = divider.append_axes("right", size="5%", pad=0.05)
     cb = fig.colorbar(im, cax=cax)
     cb.locator = MaxNLocator(nbins=n_bins)
+    if cb.solids is not None:
+        cb.solids.set_rasterized(False)
 
 
 def plot_zoomed_in_system(A, B, fig_name: str, dpi=DEFAULT_DPI):
@@ -365,8 +355,6 @@ def plot_zoomed_in_system(A, B, fig_name: str, dpi=DEFAULT_DPI):
     fig.add_artist(con1)
     fig.add_artist(con2)
 
-    print(A.min(), A.max())
-    print(B.min(), B.max())
 
     add_colorbar(fig, ax1, im1)
     add_colorbar(fig, ax2, im2)
@@ -457,6 +445,7 @@ def plot_ldlt_decomposition(M, dimensions, fig_name: str = None, dpi=DEFAULT_DPI
 
     fig.tight_layout()
     fig.savefig(f"{fig_name}_l.{OUTPUT_FORMAT}", dpi=dpi)
+    plt.close(fig)
 
     # Diagonal matrix D
     fig, ax = plt.subplots(figsize=(8, 8))
@@ -512,9 +501,6 @@ def plot_information(M, a_weight, Cs, b_weight, dimensions, figs_folder, suffix=
 
     eigenvalues, eigenvectors = torch.linalg.eigh(M)
 
-    print(M)
-
-    print(eigenvalues)
 
     plot_matrix(M, os.path.join(figs_folder, f"full_lmi{suffix}"))
 

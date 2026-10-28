@@ -1,0 +1,122 @@
+REVISION CODE RELEASE — 2026-10-28
+
+Current validation: 60 focused tests pass. The chain, acyclic, and fixed-multiplier
+construction files match final paper commit 897f455 byte-for-byte. Verify with:
+  uv run --locked python research/verify_paper_consistency.py
+Optionally compare a local paper checkout and its pinned Git objects:
+  uv run --locked python research/verify_paper_consistency.py --paper-root ../LDL-Lipschitz-ResNet-LMI
+
+The final Automatica identification experiments are distributed in that paper
+repository under automatica/reproducibility; the campaign below is the earlier
+UCI/CIFAR revision evidence, not the Automatica identification experiment.
+Raw datasets and large training checkpoints under data/, runs/, and trained_models/
+remain local/ignored. Saved audit summaries and derived per-model diagnostic
+arrays under revision_artifacts/ are published with this revision. Some earlier
+pilot/migration records are historical and explicitly superseded below.
+
+The numerical guarantee is exact-arithmetic and certificate-specific. A successful
+factorization is not validation of a floating-point certificate. Use independent
+checks; no interval proof or general accuracy advantage is claimed.
+
+COMPLETED HISTORICAL CAMPAIGN — run from a populated revision checkout.
+
+The locked uv environment was used for the completed campaign. The campaign
+manifest already contains 792 jobs: 726 UCI CE, 48 UCI margin, 18 CIFAR-10.
+All required UCI and CIFAR-10 data were located locally. The full campaign has COMPLETED (792/792 jobs, no recorded errors).
+Earlier runs/revision_v2 and runs/revision_verified manifests are superseded.
+Use runs/revision_campaign; do not prepare over an existing manifest.
+
+Historical launch command (training is already complete; no rerun is needed):
+  cd /home/mjuston2/Documents/LDL-Lipschitz-ResNet-LMI-Review/DeepLipschitzResNet
+  nohup bash revision_launch.sh > revision_campaign.log 2>&1 &
+
+The launcher validates the source hash, runs a GPU profile, then starts four
+resumable workers. UCI jobs precede CIFAR-10. Per user authorization on
+2026-10-03, the campaign has no wall-time or GPU-hour limit and the initial
+profile has no timeout. The 792 job definitions, epoch caps, and early stopping
+are unchanged. Failures still require inspection; unlimited time does not
+mean every job will succeed. Resource use and progress remain recorded.
+Profiling failures stop the launcher. Its completion marker skips profiling
+on normal resumes. Do not delete it merely to rerun the launcher.
+The unstarted manifest was migrated to the updated queue digest; the previous
+manifest and queue source are in revision_artifacts/unlimited_campaign_migration/.
+For new manifests, --hours 0 --gpu-hours 0 disables both limits.
+
+Monitor:
+  uv run --locked python revision_experiments.py status --out runs/revision_campaign
+  tail -f revision_campaign.log
+Workers write worker.log, atomic result/error JSON, and epoch snapshots beneath
+runs/revision_campaign/jobs/. The status JSON records controller and worker PIDs.
+This is a local monitor; it does not send messages or promise to wake an assistant.
+
+Pause the training queue by sending SIGTERM to the controller_pid recorded in
+runs/revision_campaign/status.json. The controller stops its workers and records
+paused jobs; training resumes from the last completed epoch. Do not kill only
+the outer launcher shell and assume its worker processes stopped. During the
+initial profile, use the launcher log/process tree to identify the profile process;
+the profile no longer has a time limit.
+
+Resume training directly without repeating profiling:
+  nohup uv run --locked python revision_experiments.py run --gpus 0,1,2,3 --out runs/revision_campaign > revision_resume.log 2>&1 &
+Completed jobs are skipped. Inspect failed jobs before using --retry-failed.
+Code hashes must match: changing training code requires a new manifest and
+separate evidence. Never mix results from different source revisions.
+
+Reports (also generated automatically when the launcher queue exits normally):
+  uv run --locked python revision_experiments.py report --out runs/revision_campaign
+  uv run --locked python revision_analyze.py --out runs/revision_campaign
+The first report compares common completed datasets with paired tests. The
+second summarizes matched CE/margin configurations and writes a descriptive
+LaTeX table. Partial coverage must not be presented as the full benchmark.
+
+Optional CPU UCI execution when requested (image jobs remain pending):
+  uv run --locked python revision_experiments.py run --gpus cpu --cpu-workers 8 --out runs/revision_campaign
+Do not run two controllers for this directory simultaneously. A lock prevents it.
+CPU execution records resource usage and respects any configured limits; this campaign has none.
+
+The final paper repository contains the revised manuscripts, verified vector
+figures, and completed review changes. Historical figure-recovery scripts below
+require the original local sources; they are not required to run the tests or
+the standalone Automatica experiments. Do not regenerate figures into a clean
+paper checkout merely to validate this code release.
+
+Completed campaign reporting (2026-10-05)
+All 792 results are present. Queue counters: 9.09 wall hours / 36.14 GPU-hours;
+initial profiling is excluded. Do not rerun training to regenerate tables.
+  uv run --locked python research/publication_results.py
+This checks source/result provenance, recomputes split/dataset means, reports
+Holm correction over both 15 and 75 comparisons, and generates native vector
+PDFs and result_tables/ in the paper repository. Source arrays and all result
+digests are in revision_artifacts/publication_results/. The new acyclic
+architecture and general recurrent LBEN are not part of this campaign.
+
+Independent checkpoint reevaluation (completed)
+  uv run --locked python research/recheck_images.py --device cuda:0
+  uv run --locked python research/recheck_uci.py --all --device cuda:1
+  uv run --locked python research/plot_checkpoint_radii.py
+These read existing checkpoints, independently compute all-class radii and
+assemble the original LDL matrices, and write separate artifacts under
+revision_artifacts/checkpoint_reevaluation/. All 3,096 UCI and 18 image models
+passed. These scripts do not retrain or modify campaign results. They reuse
+model forward implementations; numerical checks are not interval proofs.
+
+Inference costs (completed)
+  uv run --locked python research/profile_inference.py --device cuda:0
+All 18 saved image checkpoints are timed at batch 1 and 64, cold and warm.
+The output is revision_artifacts/inference_profile/profile.json and the
+generated paper table result_tables/inference.tex. Warm uses existing caches,
+not fully materialized or compiled deployment graphs. No training changes.
+
+PORTABLE RESULT AUDIT (no datasets, checkpoints, or GPUs required)
+  uv run --locked python research/verify_revision_results.py
+The archive revision_artifacts/completed_campaign_results.zip contains the
+original manifest and all 792 result.json files with original bytes/hashes.
+It permits validation of provenance and split means without copying 6 GB of
+training checkpoints. This is not a new independent checkpoint reevaluation.
+To regenerate historical publication tables in a sibling paper checkout, first
+extract the archive without overwriting any existing run files:
+  unzip -n revision_artifacts/completed_campaign_results.zip -d runs/revision_campaign
+  uv run --locked python research/publication_results.py
+That reporting command WRITES paper tables and figures; it is not needed for
+read-only validation. Full checkpoint re-evaluation still needs the original
+local checkpoints and data. The final Automatica package remains standalone.

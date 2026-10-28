@@ -1,0 +1,141 @@
+{
+  "jobs": 792,
+  "uci_splits": 3096,
+  "errors": 0,
+  "controller_pid": null,
+  "wall_hours": 9.09205419562964,
+  "gpu_hours": 36.1367244162752,
+  "source_hash_verified": true,
+  "recorded_ldl_certificate_audits": 1082,
+  "minimum_recorded_eigenvalue": 1.1220479424104882e-05,
+  "uci_report_means_independently_recomputed": true,
+  "cifar10_three_seed_summary": [
+    {
+      "algorithm": "ldlt-resnet",
+      "loss": "ce",
+      "seeds": 3,
+      "clean": {
+        "mean_percent": 54.166666666666664,
+        "sd_percent": 0.2538372181799453
+      },
+      "36": {
+        "mean_percent": 46.656666199366256,
+        "sd_percent": 0.13796058633735417
+      },
+      "72": {
+        "mean_percent": 39.45666650931041,
+        "sd_percent": 0.18609982506234973
+      },
+      "108": {
+        "mean_percent": 32.749999562899276,
+        "sd_percent": 0.23302383958719708
+      }
+    },
+    {
+      "algorithm": "ldlt-resnet",
+      "loss": "margin",
+      "seeds": 3,
+      "clean": {
+        "mean_percent": 53.96333333333333,
+        "sd_percent": 0.6000277771348024
+      },
+      "36": {
+        "mean_percent": 46.79666658242543,
+        "sd_percent": 0.3601843947147368
+      },
+      "72": {
+        "mean_percent": 39.51333363850911,
+        "sd_percent": 0.07023746630080717
+      },
+      "108": {
+        "mean_percent": 32.97000030676524,
+        "sd_percent": 0.1705878375889484
+      }
+    },
+    {
+      "algorithm": "sandwich",
+      "loss": "ce",
+      "seeds": 3,
+      "clean": {
+        "mean_percent": 54.13,
+        "sd_percent": 0.13856406460551415
+      },
+      "36": {
+        "mean_percent": 46.93666696548462,
+        "sd_percent": 0.04163402474646931
+      },
+      "72": {
+        "mean_percent": 39.933333794275924,
+        "sd_percent": 0.370720293104154
+      },
+      "108": {
+        "mean_percent": 33.29666654268901,
+        "sd_percent": 0.2773687341460978
+      }
+    },
+    {
+      "algorithm": "sandwich",
+      "loss": "margin",
+      "seeds": 3,
+      "clean": {
+        "mean_percent": 54.14333333333333,
+        "sd_percent": 0.4252450274057667
+      },
+      "36": {
+        "mean_percent": 47.11666603883107,
+        "sd_percent": 0.1656307245403972
+      },
+      "72": {
+        "mean_percent": 39.9266670147578,
+        "sd_percent": 0.4554480381273892
+      },
+      "108": {
+        "mean_percent": 33.0566664536794,
+        "sd_percent": 0.325627879241828
+      }
+    },
+    {
+      "algorithm": "sdp",
+      "loss": "ce",
+      "seeds": 3,
+      "clean": {
+        "mean_percent": 53.406666666666666,
+        "sd_percent": 0.09712534856222327
+      },
+      "36": {
+        "mean_percent": 46.486666798591614,
+        "sd_percent": 0.032144656030545726
+      },
+      "72": {
+        "mean_percent": 39.633332689603165,
+        "sd_percent": 0.42027715375094615
+      },
+      "108": {
+        "mean_percent": 33.30333332220714,
+        "sd_percent": 0.38991384704146304
+      }
+    },
+    {
+      "algorithm": "sdp",
+      "loss": "margin",
+      "seeds": 3,
+      "clean": {
+        "mean_percent": 54.17000000000001,
+        "sd_percent": 0.31096623610932395
+      },
+      "36": {
+        "mean_percent": 47.103333473205566,
+        "sd_percent": 0.33709433528833355
+      },
+      "72": {
+        "mean_percent": 40.280000368754074,
+        "sd_percent": 0.14798677570432608
+      },
+      "108": {
+        "mean_percent": 33.74333381652832,
+        "sd_percent": 0.13203611671410123
+      }
+    }
+  ],
+  "scope": "Audit of saved result metadata and certificate diagnostics; not independent checkpoint re-evaluation."
+}
